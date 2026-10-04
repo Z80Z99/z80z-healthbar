@@ -476,6 +476,22 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
                 heartHighlight(vc, matrix, x + full * 9, y, hi);
             }
         }
+
+        // 伤害残影：刚失去心的槽位画白色渐隐心（BarFx ghost 动画与样式3残影段同源;
+        // 受击掉血后残影按 420ms 缓降逐格淡出,半心槽不算空,残影从其后的槽位开始）
+        var dxCfg = ConfigManager.getConfig().dynamicFx;
+        if (dxCfg.enabled && dxCfg.ghost) {
+            float target = Mth.clamp(Math.max(0f, snap.health) / snap.maxHealth, 0f, 1f);
+            var st = BarFx.tick(snap.entityId, target, snap.hurtTime > 0, System.currentTimeMillis());
+            float ghostHearts = Mth.clamp(st.ghost(), 0f, 1f) * slots;
+            int ghostStart = (int) Math.ceil(cur - 0.01f);
+            for (int i = ghostStart; i < slots; i++) {
+                float g = ghostHearts - i; // 该槽剩余残影量 (0..1]
+                if (g <= 0f) break;
+                int wa = (int) (a * Math.min(1f, g) * 0.8f);
+                heartQuad(vc, matrix, x + i * 9, y, ColorHelper.modifyAlpha(0xFFFFFFFF, wa), false);
+            }
+        }
     }
 
     /** 颜色向白提亮(0..1);用于心形高光 */
