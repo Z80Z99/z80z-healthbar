@@ -57,6 +57,9 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         var fx = cfg.dynamicFx;
         var st = BarFx.tick(snap.entityId, ratio, snap.hurtTime > 0, System.currentTimeMillis());
         float dispR = fx.enabled && fx.smooth ? st.display() : ratio;
+        // 平滑动画指数逼近浮点上永不精确到达(如停在 0.99987):距满血 0.1% 内一律视为满血,
+        // 否则"只显示完整格"取整后满血永远差一格、普通填充差一像素(在渲染入口统一钳满,动画层不动)
+        if (dispR >= 1f - 1e-3f) dispR = 1f;
         float ghostR = fx.enabled && fx.ghost ? Math.max(st.ghost(), dispR) : dispR;
         float flash = fx.enabled && fx.hurtFlash ? st.flash() : 0f;
         // 受伤脉冲：数字弹跳/变色用——独立于"血条闪白"开关（其关掉不影响数字效果）
@@ -81,20 +84,24 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         // 伤害残影：display→ghost 区段以半透明白慢速收缩，表达"刚损失的血量"
         int ghostW = Mth.floor(ghostR * barWidth);
         int healthW = Mth.floor(dispR * barWidth);
-        if (ghostW > healthW) {
+        // 分段+整格模式下填充按格量化：残影层从量化后的填充边界起画，与格边界对齐
+        // （对不齐时白块压在半格上，受击时白闪与格子错位、观感杂乱）
+        boolean segmentedWhole = barCfg.barVariant == 2 && barCfg.segmentWholeOnly;
+        int fillW = segmentedWhole ? segmentedFillWidth(dispR, snap.maxHealth, barWidth) : healthW;
+        if (ghostW > fillW) {
             poseStack.pushPose();
             poseStack.translate(0, 0, -0.01f * zu);
-            fillRect(vc, poseStack.last().pose(), x + healthW, y, ghostW - healthW, barH,
+            fillRect(vc, poseStack.last().pose(), x + fillW, y, ghostW - fillW, barH,
                     ColorHelper.modifyAlpha(ColorHelper.parseColor(fx.ghostColor), (int) (alphaMul * 255)));
             poseStack.popPose();
         }
-        if (healthW > 0) {
+        if (fillW > 0) {
             poseStack.pushPose();
             poseStack.translate(0, 0, -0.02f * zu);
             Matrix4f mf = poseStack.last().pose();
             switch (Math.max(0, Math.min(3, barCfg.barVariant))) {
                 case 1 -> gradientFill(vc, mf, x, y, healthW, barH, fillColor);
-                case 2 -> segmentedFill(vc, mf, x, y, barWidth, dispR, snap.maxHealth, barH, fillColor);
+                case 2 -> segmentedFill(vc, mf, x, y, barWidth, fillW, snap.maxHealth, barH, fillColor);
                 case 3 -> glossyFill(vc, mf, x, y, healthW, barH, fillColor);
                 default -> fillRect(vc, mf, x, y, healthW, barH, fillColor);
             }
@@ -202,39 +209,47 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         vc.vertex(m, x + w, y, 0).color(top).endVertex();
     }
 
-    /**
-     * 长条变体 2：分段刻度——格间留 1px 空隙露出空槽色。
-     * 格数/每格血量/整格显示由 barStyle.segmentCount / segmentHp / segmentWholeOnly 配置：
-     * segmentHp > 0 时按固定血量分格（格数 = 最大血量/每格，超 64 格合并防亚像素），
-     * 否则按 segmentCount 固定格数均分；segmentWholeOnly 时不足一格的剩余血不显示。
-     * 格边界用浮点按比例划分（整数格宽会在条宽不能整除格数时于尾部留下永远填不上的零头，
-     * 整格模式下尤为明显），满血时末格恰好铺到条尾。
-     */
-    private void segmentedFill(VertexConsumer vc, Matrix4f m, int x, int y, int barWidth,
-                               float ratio, float maxHealth, int h, int color) {
+    /** 分段刻度的格数：segmentHp > 0 按固定血量分格（超 64 格合并防亚像素），否则 segmentCount 固定格数 */
+    private static int segmentCells(float maxHealth) {
         var barCfg = ConfigManager.getConfig().barStyle;
         int cells = barCfg.segmentCount;
         if (barCfg.segmentHp > 0) {
             cells = Math.max(1, (int) Math.ceil(maxHealth / barCfg.segmentHp));
             if (cells > 64) cells = 64;
         }
-        cells = Math.max(1, cells);
+        return Math.max(1, cells);
+    }
+
+    /** 分段刻度的填充像素宽：整格模式向下取整到格边界；满血/取满格数时精确取条尾（浮点累乘可能少 1px） */
+    private int segmentedFillWidth(float ratio, float maxHealth, int barWidth) {
+        var barCfg = ConfigManager.getConfig().barStyle;
+        if (!barCfg.segmentWholeOnly) return Mth.floor(ratio * barWidth);
+        int cells = segmentCells(maxHealth);
         float cellW = barWidth / (float) cells;
-        int healthW = Mth.floor(ratio * barWidth);
-        if (barCfg.segmentWholeOnly) {
-            int fullCells = (int) (ratio * cells + 1e-2f);
-            // 满血(格数取满)时直接用整条宽:浮点 cells*cellW 可能比 barWidth 少 1px,尾部会留缝
-            healthW = fullCells >= cells ? barWidth : (int) (fullCells * cellW);
-        }
+        int fullCells = (int) (ratio * cells + 1e-2f);
+        return fullCells >= cells ? barWidth : (int) (fullCells * cellW);
+    }
+
+    /**
+     * 长条变体 2：分段刻度——格间留 1px 空隙露出空槽色。
+     * 格数/每格血量/整格显示由 barStyle.segmentCount / segmentHp / segmentWholeOnly 配置；
+     * fillW 为量化后的填充边界（整格模式下与残影层对齐）。
+     * 格边界用浮点按比例划分，末格右边界精确取条尾（整数格宽会在条宽不能整除格数时尾部留缝）。
+     */
+    private void segmentedFill(VertexConsumer vc, Matrix4f m, int x, int y, int barWidth,
+                               int fillW, float maxHealth, int h, int color) {
+        int cells = segmentCells(maxHealth);
+        float cellW = barWidth / (float) cells;
         for (int i = 0; i < cells; i++) {
             int x0 = x + (int) (i * cellW);
-            if (x0 >= healthW) break;
-            // 下一格起点 = 本格终点(无缝对齐);末格右边界精确取条尾,浮点累积误差不 shortfall
+            if (x0 >= fillW) break;
+            // 下一格起点 = 本格终点（无缝对齐）；末格右边界精确取条尾
             int x1 = (i + 1 == cells) ? x + barWidth : x + (int) ((i + 1) * cellW);
-            int end = Math.min(x1, healthW);              // 本格填充终点
+            int end = Math.min(x1, fillW);                // 本格填充终点
             if (x1 - x0 >= 2) end--;                      // 格宽 ≥2px 时留 1px 格缝,过密不留
             if (end > x0) fillRect(vc, m, x0, y, end - x0, h, color);
         }
+    }
     }
 
     /** 长条变体 3：金属高光——纯色填充 + 顶部 1px 提亮 + 底部 1px 压暗 */

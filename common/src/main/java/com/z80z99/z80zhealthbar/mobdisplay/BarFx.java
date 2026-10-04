@@ -59,15 +59,11 @@ public final class BarFx {
         fx.lastSeen = now;
 
         fx.display += (target - fx.display) * (1f - (float) Math.exp(-dt / SMOOTH_MS));
-        // 指数逼近浮点上永不精确到达(如 0.99987):收敛后钳到目标,
-        // 否则满血时"只显示完整格"向下取整会永远差一格、填充差一像素
-        if (Math.abs(target - fx.display) < 1e-3f) fx.display = target;
         if (target > fx.ghost) {
             fx.ghost = target; // 治疗：残影立即跟上
         } else {
             fx.ghost += (target - fx.ghost) * (1f - (float) Math.exp(-dt / GHOST_MS));
         }
-        if (Math.abs(target - fx.ghost) < 1e-3f) fx.ghost = target;
         if (hurt) fx.flash = 1f;
         else fx.flash = Math.max(0f, fx.flash - dt / FLASH_MS);
         // 治疗脉冲：血量上限明显提高时触发（受伤由 hurtTime 驱动，不走这里）
