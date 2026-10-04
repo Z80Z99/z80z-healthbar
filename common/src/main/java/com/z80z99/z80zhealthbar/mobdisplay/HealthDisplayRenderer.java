@@ -207,6 +207,8 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
      * 格数/每格血量/整格显示由 barStyle.segmentCount / segmentHp / segmentWholeOnly 配置：
      * segmentHp > 0 时按固定血量分格（格数 = 最大血量/每格，超 64 格合并防亚像素），
      * 否则按 segmentCount 固定格数均分；segmentWholeOnly 时不足一格的剩余血不显示。
+     * 格边界用浮点按比例划分（整数格宽会在条宽不能整除格数时于尾部留下永远填不上的零头，
+     * 整格模式下尤为明显），满血时末格恰好铺到条尾。
      */
     private void segmentedFill(VertexConsumer vc, Matrix4f m, int x, int y, int barWidth,
                                float ratio, float maxHealth, int h, int color) {
@@ -217,12 +219,18 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
             if (cells > 64) cells = 64;
         }
         cells = Math.max(1, cells);
-        int segW = Math.max(3, barWidth / cells); // 格子过密时合并（segW 低于 3px 无法分辨格缝）
+        float cellW = barWidth / (float) cells;
         int healthW = Mth.floor(ratio * barWidth);
-        if (barCfg.segmentWholeOnly) healthW = healthW / segW * segW;
-        for (int sx = 0; sx < healthW; sx += segW) {
-            int w = Math.min(segW - 1, healthW - sx);
-            if (w > 0) fillRect(vc, m, x + sx, y, w, h, color);
+        if (barCfg.segmentWholeOnly) {
+            healthW = (int) ((int) (ratio * cells + 1e-4f) * cellW);
+        }
+        for (int i = 0; i < cells; i++) {
+            int x0 = x + (int) (i * cellW);
+            if (x0 >= healthW) break;
+            int x1 = x + (int) ((i + 1) * cellW);        // 下一格起点 = 本格终点（无缝对齐）
+            int end = Math.min(x1, healthW);              // 本格填充终点
+            if (x1 - x0 >= 2) end--;                      // 格宽 ≥2px 时留 1px 格缝,过密不留
+            if (end > x0) fillRect(vc, m, x0, y, end - x0, h, color);
         }
     }
 
