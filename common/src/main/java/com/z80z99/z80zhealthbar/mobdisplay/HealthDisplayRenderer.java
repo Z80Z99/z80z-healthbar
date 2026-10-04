@@ -141,10 +141,11 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
             }
         }
         // 7) 分格刻度线（变体 2）：叠加式 1px 纵向刻度,画在填充/残影之上——
-        //    不再在填充里切缝,格边界整数化后不存在尾部缝隙与对位问题;格宽不足 4px 自动省略
+        //    不再在填充里切缝,格边界整数化后不存在尾部缝隙与对位问题;格宽不足 2px（连 1px 刻度
+        //    + 1px 填充都放不下）才省略,此前阈值 4px 过于保守,19 格/72px 条会被整条省掉
         if (segmented && cells > 1) {
             int cellW = barWidth / cells;
-            if (cellW >= 4) {
+            if (cellW >= 2) {
                 for (int i = 1; i < cells; i++) {
                     int nx = x + (i * barWidth) / cells;
                     fillRect(vc, m, nx, y, 1, barH, notchColor);
