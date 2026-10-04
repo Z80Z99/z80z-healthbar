@@ -16,8 +16,10 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
@@ -384,6 +386,12 @@ public final class ModSettingsScreen extends Screen {
                     .create(0, 0, previewW - 12, 18, Component.empty(), (b, v) -> previewFriendly = v);
             previewToggle.setX(previewX + 6);
             previewToggle.setY(previewY + 20);
+            // 全屏预览入口：小窗装不下条+跳字完整效果时的放大查看
+            addRenderableWidget(Button.builder(
+                            Component.translatable("z80zhealthbar.settings.preview.fullscreen"),
+                            b -> minecraft.setScreen(new FullscreenPreviewScreen(this)))
+                    .bounds(previewX + 6, previewY + 40, previewW - 12, 18)
+                    .build());
         } else {
             contentW = Math.min(420, width - 24 - PANEL_PAD * 2);
             contentX = (width - contentW) / 2;
@@ -1008,13 +1016,50 @@ public final class ModSettingsScreen extends Screen {
 
         previewToggle.render(g, mouseX, mouseY, partialTick);
 
-        int bx = previewX + 2, by = previewY + 44, bw = previewW - 4, bh = previewH - 50;
+        int bx = previewX + 2, by = previewY + 64, bw = previewW - 4, bh = previewH - 70;
         g.fill(bx, by, bx + bw, by + bh, 0xFF0B0E14);
         g.renderOutline(bx, by, bw, bh, 0x40FFFFFF);
 
         g.enableScissor(bx, by, bx + bw, by + bh);
         drawMockBar(g, bx + bw / 2, by, bh);
         g.disableScissor();
+    }
+
+    /** 全屏预览界面：整窗复用同一 mock 战斗循环（drawMockBar），完整查看血条/跳字/实体样式效果 */
+    private class FullscreenPreviewScreen extends Screen {
+        private final Screen backTo;
+
+        FullscreenPreviewScreen(Screen backTo) {
+            super(Component.translatable("z80zhealthbar.settings.preview.title"));
+            this.backTo = backTo;
+        }
+
+        @Override
+        protected void init() {
+            // 敌方/友方切换（与设置页共用 previewFriendly 状态）
+            addRenderableWidget(CycleButton.<Boolean>builder(v -> Component.translatable(
+                            v ? "z80zhealthbar.settings.preview.friendly" : "z80zhealthbar.settings.preview.enemy"))
+                    .withValues(List.of(false, true))
+                    .withInitialValue(previewFriendly)
+                    .displayOnlyValue()
+                    .create(width / 2 - 100, 22, 200, 18, Component.empty(), (b, v) -> previewFriendly = v));
+            addRenderableWidget(Button.builder(CommonComponents.GUI_BACK, b -> onClose())
+                    .bounds(width / 2 - 100, height - 26, 200, 20)
+                    .build());
+        }
+
+        @Override
+        public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+            renderBackground(g);
+            drawMockBar(g, width / 2, 0, height - 32); // 整窗即取景框（底部留返回按钮位）
+            g.drawCenteredString(font, getTitle(), width / 2, 8, 0xFFFFFF);
+            super.render(g, mouseX, mouseY, partialTick);
+        }
+
+        @Override
+        public void onClose() {
+            minecraft.setScreen(backTo);
+        }
     }
 
     private void drawMockBar(GuiGraphics g, int cx, int boxTop, int boxH) {
@@ -1069,8 +1114,9 @@ public final class ModSettingsScreen extends Screen {
 
         var buffer = g.bufferSource();
         var pose = g.pose();
-        // 每方块 GUI 像素：按取景框高度动态适配（僵尸 1.95 + 抬升 1.2 + 血条/跳字余量 ≈ 4.2 块）
-        float zb = Math.max(24f, Math.min(80f, (boxH - 16) / 4.2f));
+        // 每方块 GUI 像素：按取景框高度动态适配（僵尸 1.95 + 抬升 1.2 + 血条约 2 块 + 跳字余量 ≈ 5.2 块;
+        // 此前按 4.2 估算,样式 3 的血条会顶出取景框被裁掉）
+        float zb = Math.max(24f, Math.min(80f, (boxH - 16) / 5.2f));
         int feetY = boxTop + boxH - 6;
 
         // 虚拟相机：固定 180° 基准（无摇摆——摇摆只进僵尸 yBodyRot；进朝向会让牌子沿深度轴倾斜沉入面板背景）

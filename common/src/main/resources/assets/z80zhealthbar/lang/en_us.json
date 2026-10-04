@@ -361,6 +361,7 @@
   "z80zhealthbar.option.styleA.heightOffset.label": "Height offset",
   "z80zhealthbar.option.styleA.heightOffset.tooltip": "How far above the entity the bar floats (blocks); fine-tune the gap to the vanilla nametag line.",
   "z80zhealthbar.settings.preview.title": "Live preview",
+  "z80zhealthbar.settings.preview.fullscreen": "Fullscreen preview",
   "z80zhealthbar.settings.preview.enemy": "Enemy",
   "z80zhealthbar.settings.preview.friendly": "Friendly",
   "z80zhealthbar.settings.preview.off": "Current style is off",
