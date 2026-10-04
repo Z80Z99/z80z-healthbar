@@ -13,7 +13,6 @@ public class ColorConfig {
 
     // 吸收值
     public String absorption = "#FFFFFF00";
-    public String absorptionBound = "#FFFFAA00";
 
     // 饱食度
     public String foodNormal = "#FF804000";
@@ -36,9 +35,7 @@ public class ColorConfig {
 
     // 坐骑
     public String mountHealth = "#FFFF8000";
-    public String mountHealth2 = "#FFFF4000";
     public String mountHealthBound = "#FFFFAA00";
-    public String mountHealthBound2 = "#FFFF8000";
     public String mountHealthEmpty = "#FF000000";
 
     // 护甲

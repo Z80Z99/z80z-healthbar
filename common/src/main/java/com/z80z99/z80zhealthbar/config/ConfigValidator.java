@@ -78,15 +78,10 @@ public final class ConfigValidator {
         c.overlayBarInnerHeight = clamp(c.overlayBarInnerHeight, 1, 12);
         c.overlayBarVerticalMargin = clamp(c.overlayBarVerticalMargin, 0, 16);
         c.overlayBarTextOffsetY = clamp(c.overlayBarTextOffsetY, -50, 50);
-        c.hideDecimalWhenEqualOrMoreThan = clamp(c.hideDecimalWhenEqualOrMoreThan, 1, 100000);
         c.fullFoodLevelValue = clamp(c.fullFoodLevelValue, 0, 40);
         c.fullSaturationValue = clamp(c.fullSaturationValue, 0, 40);
-        c.fullExhaustionValue = clamp(c.fullExhaustionValue, 0.5, 40);
         c.fullArmorValue = clamp(c.fullArmorValue, 0, 100);
-        c.fullArmorToughnessValue = clamp(c.fullArmorToughnessValue, 1, 100);
         c.fullHealthValue = clamp(c.fullHealthValue, 0, 100000);
-        c.healthRegenerationOpacity = clamp(c.healthRegenerationOpacity, 0, 1);
-        c.healthRegenerationOpacityOnFull = clamp(c.healthRegenerationOpacityOnFull, 0, 1);
         c.hideUnchangingBarAfterSeconds = clamp(c.hideUnchangingBarAfterSeconds, 0, 600);
         c.lowHealthRate = clamp(c.lowHealthRate, 0.05, 0.95);
         c.cornerBarLength = clamp(c.cornerBarLength, 20, 400);
