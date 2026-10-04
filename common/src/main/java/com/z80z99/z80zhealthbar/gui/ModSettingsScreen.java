@@ -315,6 +315,7 @@ public final class ModSettingsScreen extends Screen {
     private boolean previewFriendly;
     private int previewX, previewY, previewW, previewH;
     private CycleButton<Boolean> previewToggle;
+    private Button previewFullscreenBtn;
     private Component feedback;
     private long feedbackUntilMs;
     private int contentH;
@@ -365,7 +366,8 @@ public final class ModSettingsScreen extends Screen {
         contentH = rows.stream().mapToInt(Row::height).sum();
         // 每一页都带右半实时预览面板（窗口宽度足够时）
         previewActive = width >= 460;
-        previewToggle = null;
+            previewToggle = null;
+            previewFullscreenBtn = null;
         if (previewActive) {
             previewW = Math.min(220, width * 2 / 5);
             int gap = 4; // 两栏面板外缘之间的呼吸缝
@@ -386,12 +388,13 @@ public final class ModSettingsScreen extends Screen {
                     .create(0, 0, previewW - 12, 18, Component.empty(), (b, v) -> previewFriendly = v);
             previewToggle.setX(previewX + 6);
             previewToggle.setY(previewY + 20);
-            // 全屏预览入口：小窗装不下条+跳字完整效果时的放大查看
-            addRenderableWidget(Button.builder(
+            // 全屏预览入口：小窗装不下条+跳字完整效果时的放大查看。
+            // 注意：本界面不经过 super.render，控件须在 drawPreviewPanel 手动渲染并在鼠标事件中转发
+            previewFullscreenBtn = Button.builder(
                             Component.translatable("z80zhealthbar.settings.preview.fullscreen"),
                             b -> minecraft.setScreen(new FullscreenPreviewScreen(this)))
                     .bounds(previewX + 6, previewY + 40, previewW - 12, 18)
-                    .build());
+                    .build();
         } else {
             contentW = Math.min(420, width - 24 - PANEL_PAD * 2);
             contentX = (width - contentW) / 2;
@@ -1015,6 +1018,7 @@ public final class ModSettingsScreen extends Screen {
         g.drawString(font, title, previewX + (previewW - font.width(title)) / 2, previewY + 7, 0xFF7FD4FF);
 
         previewToggle.render(g, mouseX, mouseY, partialTick);
+        if (previewFullscreenBtn != null) previewFullscreenBtn.render(g, mouseX, mouseY, partialTick);
 
         int bx = previewX + 2, by = previewY + 64, bw = previewW - 4, bh = previewH - 70;
         g.fill(bx, by, bx + bw, by + bh, 0xFF0B0E14);
@@ -1378,8 +1382,9 @@ public final class ModSettingsScreen extends Screen {
             onClose();
             return true;
         }
-        // 预览面板的敌方/友方切换
+        // 预览面板的敌方/友方切换 + 全屏预览按钮
         if (previewToggle != null && previewToggle.mouseClicked(mx, my, btn)) return true;
+        if (previewFullscreenBtn != null && previewFullscreenBtn.mouseClicked(mx, my, btn)) return true;
         // 滚动条（命中轨道 = 开始拖拽；点击空白轨道 = 拇指中心跳到该处）
         if (btn == 0 && maxScroll() > 0 && mx >= scrollbarX() - 2 && mx <= scrollbarX() + 5
                 && my >= scrollbarTrackTop() && my <= scrollbarTrackBottom()) {
@@ -1443,6 +1448,7 @@ public final class ModSettingsScreen extends Screen {
     @Override
     public boolean mouseReleased(double mx, double my, int btn) {
         if (previewToggle != null) previewToggle.mouseReleased(mx, my, btn);
+        if (previewFullscreenBtn != null) previewFullscreenBtn.mouseReleased(mx, my, btn);
         boolean handled = pressedRow != null;
         if (pressedRow != null) {
             pressedRow.mouseReleased(mx, my, btn);
