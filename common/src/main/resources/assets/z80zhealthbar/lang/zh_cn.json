@@ -369,6 +369,8 @@
   "z80zhealthbar.option.styleA.heightOffset.tooltip": "血条相对实体头顶的抬升高度（方块），可微调与原版名牌的间距。",
   "z80zhealthbar.settings.preview.title": "实时预览",
   "z80zhealthbar.settings.preview.fullscreen": "全屏预览",
+  "z80zhealthbar.settings.preview.pause": "暂停预览",
+  "z80zhealthbar.settings.preview.resume": "继续预览",
   "z80zhealthbar.settings.preview.enemy": "敌方单位",
   "z80zhealthbar.settings.preview.friendly": "友方单位",
   "z80zhealthbar.settings.preview.off": "当前样式已关闭",

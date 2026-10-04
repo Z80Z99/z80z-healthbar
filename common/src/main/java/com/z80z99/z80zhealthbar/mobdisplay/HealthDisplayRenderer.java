@@ -222,7 +222,7 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         float cellW = barWidth / (float) cells;
         int healthW = Mth.floor(ratio * barWidth);
         if (barCfg.segmentWholeOnly) {
-            healthW = (int) ((int) (ratio * cells + 1e-4f) * cellW);
+            healthW = (int) ((int) (ratio * cells + 1e-2f) * cellW);
         }
         for (int i = 0; i < cells; i++) {
             int x0 = x + (int) (i * cellW);

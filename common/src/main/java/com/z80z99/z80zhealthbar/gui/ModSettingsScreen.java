@@ -316,6 +316,10 @@ public final class ModSettingsScreen extends Screen {
     private int previewX, previewY, previewW, previewH;
     private CycleButton<Boolean> previewToggle;
     private Button previewFullscreenBtn;
+    private Button previewPauseBtn;
+    /** 暂停预览：true 时演示时钟冻结在 previewFreezeAt */
+    private boolean previewPaused;
+    private long previewFreezeAt;
     private Component feedback;
     private long feedbackUntilMs;
     private int contentH;
@@ -368,6 +372,7 @@ public final class ModSettingsScreen extends Screen {
         previewActive = width >= 460;
             previewToggle = null;
             previewFullscreenBtn = null;
+            previewPauseBtn = null;
         if (previewActive) {
             previewW = Math.min(220, width * 2 / 5);
             int gap = 4; // 两栏面板外缘之间的呼吸缝
@@ -388,12 +393,24 @@ public final class ModSettingsScreen extends Screen {
                     .create(0, 0, previewW - 12, 18, Component.empty(), (b, v) -> previewFriendly = v);
             previewToggle.setX(previewX + 6);
             previewToggle.setY(previewY + 20);
-            // 全屏预览入口：小窗装不下条+跳字完整效果时的放大查看。
+            // 全屏预览入口 + 暂停预览（同一行两半宽按钮）。
             // 注意：本界面不经过 super.render，控件须在 drawPreviewPanel 手动渲染并在鼠标事件中转发
+            int halfW = (previewW - 12) / 2 - 2;
+            previewPauseBtn = Button.builder(
+                            Component.translatable(previewPaused
+                                    ? "z80zhealthbar.settings.preview.resume" : "z80zhealthbar.settings.preview.pause"),
+                            b -> {
+                                previewPaused = !previewPaused;
+                                if (previewPaused) previewFreezeAt = System.currentTimeMillis();
+                                b.setMessage(Component.translatable(previewPaused
+                                        ? "z80zhealthbar.settings.preview.resume" : "z80zhealthbar.settings.preview.pause"));
+                            })
+                    .bounds(previewX + 6, previewY + 40, halfW, 18)
+                    .build();
             previewFullscreenBtn = Button.builder(
                             Component.translatable("z80zhealthbar.settings.preview.fullscreen"),
                             b -> minecraft.setScreen(new FullscreenPreviewScreen(this)))
-                    .bounds(previewX + 6, previewY + 40, previewW - 12, 18)
+                    .bounds(previewX + 6 + halfW + 4, previewY + 40, halfW, 18)
                     .build();
         } else {
             contentW = Math.min(420, width - 24 - PANEL_PAD * 2);
@@ -1025,6 +1042,7 @@ public final class ModSettingsScreen extends Screen {
         g.drawString(font, title, previewX + (previewW - font.width(title)) / 2, previewY + 7, 0xFF7FD4FF);
 
         previewToggle.render(g, mouseX, mouseY, partialTick);
+        if (previewPauseBtn != null) previewPauseBtn.render(g, mouseX, mouseY, partialTick);
         if (previewFullscreenBtn != null) previewFullscreenBtn.render(g, mouseX, mouseY, partialTick);
 
         int bx = previewX + 2, by = previewY + 64, bw = previewW - 4, bh = previewH - 70;
@@ -1080,10 +1098,11 @@ public final class ModSettingsScreen extends Screen {
 
         // 预览战斗循环（6 秒）：5 次随机掉血（伤害由周期序号确定性生成，每个循环不同、循环内稳定）+ 末段回血
         var dp = cfg.damagePopup;
+        long now = previewPaused ? previewFreezeAt : System.currentTimeMillis(); // 暂停预览：冻结演示时钟
         long lifeMs = dp.lifetimeTicks * 50L;
         long cycle = 6000L;
-        long tCycle = System.currentTimeMillis() % cycle;
-        long cycleIdx = System.currentTimeMillis() / cycle;
+        long tCycle = now % cycle;
+        long cycleIdx = now / cycle;
         long[] births = {400, 1300, 2200, 3100, 4000};
         float maxHp = 20f;
         float mobHeight = 1.95f;
@@ -1131,7 +1150,7 @@ public final class ModSettingsScreen extends Screen {
         int feetY = boxTop + boxH - 6;
 
         // 虚拟相机：固定 180° 基准（无摇摆——摇摆只进僵尸 yBodyRot；进朝向会让牌子沿深度轴倾斜沉入面板背景）
-        float sway = (float) Math.sin(System.currentTimeMillis() / 900.0) * 8f; // 仅僵尸本体摇摆
+        float sway = (float) Math.sin(now / 900.0) * 8f; // 仅僵尸本体摇摆（暂停时同步冻结）
         var virtualCam = new org.joml.Quaternionf().rotationYXZ(
                 (float) Math.toRadians(180f), (float) Math.toRadians(-8f), 0f);
 
@@ -1389,8 +1408,9 @@ public final class ModSettingsScreen extends Screen {
             onClose();
             return true;
         }
-        // 预览面板的敌方/友方切换 + 全屏预览按钮
+        // 预览面板的敌方/友方切换 + 暂停/全屏预览按钮
         if (previewToggle != null && previewToggle.mouseClicked(mx, my, btn)) return true;
+        if (previewPauseBtn != null && previewPauseBtn.mouseClicked(mx, my, btn)) return true;
         if (previewFullscreenBtn != null && previewFullscreenBtn.mouseClicked(mx, my, btn)) return true;
         // 滚动条（命中轨道 = 开始拖拽；点击空白轨道 = 拇指中心跳到该处）
         if (btn == 0 && maxScroll() > 0 && mx >= scrollbarX() - 2 && mx <= scrollbarX() + 5
@@ -1455,6 +1475,7 @@ public final class ModSettingsScreen extends Screen {
     @Override
     public boolean mouseReleased(double mx, double my, int btn) {
         if (previewToggle != null) previewToggle.mouseReleased(mx, my, btn);
+        if (previewPauseBtn != null) previewPauseBtn.mouseReleased(mx, my, btn);
         if (previewFullscreenBtn != null) previewFullscreenBtn.mouseReleased(mx, my, btn);
         boolean handled = pressedRow != null;
         if (pressedRow != null) {
