@@ -478,25 +478,28 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         }
 
         // 伤害残影：刚失去心的槽位画白色渐隐心（BarFx ghost 动画与样式3残影段同源;
-        // 受击掉血后残影按 420ms 缓降逐格淡出）。半心槽不算空,但若残影量越过半心槽
-        // （如 2.0→1.5 的半心损失）,该槽画右半白心渐隐——半心损失也有残影反馈。
+        // 受击掉血后残影按 420ms 缓降逐格淡出）。半心损失（满心→半心）画右半白心渐隐——
+        // 消失的是右半,不能叠在左半红心上（红+白=粉色）。残影余量 <0.05 心时跳过:
+        // 指数渐近的尾部只剩 <5% 透明度却要拖约 2 秒,截断后视觉无差。
         var dxCfg = ConfigManager.getConfig().dynamicFx;
         if (dxCfg.enabled && dxCfg.ghost) {
             float target = Mth.clamp(Math.max(0f, snap.health) / snap.maxHealth, 0f, 1f);
             var st = BarFx.tick(snap.entityId, target, snap.hurtTime > 0, System.currentTimeMillis());
             float ghostHearts = Mth.clamp(st.ghost(), 0f, 1f) * slots;
-            int ghostStart = (int) Math.ceil(cur - 0.01f);
-            boolean halfCur = cur - Math.floor(cur) > 0.01f;
-            if (halfCur && ghostHearts > Math.floor(cur)) {
-                float ga = Math.min(1f, ghostHearts - cur);
-                int wa = (int) (a * ga * 0.8f);
-                heartQuad(vc, matrix, x + (int) cur * 9, y, ColorHelper.modifyAlpha(0xFFFFFFFF, wa), true);
-            }
-            for (int i = ghostStart; i < slots; i++) {
-                float g = ghostHearts - i; // 该槽剩余残影量 (0..1]
-                if (g <= 0f) break;
-                int wa = (int) (a * Math.min(1f, g) * 0.8f);
-                heartQuad(vc, matrix, x + i * 9, y, ColorHelper.modifyAlpha(0xFFFFFFFF, wa), false);
+            if (ghostHearts - cur >= 0.05f) {
+                int ghostStart = (int) Math.ceil(cur - 0.01f);
+                boolean halfCur = cur - Math.floor(cur) > 0.01f;
+                if (halfCur && ghostHearts > Math.floor(cur)) {
+                    float ga = Math.min(1f, ghostHearts - cur);
+                    int wa = (int) (a * ga * 0.8f);
+                    heartRightQuad(vc, matrix, x + (int) cur * 9, y, ColorHelper.modifyAlpha(0xFFFFFFFF, wa));
+                }
+                for (int i = ghostStart; i < slots; i++) {
+                    float g = ghostHearts - i; // 该槽剩余残影量 (0..1]
+                    if (g <= 0f) break;
+                    int wa = (int) (a * Math.min(1f, g) * 0.8f);
+                    heartQuad(vc, matrix, x + i * 9, y, ColorHelper.modifyAlpha(0xFFFFFFFF, wa), false);
+                }
             }
         }
     }
@@ -553,6 +556,15 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         vc.vertex(m, x, y + 9, 0).uv(u1, 1f).color(color).endVertex();
         vc.vertex(m, x + w, y + 9, 0).uv(u2, 1f).color(color).endVertex();
         vc.vertex(m, x + w, y, 0).uv(u2, 0f).color(color).endVertex();
+    }
+
+    /** 右半心四边形（实心心右侧 4px）：半心残影用——"满心→半心"损失的是右半,残影画右半而非叠在左半红心上 */
+    private static void heartRightQuad(VertexConsumer vc, Matrix4f m, int x, int y, int color) {
+        float u1 = 0.5f + 5f / 18f, u2 = 1f;
+        vc.vertex(m, x + 5, y, 0).uv(u1, 0f).color(color).endVertex();
+        vc.vertex(m, x + 5, y + 9, 0).uv(u1, 1f).color(color).endVertex();
+        vc.vertex(m, x + 9, y + 9, 0).uv(u2, 1f).color(color).endVertex();
+        vc.vertex(m, x + 9, y, 0).uv(u2, 0f).color(color).endVertex();
     }
 
     @Override
