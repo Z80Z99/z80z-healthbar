@@ -1226,7 +1226,8 @@ public final class ModSettingsScreen extends Screen {
             }
             case MOBPLAQUES -> {
                 float ps = (float) cfg.plaqueStyle.plaqueScale;
-                float gpx = 0.025f * ps * zb * 1.5f; // 牌匾像素 → GUI（1.5× 放大便于观察）
+                float gpx = 0.025f * ps * zb; // 牌匾像素 → GUI（1:1 世界比例——此前 1.5× 观察
+                // 放大使三个样式的预览大小不可横向比较,用户据此误判牌匾"大一圈"）
                 float anchorY = feetY - (mobHeight + 0.5f) * zb;
                 // 轴对齐缩放；z 取负：渲染器内部的 -z 层间偏移（填充/描边层）翻回相机侧，避免沉入面板背景被深度裁掉
                 pose.pushPose();
@@ -1237,7 +1238,7 @@ public final class ModSettingsScreen extends Screen {
                 popupBaseY = anchorY - 30;
             }
             case ASTEORBAR -> {
-                float p = 0.025f * (float) cfg.barStyle.barScale * zb * 2f; // 每条像素的 GUI 尺寸（2× 放大）
+                float p = 0.025f * (float) cfg.barStyle.barScale * zb; // 每条像素的 GUI 尺寸（1:1 世界比例）
                 float barBottomY = feetY - (mobHeight + (float) cfg.barStyle.barOffsetY) * zb;
                 pose.pushPose();
                 pose.translate(cx, barBottomY, 0);
