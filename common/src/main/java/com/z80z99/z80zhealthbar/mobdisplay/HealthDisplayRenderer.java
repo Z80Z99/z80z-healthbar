@@ -222,12 +222,15 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         float cellW = barWidth / (float) cells;
         int healthW = Mth.floor(ratio * barWidth);
         if (barCfg.segmentWholeOnly) {
-            healthW = (int) ((int) (ratio * cells + 1e-2f) * cellW);
+            int fullCells = (int) (ratio * cells + 1e-2f);
+            // 满血(格数取满)时直接用整条宽:浮点 cells*cellW 可能比 barWidth 少 1px,尾部会留缝
+            healthW = fullCells >= cells ? barWidth : (int) (fullCells * cellW);
         }
         for (int i = 0; i < cells; i++) {
             int x0 = x + (int) (i * cellW);
             if (x0 >= healthW) break;
-            int x1 = x + (int) ((i + 1) * cellW);        // 下一格起点 = 本格终点（无缝对齐）
+            // 下一格起点 = 本格终点(无缝对齐);末格右边界精确取条尾,浮点累积误差不 shortfall
+            int x1 = (i + 1 == cells) ? x + barWidth : x + (int) ((i + 1) * cellW);
             int end = Math.min(x1, healthW);              // 本格填充终点
             if (x1 - x0 >= 2) end--;                      // 格宽 ≥2px 时留 1px 格缝,过密不留
             if (end > x0) fillRect(vc, m, x0, y, end - x0, h, color);
