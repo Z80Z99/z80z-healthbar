@@ -250,7 +250,6 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
             if (end > x0) fillRect(vc, m, x0, y, end - x0, h, color);
         }
     }
-    }
 
     /** 长条变体 3：金属高光——纯色填充 + 顶部 1px 提亮 + 底部 1px 压暗 */
     private void glossyFill(VertexConsumer vc, Matrix4f m, int x, int y, int w, int h, int color) {
