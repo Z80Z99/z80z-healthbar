@@ -478,13 +478,20 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         }
 
         // 伤害残影：刚失去心的槽位画白色渐隐心（BarFx ghost 动画与样式3残影段同源;
-        // 受击掉血后残影按 420ms 缓降逐格淡出,半心槽不算空,残影从其后的槽位开始）
+        // 受击掉血后残影按 420ms 缓降逐格淡出）。半心槽不算空,但若残影量越过半心槽
+        // （如 2.0→1.5 的半心损失）,该槽画右半白心渐隐——半心损失也有残影反馈。
         var dxCfg = ConfigManager.getConfig().dynamicFx;
         if (dxCfg.enabled && dxCfg.ghost) {
             float target = Mth.clamp(Math.max(0f, snap.health) / snap.maxHealth, 0f, 1f);
             var st = BarFx.tick(snap.entityId, target, snap.hurtTime > 0, System.currentTimeMillis());
             float ghostHearts = Mth.clamp(st.ghost(), 0f, 1f) * slots;
             int ghostStart = (int) Math.ceil(cur - 0.01f);
+            boolean halfCur = cur - Math.floor(cur) > 0.01f;
+            if (halfCur && ghostHearts > Math.floor(cur)) {
+                float ga = Math.min(1f, ghostHearts - cur);
+                int wa = (int) (a * ga * 0.8f);
+                heartQuad(vc, matrix, x + (int) cur * 9, y, ColorHelper.modifyAlpha(0xFFFFFFFF, wa), true);
+            }
             for (int i = ghostStart; i < slots; i++) {
                 float g = ghostHearts - i; // 该槽剩余残影量 (0..1]
                 if (g <= 0f) break;
