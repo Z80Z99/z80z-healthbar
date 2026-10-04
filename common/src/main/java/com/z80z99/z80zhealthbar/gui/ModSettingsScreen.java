@@ -161,6 +161,30 @@ public final class ModSettingsScreen extends Screen {
         }
     }
 
+    /** 只读摘要行：左标签 + 右实时取值（主页配置概览用，不构成编辑入口） */
+    private final class KeyValueRow extends Row {
+        final String labelKey;
+        final java.util.function.Supplier<String> value;
+
+        KeyValueRow(String labelKey, java.util.function.Supplier<String> value) {
+            this.labelKey = labelKey;
+            this.value = value;
+        }
+
+        @Override int height() { return ROW_H; }
+
+        @Override void layout(int x, int y, int w, ModSettingsScreen s) {}
+
+        @Override
+        void render(GuiGraphics g, int x, int y, int w, ModSettingsScreen s) {
+            int ty = y + (ROW_H - 8) / 2;
+            g.drawString(font, truncate(Component.translatable(labelKey).getString(), w / 2),
+                    x + 2, ty, fade(0xFFE0E0E0));
+            String v = truncate(value.get(), w / 2 - 6);
+            g.drawString(font, v, x + w - 4 - font.width(v), ty, fade(0xFFA8E0FF));
+        }
+    }
+
     /** 整行按钮 */
     private final class ActionRow extends Row {
         final AbstractWidget button;
@@ -396,6 +420,35 @@ public final class ModSettingsScreen extends Screen {
                 v -> c.barStyle.enableHealthBar = v));
         // 样式选择分属各专页：实体样式在"实体样式"页（页面内容跟随所选样式），
         // HUD 样式在"玩家 HUD"页——避免同一设置跨页重复。
+
+        // 当前配置概览（只读实时取值；各项的编辑入口仍在各自专页，不构成第二入口）
+        rows.add(new SectionRow("z80zhealthbar.settings.section.overview"));
+        rows.add(new KeyValueRow("z80zhealthbar.overview.entity_style",
+                () -> Component.translatable("z80zhealthbar.style.entityhealthstyle."
+                        + c.entityStyleParsed().name().toLowerCase(Locale.ROOT)).getString()));
+        rows.add(new KeyValueRow("z80zhealthbar.overview.hud_style",
+                () -> Component.translatable("z80zhealthbar.style.hudstyle."
+                        + hudStyle().name().toLowerCase(Locale.ROOT)).getString()));
+        rows.add(new KeyValueRow("z80zhealthbar.overview.damage_popup",
+                () -> Component.translatable("z80zhealthbar.damagePopup.theme."
+                        + c.damagePopup.themeParsed().toLowerCase(Locale.ROOT)).getString()
+                        + " · " + Component.translatable("z80zhealthbar.damagePopup.motion."
+                        + c.damagePopup.motionParsed().toLowerCase(Locale.ROOT)).getString()));
+        rows.add(new KeyValueRow("z80zhealthbar.overview.visibility",
+                () -> (int) c.visibility.maxDistance + " m"));
+
+        // 快捷操作（编辑器入口自"玩家 HUD"页迁来，作为全局落地入口）
+        rows.add(new SectionRow("z80zhealthbar.settings.section.quick"));
+        rows.add(actionRow("z80zhealthbar.settings.open_editor", () -> {
+            c.overlay.hudStyle = HudStyle.CUSTOM.name();
+            ConfigManager.saveConfig();
+            minecraft.setScreen(new HudLayoutScreen(this));
+        }));
+        rows.add(actionRow("z80zhealthbar.advanced.reload", () -> {
+            ConfigManager.loadConfig();
+            rebuild();
+            toast("z80zhealthbar.msg.config_reloaded");
+        }));
     }
 
     /** 可见性规则页 */
@@ -638,12 +691,7 @@ public final class ModSettingsScreen extends Screen {
                 v -> o.hideUnchangingBarAfterSeconds = v, v -> v == 0 ? "—" : v + "s"));
 
         rows.add(new SectionRow("z80zhealthbar.settings.section.hud_custom"));
-        rows.add(actionRow("z80zhealthbar.settings.open_editor", () -> {
-            o.hudStyle = HudStyle.CUSTOM.name();
-            ConfigManager.saveConfig();
-            minecraft.setScreen(new HudLayoutScreen(this));
-        }));
-        // 组件显示形式（长条/图标/关闭）已并入布局编辑器（与该组件的其余布局参数同处一地）
+        // 编辑器入口已上移至主页"快捷操作"（全局落地入口，避免双按钮）
         rows.add(new TextRow("z80zhealthbar.hud.custom_note"));
     }
 
