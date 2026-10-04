@@ -14,7 +14,10 @@ import org.joml.Matrix4f;
 
 /**
  * 生命值渲染器：
- *  - renderBar = 样式 C（AsteorBar）主条：动态色填充 + 空槽 + 吸收环 + "当前/最大" 文本
+ *  - renderBar = 样式 C 动态长条：动态色填充 + 空槽 + 分格刻度 + 吸收环 + "当前/最大" 文本。
+ *    2026-10-05 V2 完全重写：放弃 AsteorBar 反编译移植的 z 层偏移 + 浮点边界方案，
+ *    改为整数条像素几何 + 画家算法（BAR_RECT 无深度测试、批次内按插入序确定绘制），
+ *    分格刻度为叠加式 1px 刻度线而非在填充里切缝——从实现层面根除尾部缝隙/白块错位一类缺陷。
  *  - renderPlaque = 样式 B 心形图标行（含状态选型与容器底图）
  */
 public class HealthDisplayRenderer implements IMobDisplayRenderer {
@@ -71,45 +74,37 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         int emptyColor = ColorHelper.modifyAlpha(ColorHelper.parseColor(colors.mobBarEmpty), (int) (alphaMul * 255));
         int boundColor = ColorHelper.modifyAlpha(ColorHelper.parseColor(colors.mobBarBound), (int) (alphaMul * 255));
         fillColor = ColorHelper.modifyAlpha(fillColor, (int) (alphaMul * 255));
+        // 美术：最外 1px 深色描边 + 边框色环 + 刻度线取空槽色加深，形成"描边-框-槽-填充"四层观感
+        int outlineColor = ColorHelper.modifyAlpha(
+                ColorHelper.lerp(ColorHelper.parseColor(colors.mobBarBound), 0xFF000000, 0.6f), (int) (alphaMul * 255));
+        int notchColor = ColorHelper.modifyAlpha(
+                ColorHelper.lerp(ColorHelper.parseColor(colors.mobBarEmpty), 0xFF000000, 0.5f), (int) (alphaMul * 255));
 
-        Matrix4f matrix = poseStack.last().pose();
+        // ============ V2 实现：整数几何 + 画家算法 ============
+        // BAR_RECT 无深度测试、批次内按插入序绘制——同批矩形谁后画谁在上，完全确定。
+        // 旧实现（AsteorBar 反编译移植）用 z 层偏移做层叠、用浮点比例换算像素边界，
+        // 在镜像缩放下产生顶点取整错位（尾部缝隙/白块错位一类缺陷的根源），全部废除：
+        // 所有坐标都是整数条像素，格线改为叠加刻度而非在填充里切缝。
+        Matrix4f m = poseStack.last().pose();
         VertexConsumer vc = buffer.getBuffer(ModRenderType.barRect());
-        // 层间偏移换算:缩放空间位移 = 世界位移 / worldScale(否则被缩放吞掉 → 共面闪烁)
-        float zu = 1f / Math.max(1e-5f, worldScale);
 
-        // 空槽向四周延伸 boundW 垫在边框下方：边框层(z-0.06)与空槽层(z0)在 X 镜像+分数缩放下
-        // 顶点取整错位，会在条尾露出一道天空色缝隙（看起来像多出一小段），垫底后缝隙被覆盖
-        fillRect(vc, matrix, x - boundW, y - boundW,
-                barWidth + 2 * boundW, barH + 2 * boundW, emptyColor);
-        // 伤害残影：display→ghost 区段以半透明白慢速收缩，表达"刚损失的血量"
-        int ghostW = Mth.floor(ghostR * barWidth);
-        int healthW = Mth.floor(dispR * barWidth);
-        // 分段+整格模式下填充按格量化：残影层从量化后的填充边界起画，与格边界对齐
-        // （对不齐时白块压在半格上，受击时白闪与格子错位、观感杂乱）
-        boolean segmentedWhole = barCfg.barVariant == 2 && barCfg.segmentWholeOnly;
-        int fillW = segmentedWhole ? segmentedFillWidth(dispR, snap.maxHealth, barWidth) : healthW;
-        if (ghostW > fillW) {
-            poseStack.pushPose();
-            poseStack.translate(0, 0, -0.01f * zu);
-            fillRect(vc, poseStack.last().pose(), x + fillW, y, ghostW - fillW, barH,
-                    ColorHelper.modifyAlpha(ColorHelper.parseColor(fx.ghostColor), (int) (alphaMul * 255)));
-            poseStack.popPose();
+        // 填充/残影宽度（整数条像素）：整格模式按格边界取整,格边界 = i*条宽/格数(整数除法,满血必达条尾)
+        boolean segmented = barCfg.barVariant == 2;
+        int cells = segmented ? segmentCells(snap.maxHealth) : 1;
+        int fillW;
+        if (segmented && barCfg.segmentWholeOnly) {
+            int fullCells = (int) (dispR * cells + 1e-2f);
+            fillW = fullCells >= cells ? barWidth : (fullCells * barWidth) / cells;
+        } else {
+            fillW = (int) (dispR * barWidth);
         }
-        if (fillW > 0) {
-            poseStack.pushPose();
-            poseStack.translate(0, 0, -0.02f * zu);
-            Matrix4f mf = poseStack.last().pose();
-            switch (Math.max(0, Math.min(3, barCfg.barVariant))) {
-                case 1 -> gradientFill(vc, mf, x, y, healthW, barH, fillColor);
-                case 2 -> segmentedFill(vc, mf, x, y, barWidth, fillW, snap.maxHealth, barH, fillColor);
-                case 3 -> glossyFill(vc, mf, x, y, healthW, barH, fillColor);
-                default -> fillRect(vc, mf, x, y, healthW, barH, fillColor);
-            }
-            poseStack.popPose();
-        }
+        int ghostW = (int) (ghostR * barWidth);
+        if (ghostW < fillW) ghostW = fillW;
 
-        // 吸收环：AsteorBar 语义 —— 吸收按整条边框环逐层外扩；为防高吸收条体爆炸，
-        // 完整环数超过半宽时收敛为上限 3 环（其余吸收值由 +N 文本表达）
+        // 1) 最外 1px 深色描边（压住边框外缘,消除与天空色之间的半透明过渡）
+        fillRect(vc, m, x - boundW - 1, y - boundW - 1,
+                barWidth + 2 * boundW + 2, barH + 2 * boundW + 2, outlineColor);
+        // 2) 吸收环（画在边框之下,与旧版层级一致）
         if (snap.absorption > 0 && boundW > 0) {
             int absColor = ColorHelper.modifyAlpha(
                     ColorHelper.parseColor(colors.mobBarAbsorption), (int) (alphaMul * 255));
@@ -118,24 +113,43 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
             float frac = absRate - (int) Math.floor(absRate);
             int fracW = Math.round((barWidth + boundW * 2) * frac);
             if (fracW == 0 && fullRings > 0) { fracW = barWidth + boundW * 2; fullRings--; }
-            poseStack.pushPose();
-            poseStack.translate(0, 0, -0.04f * zu);
-            Matrix4f m2 = poseStack.last().pose();
             for (int i = 0; i < fullRings; i++) {
-                ring(vc, m2, x - boundW * (i + 1), y - boundW * (i + 1),
-                        barWidth + boundW * 2 * (i + 1), barH + boundW * 2 * (i + 1), boundW, absColor);
+                ring(vc, m, x - boundW * (i + 1), y - boundW * (i + 1),
+                        barWidth + boundW * (2 * i + 1), barH + boundW * (2 * i + 1), boundW, absColor);
             }
             if (fracW > 0) {
-                fillRect(vc, m2, x - boundW, y - boundW, fracW, boundW, absColor);
+                fillRect(vc, m, x - boundW, y - boundW, fracW, boundW, absColor);
             }
-            poseStack.popPose();
         }
-
+        // 3) 边框（环绕空槽+填充区：外沿 [x-t, x+宽+t],内孔恰好是填充区）
         if (boundW > 0) {
-            poseStack.pushPose();
-            poseStack.translate(0, 0, -0.06f * zu);
-            ring(vc, poseStack.last().pose(), x, y, barWidth, barH, boundW, boundColor);
-            poseStack.popPose();
+            ring(vc, m, x - boundW, y - boundW, barWidth + boundW, barH + boundW, boundW, boundColor);
+        }
+        // 4) 空槽
+        fillRect(vc, m, x, y, barWidth, barH, emptyColor);
+        // 5) 伤害残影（填充末端 → 残影末端,半透明白慢速收缩）
+        if (ghostW > fillW) {
+            fillRect(vc, m, x + fillW, y, ghostW - fillW, barH,
+                    ColorHelper.modifyAlpha(ColorHelper.parseColor(fx.ghostColor), (int) (alphaMul * 255)));
+        }
+        // 6) 填充（连续矩形）
+        if (fillW > 0) {
+            switch (Math.max(0, Math.min(3, barCfg.barVariant))) {
+                case 1 -> gradientFill(vc, m, x, y, fillW, barH, fillColor);
+                case 3 -> glossyFill(vc, m, x, y, fillW, barH, fillColor);
+                default -> fillRect(vc, m, x, y, fillW, barH, fillColor);
+            }
+        }
+        // 7) 分格刻度线（变体 2）：叠加式 1px 纵向刻度,画在填充/残影之上——
+        //    不再在填充里切缝,格边界整数化后不存在尾部缝隙与对位问题;格宽不足 4px 自动省略
+        if (segmented && cells > 1) {
+            int cellW = barWidth / cells;
+            if (cellW >= 4) {
+                for (int i = 1; i < cells; i++) {
+                    int nx = x + (i * barWidth) / cells;
+                    fillRect(vc, m, nx, y, 1, barH, notchColor);
+                }
+            }
         }
 
         // "当前/最大(+吸收)" 文本（AsteorBar 样式）+ 数字动态效果（滚动/弹跳/变色）
@@ -154,7 +168,6 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
             poseStack.pushPose();
             float ts = (float) barCfg.barTextScale;
             poseStack.scale(ts, ts, 1f);
-            poseStack.translate(0, 0, -0.08f * zu);
             String text = MobHealthBarStyle.formatValue(shownHp) + "/"
                     + MobHealthBarStyle.formatValue(snap.maxHealth);
             // X 在字形单位（随 ts 缩放），offsetX/Y 以条像素计 → X 需除回 ts；
@@ -218,37 +231,6 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
             if (cells > 64) cells = 64;
         }
         return Math.max(1, cells);
-    }
-
-    /** 分段刻度的填充像素宽：整格模式向下取整到格边界；满血/取满格数时精确取条尾（浮点累乘可能少 1px） */
-    private int segmentedFillWidth(float ratio, float maxHealth, int barWidth) {
-        var barCfg = ConfigManager.getConfig().barStyle;
-        if (!barCfg.segmentWholeOnly) return Mth.floor(ratio * barWidth);
-        int cells = segmentCells(maxHealth);
-        float cellW = barWidth / (float) cells;
-        int fullCells = (int) (ratio * cells + 1e-2f);
-        return fullCells >= cells ? barWidth : (int) (fullCells * cellW);
-    }
-
-    /**
-     * 长条变体 2：分段刻度——格间留 1px 空隙露出空槽色。
-     * 格数/每格血量/整格显示由 barStyle.segmentCount / segmentHp / segmentWholeOnly 配置；
-     * fillW 为量化后的填充边界（整格模式下与残影层对齐）。
-     * 格边界用浮点按比例划分，末格右边界精确取条尾（整数格宽会在条宽不能整除格数时尾部留缝）。
-     */
-    private void segmentedFill(VertexConsumer vc, Matrix4f m, int x, int y, int barWidth,
-                               int fillW, float maxHealth, int h, int color) {
-        int cells = segmentCells(maxHealth);
-        float cellW = barWidth / (float) cells;
-        for (int i = 0; i < cells; i++) {
-            int x0 = x + (int) (i * cellW);
-            if (x0 >= fillW) break;
-            // 下一格起点 = 本格终点（无缝对齐）；末格右边界精确取条尾
-            int x1 = (i + 1 == cells) ? x + barWidth : x + (int) ((i + 1) * cellW);
-            int end = Math.min(x1, fillW);                // 本格填充终点
-            if (x1 - x0 >= 2) end--;                      // 格宽 ≥2px 时留 1px 格缝,过密不留
-            if (end > x0) fillRect(vc, m, x0, y, end - x0, h, color);
-        }
     }
 
     /** 长条变体 3：金属高光——纯色填充 + 顶部 1px 提亮 + 底部 1px 压暗 */
