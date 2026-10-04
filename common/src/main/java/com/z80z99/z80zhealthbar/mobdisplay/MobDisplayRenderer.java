@@ -370,7 +370,12 @@ public final class MobDisplayRenderer {
         for (int rowIdx = 0; rowIdx < rows.size(); rowIdx++) {
             List<IMobDisplayRenderer> row = rows.get(rowIdx);
             int rowW = rowWidths.get(rowIdx);
-            int x = -rowW / 2;
+            // 行锚定只看图标宽度：数值位数变化（9→10→100）不再推挤/移动整行图标,
+            // 文本从图标右侧向后延伸（行宽仍含文本,供换行与背景盒覆盖）
+            int iconW = 0;
+            for (IMobDisplayRenderer r : row) iconW += r.getPlaqueWidth(font, snap);
+            iconW += Math.max(0, 2 * (row.size() - 1));
+            int x = -iconW / 2;
 
             if (plaqueCfg.plaqueBackground) {
                 int bg = ColorHelper.modifyAlpha(0xC0101010, (int) (alpha * 255));
