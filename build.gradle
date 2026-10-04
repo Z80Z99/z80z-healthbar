@@ -1,0 +1,121 @@
+plugins {
+    id 'architectury-plugin' version '3.4-SNAPSHOT'
+    id 'dev.architectury.loom' version '1.6-SNAPSHOT' apply false
+}
+
+architectury {
+    minecraft = '1.20.1'
+}
+
+allprojects {
+    apply plugin: 'java'
+    apply plugin: 'architectury-plugin'
+
+    group = maven_group
+    version = '1.0.0-1.20.1'
+
+    repositories {
+        maven { url = 'https://maven.architectury.dev/' }
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://maven.minecraftforge.net/' }
+        maven { url = 'https://maven.shedaniel.me/' }
+        maven { url = 'https://maven.terraformersmc.com/' }
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = 'CurseMaven'
+                    url = 'https://cursemaven.com'
+                }
+            }
+            filter {
+                includeGroup 'curse.maven'
+            }
+        }
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = 'Modrinth'
+                    url = 'https://api.modrinth.com/maven'
+                }
+            }
+            filter {
+                includeGroup 'maven.modrinth'
+            }
+        }
+        mavenCentral()
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = 17
+    }
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+        withSourcesJar()
+    }
+
+    tasks.withType(JavaExec).configureEach {
+        javaLauncher = javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+        systemProperty 'minecraft.username', rootProject.properties.getOrDefault('minecraft_username', 'Player')
+
+        // 本机开发选项（读根目录 gradle-local.properties，该文件已被 .gitignore，不入仓库）：
+        //   hotswap.enable=true  → 运行 JVM 切到 JetBrains Runtime(DCEVM, vendor=JETBRAINS)
+        //                          并启用增强热交换，支持改方法体+增删方法/字段后免重启调试；
+        //                          需让 Gradle 能发现 JBR 安装（用户级 gradle.properties 配
+        //                          org.gradle.java.installations.paths 指向 JBR 目录）
+        //   dev.world=<存档名>    → Quick Play 跳过主菜单直入单人存档，加快启动迭代
+        if (name == 'runClient') {
+            def localProps = new Properties()
+            def localFile = rootProject.file('gradle-local.properties')
+            if (localFile.exists()) {
+                // 显式 UTF-8：存档名含中文（Properties.load(InputStream) 默认 ISO-8859-1 会乱码）
+                localProps.load(new java.io.InputStreamReader(
+                        new java.io.FileInputStream(localFile), java.nio.charset.StandardCharsets.UTF_8))
+            }
+            if (localProps.getProperty('hotswap.enable', 'false').toBoolean()) {
+                javaLauncher = javaToolchains.launcherFor {
+                    languageVersion = JavaLanguageVersion.of(17)
+                    vendor = JvmVendorSpec.JETBRAINS
+                }
+                jvmArgs '-XX:+AllowEnhancedClassRedefinition'
+            }
+            // 调试代理:IDEA 可随时 Run→Attach to Process 附加断点(suspend=n 不阻塞启动)
+            if (localProps.getProperty('debug.agent', 'false').toBoolean()) {
+                jvmArgs '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005'
+            }
+            def devWorld = localProps.getProperty('dev.world', '')
+            if (devWorld) {
+                args '--quickPlaySingleplayer', devWorld
+            }
+        }
+    }
+}
+
+subprojects {
+    apply plugin: 'dev.architectury.loom'
+
+    base {
+        archivesName = "${rootProject.name}-${project.name}"
+    }
+
+    loom {
+        silentMojangMappingsLicense()
+    }
+
+    dependencies {
+        minecraft "com.mojang:minecraft:1.20.1"
+        mappings loom.officialMojangMappings()
+    }
+
+    if (project.name == 'fabric') {
+        tasks.named('runClient', JavaExec).configure {
+            def username = rootProject.properties.getOrDefault('minecraft_username', 'Player')
+            args '--username', username
+        }
+    }
+}

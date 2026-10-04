@@ -1,0 +1,130 @@
+# Z80Zhealthbar 技术架构与实施方案
+
+本文是任务书第 14 节要求的实现前输出（第 3–6 项；第 1–2 项见 `docs/source-mod-audit.md`）。
+
+## 1. 技术架构
+
+```
+z80zhealthbar/
+├── common/                      # 平台无关（经 loom remap 双平台共用）
+│   └── com.z80z99.z80zhealthbar
+│       ├── status/              # 统一数据层：EntityStatusSnapshot / PlayerStatusSnapshot
+│       ├── mobdisplay/          # 实体显示调度 + 样式注册（EntityHealthStyle）
+│       │   ├── style/           #   MobHealthBar 样式 / MobPlaques 样式 / AsteorBar 样式
+│       │   └── plaque/          #   牌匾渲染器（health/armor/toughness/air 附加组件）
+│       ├── overlay/             # 玩家 HUD：HudStyle(VANILLA/ASTEORBAR/CUSTOM) + 9 布局
+│       │   ├── parts/           #   6 组件 + compat 组件
+│       │   └── editor/          #   HUD 布局编辑器（与运行时共用布局计算）
+│       ├── layout/              # HudLayout：锚点/偏移/缩放/间距（编辑器与渲染共用）
+│       ├── animation/           # 渐变、闪烁、抖动、淡入淡出（独立状态机）
+│       ├── visibility/          # 组合式显示规则（MobVisibilityChecker）
+│       ├── config/              # 统一配置 + 校验 + 迁移 + 导入导出
+│       ├── compat/              # CompatibilityAdapter 接口 + 注册表
+│       ├── platform/            # 平台抽象（IPlatformHelper/PlatformService/网络/渲染类型工厂）
+│       └── gui/                 # 设置界面（7 页：主页/实体样式/伤害跳字/可见性/玩家HUD/兼容性/高级）
+├── forge/                       # Forge 47.x：入口、事件、SimpleChannel、快捷键
+├── fabric/                      # Fabric：入口、事件、ClientPlayNetworking、ModMenu
+└── docs/ tests/                 # 审计/许可证/架构文档；纯 JVM 单元测试
+```
+
+分层规则（任务书 5.1/8.2）：
+- 数据（status）→ 可见性（visibility）→ 布局（layout）→ 样式渲染（styles）四段解耦；样式切换只换渲染器实例，不重建监听器。
+- common 不触碰易变底层渲染接口；GUI/世界渲染/键位/配置/网络经 `platform/` 接口隔离，由 forge/fabric 提供实现（version-adapters 的职责并入 platform 接口 + 各平台模块，避免为 1.20.1 单版本过度分层；跨大版本移植时在平台模块内新增实现类）。
+
+## 2. 版本与加载器支持方案
+
+| 阶段 | 目标 | 状态 |
+|---|---|---|
+| 第一阶段 | MC 1.20.1 + Forge 47.x + Java 17（基线，全部功能） | **本仓库当前目标** |
+| 第二阶段 | 移植一个较新 MC 版本（依 1.21.x Forge/NeoForge 可用性） | 结构就绪（platform 接口隔离），未构建 |
+| 第三阶段 | NeoForge / Fabric 构建目标 | Fabric 1.20.1 已并行实现；NeoForge 待第二阶段 |
+
+- Forge 基线**零 Architectury API 依赖**（网络层平台原生实现；Architectury 仅作为构建工具链）。
+- 不假定跨版本共用 JAR；每个 MC 版本独立 toolchain 配置。
+
+## 3. 第三方兼容实现方案（优先级：AppleSkin > Thirst Was Taken > ParCool!）
+
+统一 `CompatibilityAdapter` 接口：`id() / isAvailable() / isCompatible() / providedStats() / readSnapshot() / needsServer() / registerHudComponent() / handleHudConflict() / dispose()`。
+- 检测：启动时 ModList 扫描一次，缓存结果；失败静默降级（组件隐藏，不崩溃、不报错刷屏）。
+- 数据：仅客户端可见数据；AppleSkin 饱和/消耗在服务端未装时标注"估算/不可用"，不伪造同步值。
+- 冲突：检测到目标 MOD 自绘 HUD 与本 MOD 同位置时，按配置"隐藏我方 / 隐藏对方(不可行则提示) / 双显"三选，默认避免重复绘制。
+- 每个适配器独立类 + 注册表声明，新增兼容不改 HUD 核心。
+
+## 4. 开发阶段与验收测试计划
+
+| Phase | 内容 | 验收 |
+|---|---|---|
+| 0 | 审计 + 许可证 + 架构（本文档组） | 三 MOD 功能表全覆盖、重合功能全部有整合方案 |
+| 1 | 基线工程：包名 `com.z80z99.z80zhealthbar`、移除 Architectury API、自制贴图替换、统一数据层 | `gradlew build` 通过 + 单测绿 + 纯净环境启动 |
+| 2 | 实体样式 A/B/C/OFF + 附加组件组合 + 显示规则组合 | 样式切换即时生效；无重复绘制；快照字段单测 |
+| 3 | 玩家 HUD 三模式 VANILLA/ASTEORBAR/CUSTOM | VANILLA 下原版 HUD 完整保留；组件级 CUSTOM |
+| 4 | 五页设置界面 + 6 快捷键 + HUD 布局编辑器 | 编辑器预览与运行时同布局代码；中英 lang 全覆盖 |
+| 5 | 兼容系统（AppleSkin/Thirst/ParCool + 扩展） | 未装不崩、装了读数、冲突不重复绘制 |
+| 6 | 跨版本结构验证 | platform 接口无 MC 底层泄漏进 common |
+| 7 | 全量测试 + 文档 + 发布 JAR | 任务书 13 节 13 项逐条核对 |
+
+测试环境限制说明：CI 侧可执行编译 + 纯 JVM 单元测试（配置校验、布局数学、可见性规则、颜色渐变、黑名单解析）；实机渲染验证（GUI Scale 矩阵、实体系列）需 `runClient` 人工清单（见 `docs/testing.md`），未实机验证项在完成度报告中如实标注。
+
+## 5. 最终渲染架构（实现后归档，2026-10）
+
+以下为开发迭代后**定型的实际实现**，取代上文早期方案中与之冲突的描述。
+
+### 5.1 全局末通道渲染（核心决策）
+- 实体渲染期**零绘制**：`EntityRenderMixin` 只记录 `PendingBar`（门控判定 + 状态快照 + 插值锚点 + alpha）到 `MobDisplayRenderer.PENDING_BARS`。
+- `GameRendererMixin` 在 `renderLevel @At("TAIL")` 注入 `z80z$renderWorldOverlays`，帧末统一绘制：**血条（按距离远→近排序）→ 伤害跳字 → `endBatch()`**。
+- 收益：彻底解决云/雨/半透明方块遮挡血条的问题（不在实体 pass 内绘制，不受其透明排序影响）；距离排序保证近处血条压在远处之上。
+
+### 5.2 RenderType 实例缓存
+- 两平台工厂 `forge|fabric/.../platform/*/OverheadRenderTypeFactoryV1.java`：`ConcurrentHashMap<ResourceLocation, RenderType>` 缓存 PLAIN_ICONS / TINTED_ICONS / ORIGINAL_BARS 三类 RenderType。
+- 消除每实体每帧新建 RenderType 导致的绘制调用爆炸；`sortOnUpload=false` 修复图标层叠闪烁。
+
+### 5.3 遮挡与距离门控（双层）
+- 遮挡采样：8 射线 + 250ms 结果缓存 + 3 格内早退；可见面积 ≥25% 才绘制。`plaqueStyle.behindWalls` 开启时跳过采样（无深度屏显，代价是隔墙可见）。
+- 距离双层门控（**取更近者生效**，非重复设置）：
+  1. `visibility.maxDistance`（4–256 m）：全局门控，`MobVisibilityChecker` 与伤害跳字共用；
+  2. `plaqueStyle.maxRenderDistance`（4–128 m）：牌匾样式专属上限，蹲伏减半（`MobDisplayRenderer`）。
+
+### 5.4 锚点插值
+- `Mth.lerp(partialTick, entity.xOld, entity.getX())` 三轴插值锚点，消除实体 20 Hz 快照带来的阶梯跳动。
+
+### 5.5 心形牌匾（实体样式 2）
+- 贴图 `18×9` 双区：左 9×9 = 容器心轮廓（54 px），右 7×7 = 实心心（34 px）；渲染器拆 `containerQuad` / `heartQuad` / `heartHighlight` 三段。
+- 空槽染深灰 `#34343C`；高光补绘 (2,2) 处 1 px `lighten(color, 0.55f)`。
+- 心数按实际血量换算（1 心 = 2 HP，含半心）；DNF 式分层：每层 10 心，超限层色按 红→金→绿→青→紫→品红 循环（常量可调）；顶层响应状态效果（吸收金/中毒绿/凋零暗/冰冻蓝）。
+- 贴图由 `scripts/GenTextures.java` 程序化生成，逐像素比对原版 `icons.png` 验证。
+
+### 5.6 设置界面去重原则（2026-10-01 定稿）
+每项设置**只在一处出现**，页面职责：
+| 页面 | 职责 |
+|---|---|
+| 主页 | 两大总开关（玩家 HUD / 实体状态栏） |
+| 实体样式 | 实体样式选择 + **仅当前样式**的专属设置（切换即重排；OFF 显示提示） |
+| 伤害跳字 / 可见性 / 高级 | 各自专属项 |
+| 玩家 HUD | HUD 样式选择 + AsteorBar 布局 + 动画 + HUD 布局编辑器入口 |
+| 兼容性 | 全量兼容目标（含检测状态） |
+
+- **覆盖层注入点修正（2026-10-01）**：血条/跳字从 `GameRenderer.renderLevel @TAIL` 移到 `LevelRendererMixin`（`LevelRenderer.renderLevel @TAIL`）。
+  原注入点位于"世界渲染 → clear 深度 → 第一人称手部"之后，手部会把投影重置为 getFov(..., false) = 固定 70°，
+  导致玩家 FOV ≠ 70 时血条与世界错位（偏离屏幕中心越远错位越大）且盖住手部。
+  现注入点：投影仍为带 FOV 的世界投影、深度完好、云/雨（同方法内）之后、手部之前——FOV 任意值对齐、手部层级正确、云雨不遮挡全部保持。
+- 样式选择器界面（`BarStyleSelectScreen`）已于 2026-10-01 移除，快捷键 B 同步移除；样式设置统一在"实体样式"页，且页面只渲染当前所选样式的设置节（样式 1/3 共用附加行区，样式 2 自带护甲/韧性/氧气行开关）。
+- 样式 1 变体已拆为两轴设置（2026-10-01）：**形状**（0-2：外框条/心形行/经典宽条）× **配色**（0-3：钢/血/金/奥术，作用于外框条贴图槽位与经典宽条填充，心形行用原版心色）。旧 textureMode 双轨序列与合并期 barType 0-5 由 ConfigValidator 一次性迁移（textureMode="V2" 哨兵保证幂等）；原 type8 迷你小条因与文本布局不匹配且视觉过小而裁撤；ARR 素材依赖（hpbar_original.png）彻底移除。
+- **HUD 自由度（2026-10-01，统一在 HUD 布局编辑器）**：每组件可配 文本对齐（左/中/右）、条高（5..16px）、文本 X/Y 微调（±50）、图标位置（条左/条右）；与既有的锚点/拖拽/缩放/间距/文本开关并列。数值文本整数化（20 而非 20.0）。此前文本居中/图标左置是全局写死的，现改为每组件经编辑器独立设置（默认居中/左置，保持向后兼容）。
+- **HUD 元素拆解（2026-10-01）**：每组件拆为三类可独立配置的元素——条（key）/ 文本（key.text）/ 图标（key.icon）。文本与图标默认跟随条；在布局编辑器中选择独立锚点（文本锚点/图标锚点）后脱离条独立锚定定位，可整框拖动、方向键微调，并各自带附加缩放（textScale/iconScale）与偏移。渲染与编辑器共用 CustomHudRenderer.measureAll + HudLayoutSolver.solve（分离元素单独成组、不参与组件堆叠），单元测试覆盖独立锚定/偏移叠加/空锚点回退。
+- **编辑器界面（2026-10-01）**：HUD 布局编辑器改为悬浮属性面板——面板可像独立窗口一样拖动（标题栏/空白处），位置持久化（hudLayout.panelX/Y）；深色扁平控件风格（自绘 FlatButton 替代原版按钮）；面板按节组织全部参数：条形（条宽 40-400 / 条高 5-16）、文本（对齐/XY 偏移/锚点/缩放）、图标（位置/锚点/缩放）。条宽现可在编辑器直接调整。
+- **配置界面审计与优化（2026-10-01）**：逐字段扫描 7 页无跨页字段级重复；修正三处分类/对称问题——(a) overlayTextScale（HUD 文本缩放）从高级页迁回玩家 HUD 页；(b) 补齐 overwriteVanillaExperienceBar 界面开关（此前仅护甲有，形成不对称）；(c) 玩家 HUD 页样式节改名「玩家 HUD 样式」消除与实体样式页的重名。命名统一：样式 3 的「文字缩放/文字偏移」改为「数值缩放/数值偏移」与样式 1/2 一致。界面动态效果：滚轮/滚动条平滑滚动（指数逼近）、页切换滑入+淡入（180ms easeOutQuad）、悬停行左缘青色强调条。
+- **数值取整修复（2026-10-01）**："数值取整"（integerHealthText）原实现存在错位——它只作用于原版复刻调试路径（formatHealthText，被 EntityDebugOverlay 使用），而样式 3 正常渲染路径写死 formatNumber 永远显示小数，开关对主路径无效。现修复为样式 1/3 共用 MobHealthBarStyle.formatValue（开=四舍五入，关=一位小数），样式 1 设置页补上该开关（此前仅样式 3 有），调试路径恢复忠实小数；样式 2 牌匾按原版图标设计始终整数，不适用。
+- **玩家 HUD 预设设计（2026-10-01）**：CUSTOM 布局新增四套预设（编辑器左上"预设/应用预设"一键切换）：MODERN（新默认：生命 140 居中主视觉 + 细经验条 182×5 紧随其下、饥饿/氧气/兼容 81 居右、护甲 81 居左，同水平线贴合物品栏）、CLASSIC（贴近原版分区：护甲/生命图标居左、氧气/饥饿图标居右、居中细经验条）、MINIMAL（仅生命+饥饿两条细条居中，其余关闭）、SIDE（六项状态栏纵向堆叠左上、经验条底部居中）。预设即整份组件布局替换，应用后可继续在编辑器微调。
+- **编辑器全样式支持（2026-10-01）**：HUD 布局编辑器升级为三样式统一编辑中心——面板首行编辑样式在 原版/长条(AsteorBar)/自定义 间循环（写回 overlay.hudStyle，预览即实际）。长条样式面板补齐其全部布局参数（布局样式/条长/条高/条间距/角部XY边距/文本垂直偏移/文本缩放/强制角落/坐骑左置——此前多数未暴露于任何界面）；预览经 HudRenderer.setStyleOverride 走游戏内实渲染路径（onPreRender + render，帧末还原）。自定义样式保留元素拖动/预设/全部参数。设置页移除已入编辑器的重复项（布局样式、HUD 文本缩放），加一行指引说明。
+- **血条半宽修复（2026-10-01）**：barHalfWidth 原为死配置（仅存在于配置/校验/界面，无任何渲染器读取，界面滑杆拖动无效果）。现接入 HealthDisplayRenderer.getBarWidth：0=自动（跟随实体最大血量，每点 2px，钳制 20-80px，保持既有观感），非零=固定全宽（半宽×2，8-160px）。configVersion 升至 3：旧值从未生效过，迁移统一置 0；此后用户设置正常保留。仅在样式 3（动态长条）生效——样式 1 用贴图固定宽+缩放，样式 2 用图标行打包+行宽上限。
+- **样式 1 单轴拉伸（2026-10-01）**：新增 scaleBarWidth / scaleBarHeight（独立宽/高拉伸，100%=原始；≤0 由校验器归位 1.0 兼容旧配置）。仅作用于条与心排（含名称/数值跟随条底的纵向位移），文字本身不被拉伸——满足"只调宽不调高 / 只调高不调宽"。样式 3 的宽/高本就独立（血条半宽 + 条高）；样式 2 由图标行打包决定（行宽上限）。
+- 两层距离上限见 5.3，非重复。
+- **配置统一原则（2026-10-01）**：三样式的公共子集已拉齐——位置 X/Y（统一像素语义，正值=屏幕向右/向下；文字/图标偏移与条偏移解耦）、整体不透明度（0-255）、数值文字缩放 + XY 偏移。样式特有项保留：样式 1 形状/配色/两层高度偏移，样式 2 行宽/背板/穿墙/牌匾行开关，样式 3 半宽/条高/动态色/取整。旧牌匾 heightOffset（正值向上）由校验器一次性迁移到 yOffset（正值向下）。
+- **伤害跳字随机跳出角（2026-10-02）**：RISE/ARC 运动的跳字改为从头顶锚点以随机角度跳出——新增 `damagePopup.launchAngleDegrees`（默认 60°，校验钳 0-180；0=垂直向上即旧行为，全锥角=2×该值）。每条跳字由其 seed 经 `DamagePopupRenderer.seedToUnit`（splitmix 风格散列，公开供预览复用）确定性推导 [-1,1]×锥角，发射向量 (sinθ, −cosθ) 旋转原上漂轨迹：RISE 沿该方向直线漂浮；ARC 垂直分量随 θ 收缩、水平分量随全程 easeOut 展开，坠落段保持位移落回地面。STACK/CUMULATIVE 不受影响；TACTICAL 主题 ±6px 散布叠加其上；合并跳字沿用首条 seed（角度稳定）。设置页"伤害跳字"页补 0-180° 滑杆，预览以 (cycleIdx,i) 推导种子走同一公式。
+- **组件模式并入编辑器（2026-10-02）**：玩家 HUD 页"自定义组件"节的 7 个组件显示形式循环按钮（长条/图标/关闭，health/food/air/experience/armor/mount/compat）移除，改为 HUD 布局编辑器自定义面板首行"组件显示形式"循环控件——作用于当前选中组件，随条形/文本/图标参数同处一地（模式切换即重建面板）；关闭模式显示专用说明行，图标模式沿用既有提示。设置页该节仅保留编辑器入口 + 指引文字。兼容状态（compat）组件缺失的三个模式值翻译（compat.bar/icon/off，中英）同步补齐，修复按钮显示原始键名的问题。
+- **编辑器底栏精简与面板扩容（2026-10-02）**：底栏 7 个按钮精简为单一组件选择器（加宽，补上此前缺失的「兼容状态」——底栏选择器本无 compat，设置页组件行移除后它一度无处可选）；
+  锚点/模式/缩小/放大/间距/文本开关全部并入悬浮属性面板（与该组件其余参数同处一地，消除双入口重复）。面板新增「组件」节（锚点/位置X/位置Y/组件缩放/间距——后四者此前只能靠拖拽/滚轮/方向键盲调），
+  文本节前置「显示数值文本」开关（此前面板在 showText=false 时无任何文本行,无法从面板重新打开,只能回底栏找按钮）,图标节新增 X/Y 微调步进（iconOffsetX/Y 此前未暴露于任何界面）。
+  面板行数随之超出小屏高度：属性面板增加平滑滚动（指数逼近,与设置页同手感;滚轮悬停面板=滚动面板,面板外=组件缩放,职责不冲突）,右缘绘制滚动条,视口外行不绘不点。
+  语言键清理：editor.mode/scale_up/scale_down/text 随底栏移除废弃删除；修复昨日误增的 mode.bar/icon/off 重复键。
+- **配置界面微调（2026-10-02）**：吸收值模式滑条值由裸数字改为语义文案（同行附加/预留——仅 0 有实现,1/2 预留）；移除死配置 absorptionTextMode（字段存在但无渲染器读取、无界面暴露）。

@@ -1,0 +1,25 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "MIT"
+
+[[mods]]
+modId = "z80zhealthbar"
+version = "${mod_version}"
+displayName = "Z80Z Health Bar"
+authors = "z80z"
+description = '''Unified mob health display and player HUD replacement mod. Features dual display modes (bars + plaques), full player HUD customization, and 20+ mod compatibilities.'''
+logoFile = ""
+
+[[dependencies.z80zhealthbar]]
+modId = "forge"
+mandatory = true
+versionRange = "[47,48)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.z80zhealthbar]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.20.1,1.21)"
+ordering = "NONE"
+side = "BOTH"

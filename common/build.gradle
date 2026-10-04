@@ -1,0 +1,30 @@
+architectury {
+    common("fabric", "forge")
+}
+
+repositories {
+    maven { url = "https://maven.shedaniel.me/" }
+    maven { url = "https://maven.terraformersmc.com/" }
+}
+
+dependencies {
+    // Architectury API
+    compileOnly("net.fabricmc:fabric-loader:${project.loader_version}")
+    // Mixin 注解（common 内 4 个 Mixin 类编译期需要；运行期由各平台提供）
+    compileOnly("net.fabricmc:sponge-mixin:0.12.5+mixin.0.8.5")
+
+    // Cloth Config (compile-time; runtime provided by platform modules)
+}
+// 单元测试（纯 JVM 逻辑：配置校验/迁移、布局求解器、颜色工具）
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+    testLogging {
+        events 'failed', 'skipped'
+        exceptionFormat 'short'
+    }
+}

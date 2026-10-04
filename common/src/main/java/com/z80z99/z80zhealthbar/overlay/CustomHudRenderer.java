@@ -1,0 +1,408 @@
+package com.z80z99.z80zhealthbar.overlay;
+
+import com.z80z99.z80zhealthbar.config.ConfigManager;
+import com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig;
+import com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout;
+import com.z80z99.z80zhealthbar.layout.HudLayoutSolver;
+import com.z80z99.z80zhealthbar.util.ColorHelper;
+import com.z80z99.z80zhealthbar.util.GuiHelper;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * CUSTOM 模式渲染器：按 HudLayoutConfig/HudLayoutSolver 输出组件。
+ *
+ * <p>每个组件已拆解为三类元素，均可独立配置/锚定/定位（布局编辑器内操作）：
+ * <ul>
+ *   <li>条（{@code key}）：卡片底 + 状态填充 +（未分离时）图标与数值文本；</li>
+ *   <li>文本（{@code key.text}）：配置了独立锚点时脱离条单独定位（valueText × textScale）；</li>
+ *   <li>图标（{@code key.icon}）：配置了独立锚点时脱离条单独定位（iconUV × iconScale）。</li>
+ * </ul>
+ * BAR 模式 = 卡片底 + 状态填充 + 原版图标 + 数值文本；ICON 模式 = 原版图标行。
+ * 布局与测量与编辑器完全共用（solve + measureAll）。
+ */
+public final class CustomHudRenderer {
+
+    private static final ResourceLocation ICONS =
+            new ResourceLocation("minecraft", "textures/gui/icons.png");
+    /** 条形卡片默认高度（像素）；可经布局编辑器 barHeight 调整（5..16） */
+    private static final int BAR_H_DEFAULT = 9;
+
+    private CustomHudRenderer() {}
+
+    public static void render(GuiGraphics graphics, float partialTick) {
+        Minecraft mc = Minecraft.getInstance();
+        Player player = mc.player;
+        if (player == null) return;
+
+        HudLayoutConfig layout = ConfigManager.getConfig().hudLayout;
+        int screenW = mc.getWindow().getGuiScaledWidth();
+        int screenH = mc.getWindow().getGuiScaledHeight();
+
+        Map<String, int[]> sizes = measureAll(layout, player);
+        Map<String, HudLayoutSolver.Box> boxes = HudLayoutSolver.solve(layout, sizes, screenW, screenH);
+
+        for (Map.Entry<String, HudLayoutSolver.Box> entry : boxes.entrySet()) {
+            String key = entry.getKey();
+            HudLayoutSolver.Box box = entry.getValue();
+            boolean isText = key.endsWith(".text");
+            boolean isIcon = key.endsWith(".icon");
+            String base = (isText || isIcon) ? key.substring(0, key.lastIndexOf('.')) : key;
+            ComponentLayout c = layout.get(base);
+
+            graphics.pose().pushPose();
+            graphics.pose().translate(box.x(), box.y(), 0);
+            if (isText) {
+                // 分离文本元素：独立定位（缩放 = 组件缩放 × 文本缩放）
+                float s = (float) (c.scale * c.textScale);
+                graphics.pose().scale(s, s, 1f);
+                String t = valueText(base, player);
+                if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
+            } else if (isIcon) {
+                // 分离图标元素：独立定位（缩放 = 组件缩放 × 图标缩放）
+                float s = (float) (c.scale * c.iconScale);
+                graphics.pose().scale(s, s, 1f);
+                int[] uv = iconUV(base, player);
+                if (uv != null) GuiHelper.drawTexturedRect(ICONS, graphics, 0, 0, uv[0], uv[1], 9, 9);
+            } else {
+                float scale = (float) c.scale;
+                graphics.pose().scale(scale, scale, 1f);
+                switch (key) {
+                    case HudLayoutConfig.HEALTH -> renderHealth(graphics, mc, player, c);
+                    case HudLayoutConfig.FOOD -> renderFood(graphics, mc, player, c);
+                    case HudLayoutConfig.AIR -> renderAir(graphics, mc, player, c);
+                    case HudLayoutConfig.EXPERIENCE -> renderExperience(graphics, mc, player, c);
+                    case HudLayoutConfig.ARMOR -> renderArmor(graphics, mc, player, c);
+                    case HudLayoutConfig.MOUNT -> renderMount(graphics, mc, player, c);
+                    case HudLayoutConfig.COMPAT -> renderCompat(graphics, player, c);
+                    default -> { }
+                }
+            }
+            graphics.pose().popPose();
+        }
+    }
+
+    /**
+     * 全体元素尺寸（渲染与编辑器共用）：组件条 + 分离文本/图标。
+     * 分离元素仅在配置了独立锚点且当前有值（文本非空/图标可用）时参与定位。
+     */
+    public static Map<String, int[]> measureAll(HudLayoutConfig layout, Player player) {
+        Map<String, int[]> sizes = new LinkedHashMap<>();
+        Minecraft mc = Minecraft.getInstance();
+        for (String key : layout.components.keySet()) {
+            ComponentLayout c = layout.get(key);
+            sizes.put(key, HudLayoutSolver.measure(c));
+            if (player == null || c.modeParsed() != HudLayoutConfig.ComponentMode.BAR) continue;
+            String t = valueText(key, player);
+            if (c.showText && c.textAnchorParsed() != null && t != null) {
+                sizes.put(key + ".text", new int[]{mc.font.width(t), 8});
+            }
+            if (c.iconAnchorParsed() != null && iconUV(key, player) != null) {
+                sizes.put(key + ".icon", new int[]{9, 9});
+            }
+        }
+        return sizes;
+    }
+
+    /** 组件对应当前数值文本（null = 当前不显示）；分离文本元素与条内文本共用同一来源 */
+    public static String valueText(String key, Player p) {
+        var cfg = ConfigManager.getConfig();
+        return switch (key) {
+            case HudLayoutConfig.HEALTH -> fmt(p.getHealth()) + "/" + fmt(Math.max(1, p.getMaxHealth()));
+            case HudLayoutConfig.FOOD -> {
+                int max = cfg.overlay.fullFoodLevelValue;
+                if (max <= 0) max = 20;
+                yield p.getFoodData().getFoodLevel() + "/" + max;
+            }
+            case HudLayoutConfig.AIR -> {
+                int air = p.getAirSupply(), maxAir = Math.max(1, p.getMaxAirSupply());
+                yield air >= maxAir ? null : String.valueOf(air);
+            }
+            case HudLayoutConfig.EXPERIENCE -> {
+                if (p.isPassenger()) yield null;
+                float progress = p.experienceProgress;
+                int level = p.experienceLevel;
+                yield level > 0 ? ("Lv." + level) : String.valueOf(Math.round(progress * 100)) + "%";
+            }
+            case HudLayoutConfig.ARMOR -> {
+                int armor = p.getArmorValue();
+                int max = cfg.overlay.fullArmorValue;
+                if (max <= 0) max = 20;
+                yield armor > 0 ? armor + "/" + max : null;
+            }
+            case HudLayoutConfig.MOUNT -> p.getVehicle() instanceof LivingEntity mount
+                    ? fmt(mount.getHealth()) + "/" + fmt(Math.max(1, mount.getMaxHealth())) : null;
+            default -> null; // compat 为多行动态行，不参与分离
+        };
+    }
+
+    /** 组件对应图标 UV（null = 无图标/当前不可用） */
+    private static int[] iconUV(String key, Player p) {
+        return switch (key) {
+            case HudLayoutConfig.HEALTH -> new int[]{healthIconU(p), 0};
+            case HudLayoutConfig.FOOD -> new int[]{52, 27};
+            case HudLayoutConfig.AIR -> p.getAirSupply() >= Math.max(1, p.getMaxAirSupply())
+                    ? null : new int[]{16, 18};
+            case HudLayoutConfig.ARMOR -> p.getArmorValue() > 0 ? new int[]{34, 9} : null;
+            case HudLayoutConfig.MOUNT -> p.getVehicle() instanceof LivingEntity ? new int[]{52, 0} : null;
+            default -> null; // 经验条无原版图标
+        };
+    }
+
+    // ============== 组件渲染（局部坐标原点 = 组件框左上角，未缩放单位） ==============
+
+    private static void renderHealth(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
+        var colors = ConfigManager.getConfig().colors;
+        float health = p.getHealth();
+        float max = Math.max(1, p.getMaxHealth());
+        float absorption = p.getAbsorptionAmount();
+
+        int color = ColorHelper.parseColor(colors.healthNormal);
+        if (p.hasEffect(MobEffects.POISON)) color = ColorHelper.parseColor(colors.healthPoison);
+        else if (p.hasEffect(MobEffects.WITHER)) color = ColorHelper.parseColor(colors.healthWither);
+        else if (p.getTicksFrozen() > 0) color = ColorHelper.parseColor(colors.healthFrozen);
+
+        if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
+            int hearts = (int) Math.ceil(max / 2f);
+            int full = (int) Math.floor(health / 2f);
+            for (int i = 0; i < hearts; i++) {
+                GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 16, 0, 9, 9);
+            }
+            for (int i = 0; i < full && i < hearts; i++) {
+                GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 52, 0, 9, 9);
+            }
+            if (full < hearts && health - full * 2 > 0f) {
+                GuiHelper.drawTexturedRect(ICONS, g, full * 9, 0, 61, 0, 9, 9);
+            }
+            if (absorption > 0) {
+                int abs = (int) Math.ceil(absorption / 2f);
+                for (int i = 0; i < abs; i++) {
+                    GuiHelper.drawTexturedRect(ICONS, g, (hearts + i) * 9, 0, 160, 0, 9, 9);
+                }
+            }
+            return;
+        }
+
+        int w = c.barWidth, h = barH(c);
+        drawCard(g, 0, 0, w, h);
+        int healthW = (int) (Mth.clamp(health / max, 0, 1) * w);
+        fill(g, 2, 2, healthW, h - 4, color);
+        if (absorption > 0) {
+            int absW = (int) (Mth.clamp(absorption / max, 0, 1) * (w - healthW));
+            if (absW > 0) fill(g, 2 + healthW, 2, absW, h - 4, ColorHelper.parseColor(colors.absorption));
+        }
+        if (c.iconAnchorParsed() == null) {
+            drawIcon(g, iconX(c, w), 0, h, healthIconU(p), 0);
+        }
+        if (c.showText && c.textAnchorParsed() == null) {
+            drawText(g, mc.font, fmt(health) + "/" + fmt(max), w, h, c);
+        }
+    }
+
+    private static int healthIconU(Player p) {
+        if (p.getAbsorptionAmount() > 0) return 160;
+        if (p.hasEffect(MobEffects.POISON)) return 88;
+        if (p.hasEffect(MobEffects.WITHER)) return 124;
+        if (p.getTicksFrozen() > 0) return 178;
+        return 52;
+    }
+
+    private static void renderFood(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
+        var colors = ConfigManager.getConfig().colors;
+        int food = p.getFoodData().getFoodLevel();
+        int max = ConfigManager.getConfig().overlay.fullFoodLevelValue;
+        if (max <= 0) max = 20; // 0 = 跟随原版上限
+
+        if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
+            for (int i = 0; i < 10; i++) GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 16, 0 + 27, 9, 9);
+            int full = food / 2;
+            for (int i = 0; i < full; i++) GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 52, 27, 9, 9);
+            if (food % 2 == 1 && full < 10) GuiHelper.drawTexturedRect(ICONS, g, full * 9, 0, 61, 27, 9, 9);
+            return;
+        }
+
+        int w = c.barWidth, h = barH(c);
+        drawCard(g, 0, 0, w, h);
+        int color = p.hasEffect(MobEffects.HUNGER)
+                ? ColorHelper.parseColor(colors.foodHunger)
+                : ColorHelper.parseColor(colors.foodNormal);
+        fill(g, 2, 2, (int) (Mth.clamp(food / (float) max, 0, 1) * w), h - 4, color);
+        if (c.iconAnchorParsed() == null) {
+            drawIcon(g, iconX(c, w), 0, h, 52, 27);
+        }
+        if (c.showText && c.textAnchorParsed() == null) {
+            drawText(g, mc.font, food + "/" + max, w, h, c);
+        }
+    }
+
+    private static void renderAir(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
+        var colors = ConfigManager.getConfig().colors;
+        int air = p.getAirSupply();
+        int maxAir = Math.max(1, p.getMaxAirSupply());
+        if (air >= maxAir) return; // 仅水下显示
+
+        if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
+            int bubbles = (int) Math.ceil(air / (float) maxAir * 10);
+            for (int i = 0; i < bubbles; i++) GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 16, 18, 9, 9);
+            return;
+        }
+
+        int w = c.barWidth, h = barH(c);
+        drawCard(g, 0, 0, w, h);
+        fill(g, 2, 2, (int) (Mth.clamp(air / (float) maxAir, 0, 1) * w), h - 4,
+                ColorHelper.parseColor(colors.air));
+        if (c.iconAnchorParsed() == null) {
+            drawIcon(g, iconX(c, w), 0, h, 16, 18);
+        }
+        if (c.showText && c.textAnchorParsed() == null) {
+            drawText(g, mc.font, String.valueOf(air), w, h, c);
+        }
+    }
+
+    private static void renderExperience(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
+        var colors = ConfigManager.getConfig().colors;
+        if (p.isPassenger()) return;
+        float progress = p.experienceProgress;
+        int level = p.experienceLevel;
+
+        int w = c.barWidth, h = barH(c);
+        drawCard(g, 0, 0, w, h);
+        fill(g, 2, 2, (int) (Mth.clamp(progress, 0, 1) * w), h - 4,
+                ColorHelper.parseColor(colors.experience));
+        if (c.showText && c.textAnchorParsed() == null) {
+            String text = level > 0 ? ("Lv." + level) : String.valueOf(Math.round(progress * 100)) + "%";
+            drawText(g, mc.font, text, w, h, c);
+        }
+    }
+
+    private static void renderArmor(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
+        var colors = ConfigManager.getConfig().colors;
+        int armor = p.getArmorValue();
+        if (armor <= 0) return;
+
+        if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
+            int icons = (int) Math.ceil(armor / 2f);
+            for (int i = 0; i < icons && i < 10; i++) {
+                GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 34, 9, 9, 9);
+            }
+            return;
+        }
+
+        int max = ConfigManager.getConfig().overlay.fullArmorValue;
+        if (max <= 0) max = 20; // 0 = 跟随原版上限
+        int w = c.barWidth, h = barH(c);
+        drawCard(g, 0, 0, w, h);
+        fill(g, 2, 2, (int) (Mth.clamp(armor / (float) max, 0, 1) * w), h - 4,
+                ColorHelper.parseColor(colors.armor));
+        if (c.iconAnchorParsed() == null) {
+            drawIcon(g, iconX(c, w), 0, h, 34, 9);
+        }
+        if (c.showText && c.textAnchorParsed() == null) {
+            drawText(g, mc.font, armor + "/" + max, w, h, c);
+        }
+    }
+
+    private static void renderMount(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
+        var colors = ConfigManager.getConfig().colors;
+        if (!(p.getVehicle() instanceof LivingEntity mount)) return;
+        float health = mount.getHealth();
+        float max = Math.max(1, mount.getMaxHealth());
+
+        int w = c.barWidth, h = barH(c);
+        drawCard(g, 0, 0, w, h);
+        fill(g, 2, 2, (int) (Mth.clamp(health / max, 0, 1) * w), h - 4,
+                ColorHelper.parseColor(colors.mountHealth));
+        if (c.iconAnchorParsed() == null) {
+            drawIcon(g, iconX(c, w), 0, h, 52, 0);
+        }
+        if (c.showText && c.textAnchorParsed() == null) {
+            drawText(g, mc.font, fmt(health) + "/" + fmt(max), w, h, c);
+        }
+    }
+
+    // ============== 绘制原语（与 ASTEORBAR 模式同风格：卡片底/填充/图标/文本） ==============
+
+    /** 兼容状态组：thirst/stamina/exhaustion 等动态行（数据源 CompatAdapters） */
+    private static void renderCompat(GuiGraphics g, Player p, ComponentLayout c) {
+        var stats = com.z80z99.z80zhealthbar.compat.CompatAdapters.collect(p);
+        if (stats.isEmpty()) return;
+        int w = c.barWidth, h = barH(c);
+        int y = 0;
+        for (var stat : stats) {
+            drawCard(g, 0, y, w, h);
+            if (stat.max() != null && stat.max() > 0) {
+                int fillW = (int) Math.max(0, Math.min(w, stat.value() / stat.max() * w));
+                fill(g, 2, y + 2, fillW - 4, h - 4, stat.color());
+            }
+            if (c.showText) {
+                String vs = stat.value() >= 100 ? String.valueOf(Math.round(stat.value()))
+                        : String.format(java.util.Locale.ROOT, "%.1f", stat.value());
+                String text = net.minecraft.network.chat.Component.translatable(stat.langKey()).getString()
+                        + ": " + vs + (stat.max() == null ? "" : "/" + Math.round(stat.max()));
+                drawTextIn(g, Minecraft.getInstance().font, text, w, h, y, c);
+            }
+            y += h + 2;
+        }
+    }
+
+    private static int barH(ComponentLayout c) {
+        return Math.max(5, Math.min(16, c.barHeight > 0 ? c.barHeight : BAR_H_DEFAULT));
+    }
+
+    /** 图标 x 坐标：LEFT = 条左侧 -11；RIGHT = 条右侧 +2（由编辑器 iconSide 控制） */
+    private static int iconX(ComponentLayout c, int barW) {
+        return c.iconSideParsed() == HudLayoutConfig.IconSide.RIGHT ? barW + 2 : -11;
+    }
+
+    private static void drawCard(GuiGraphics g, int x, int y, int w, int h) {
+        GuiHelper.drawSolidColor(g, x, y, x + w, y + h, 0x66000000);
+        GuiHelper.drawSolidColor(g, x, y, x + w, y + 1, 0x33FFFFFF);
+        GuiHelper.drawSolidColor(g, x, y + h - 1, x + w, y + h, 0x33FFFFFF);
+        GuiHelper.drawSolidColor(g, x, y, x + 1, y + h, 0x33FFFFFF);
+        GuiHelper.drawSolidColor(g, x + w - 1, y, x + w, y + h, 0x33FFFFFF);
+    }
+
+    private static void fill(GuiGraphics g, int x, int y, int w, int h, int color) {
+        if (w <= 0) return;
+        GuiHelper.drawSolidColor(g, x, y, x + w, y + h, color);
+    }
+
+    private static void drawIcon(GuiGraphics g, int x, int y, int barH, int u, int v) {
+        int iconY = y + (barH - 9) / 2;
+        GuiHelper.drawTexturedRect(ICONS, g, x, iconY, u, v, 9, 9);
+    }
+
+    /** 数值文本：按组件对齐（左/中/右）+ 文本偏移绘制 */
+    private static void drawText(GuiGraphics g, Font font, String text, int barW, int barH, ComponentLayout c) {
+        drawTextIn(g, font, text, barW, barH, 0, c);
+    }
+
+    private static void drawTextIn(GuiGraphics g, Font font, String text, int barW, int barH,
+                                   int yBase, ComponentLayout c) {
+        int tw = font.width(text);
+        int tx = switch (c.textAlignParsed()) {
+            case LEFT -> 4;
+            case RIGHT -> barW - tw - 4;
+            default -> (barW - tw) / 2;
+        };
+        tx += c.textOffsetX;
+        int ty = yBase + (barH - 8) / 2 + c.textOffsetY;
+        g.drawString(font, text, tx, ty, 0xFFFFFFFF, true);
+    }
+
+    /** 数值格式化：整数直接显示（20/20 而非 20.0/20.0），非整保留一位小数 */
+    private static String fmt(float v) {
+        float r = Math.round(v * 10) / 10f;
+        if (r == (int) r) return String.valueOf((int) r);
+        return String.valueOf(r);
+    }
+}

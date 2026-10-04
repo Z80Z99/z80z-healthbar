@@ -1,0 +1,35 @@
+{
+	"schemaVersion": 1,
+	"id": "z80zhealthbar",
+	"version": "${version}",
+	"name": "Z80Z Health Bar",
+	"description": "Unified mob health display and player HUD replacement mod. Features dual display modes (bars + plaques), full player HUD customization, and 20+ mod compatibilities.",
+	"authors": ["z80z"],
+	"contact": {
+		"homepage": "https://github.com/z80z/z80zhealthbar",
+		"sources": "https://github.com/z80z/z80zhealthbar"
+	},
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.z80z99.z80zhealthbar.fabric.Z80ZHealthBarFabric"
+		],
+		"client": [
+			"com.z80z99.z80zhealthbar.fabric.Z80ZHealthBarFabric"
+		],
+		"modmenu": [
+			"com.z80z99.z80zhealthbar.fabric.ModMenuIntegration"
+		]
+	},
+	"mixins": [
+		"z80zhealthbar.mixins.json"
+	],
+	"accessWidener": "z80zhealthbar.accesswidener",
+	"depends": {
+		"fabricloader": ">=0.15.0",
+		"minecraft": "~1.20.1",
+		"java": ">=17",
+		"fabric-api": "*"
+	}
+}

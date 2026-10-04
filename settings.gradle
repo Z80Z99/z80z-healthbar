@@ -1,0 +1,48 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            name = 'Architectury'
+            url = 'https://maven.architectury.dev/'
+        }
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        maven {
+            name = 'Forge'
+            url = 'https://maven.minecraftforge.net/'
+        }
+        mavenCentral()
+        maven { url = 'https://maven.aliyun.com/repository/public/' }
+        maven { url = 'https://repo.huaweicloud.com/repository/maven/' }
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        maven { url = 'https://maven.aliyun.com/repository/public/' }
+        maven { url = 'https://repo.huaweicloud.com/repository/maven/' }
+        mavenCentral()
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://api.modrinth.com/maven' }
+        maven { url = 'https://maven.minecraftforge.net/' }
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = 'Forge'
+                    url = 'https://maven.minecraftforge.net/'
+                }
+            }
+            filter {
+                includeGroup 'net.minecraftforge'
+                includeGroupByRegex 'net\\.minecraftforge\\..*'
+            }
+        }
+    }
+}
+
+rootProject.name = 'z80zhealthbar'
+include 'common'
+include 'fabric'
+include 'forge'

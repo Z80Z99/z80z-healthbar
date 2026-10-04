@@ -1,0 +1,126 @@
+plugins {
+	id 'com.gradleup.shadow' version '8.3.6'
+}
+
+architectury {
+	platformSetupLoomIde()
+	forge()
+}
+
+loom {
+	forge {
+		mixinConfig "z80zhealthbar.mixins.json"
+	}
+	runs {
+		client {
+			client()
+			name "Forge Client"
+			runDir "run/client"
+			programArgs "--username", "Player1"
+		}
+		server {
+			server()
+			name "Forge Server"
+			runDir "run/server"
+		}
+	}
+}
+
+configurations {
+	common
+	shadowCommon
+	compileClasspath.extendsFrom common
+	runtimeClasspath.extendsFrom common
+	developmentForge.extendsFrom common
+}
+
+shadowJar {
+	exclude "architectury.common.json"
+	configurations = [project.configurations.shadowCommon]
+	archiveClassifier.set("dev-shadow")
+	exclude 'META-INF/versions/**'
+	mergeServiceFiles()
+	exclude 'module-info.class'
+}
+
+remapJar {
+	inputFile.set shadowJar.archiveFile
+	dependsOn shadowJar
+}
+
+jar {
+	archiveClassifier.set("dev")
+	from("${rootProject.projectDir}/LICENSE") {
+		rename { "${it}_${base.archivesName.get()}"}
+	}
+	manifest {
+		attributes([
+			'Specification-Title'     : 'Z80Z Health Bar',
+			'Specification-Vendor'    : 'z80z',
+			'Specification-Version'   : '1',
+			'Implementation-Title'    : project.name,
+			'Implementation-Version'  : project.version,
+			'Implementation-Vendor'   : 'z80z'
+		])
+	}
+}
+
+repositories {
+	mavenCentral()
+	maven { url = "https://maven.shedaniel.me/"; name = "Shedaniel Maven" }
+	maven { url = "https://maven.minecraftforge.net/"; name = "Forge" }
+	maven { url = "https://maven.architectury.dev/"; name = "Architectury" }
+	maven { url = "https://cursemaven.com"; name = "CurseMaven" }
+}
+
+tasks.named('processResources', ProcessResources).configure {
+	def replaceProperties = [
+		minecraft_version: '1.20.1',
+		minecraft_version_range: '[1.20.1,1.21)',
+		forge_version: project.forge_version,
+		forge_version_range: '[47,48)',
+		loader_version_range: '[47,)',
+		mod_id: 'z80zhealthbar',
+		mod_name: 'Z80Z Health Bar',
+		mod_version: project.version,
+		mod_authors: 'z80z',
+		mod_description: 'Unified mob health display and player HUD replacement mod'
+	]
+
+	inputs.properties replaceProperties
+
+	filesMatching(['META-INF/mods.toml']) {
+		expand replaceProperties
+	}
+}
+
+dependencies {
+	common(project(path: ":common", configuration: "namedElements")) { transitive false }
+	shadowCommon(project(path: ":common", configuration: "transformProductionForge")) { transitive false }
+
+	forge "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+
+}
+
+sourcesJar {
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	def commonSources = project(":common").sourcesJar
+	dependsOn commonSources
+	from commonSources.archiveFile.map { zipTree(it) }
+}
+
+components.java {
+	withVariantsFromConfiguration(project.configurations.shadowRuntimeElements) {
+		skip()
+	}
+}
+
+sourceSets {
+	main {
+		java {}
+		resources {
+			exclude 'assets/z80zhealthbar/lang/*.json'
+		}
+	}
+}
