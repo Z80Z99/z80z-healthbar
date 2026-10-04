@@ -94,7 +94,7 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
             Matrix4f mf = poseStack.last().pose();
             switch (Math.max(0, Math.min(3, barCfg.barVariant))) {
                 case 1 -> gradientFill(vc, mf, x, y, healthW, barH, fillColor);
-                case 2 -> segmentedFill(vc, mf, x, y, barWidth, healthW, barH, fillColor);
+                case 2 -> segmentedFill(vc, mf, x, y, barWidth, dispR, snap.maxHealth, barH, fillColor);
                 case 3 -> glossyFill(vc, mf, x, y, healthW, barH, fillColor);
                 default -> fillRect(vc, mf, x, y, healthW, barH, fillColor);
             }
@@ -202,9 +202,24 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         vc.vertex(m, x + w, y, 0).color(top).endVertex();
     }
 
-    /** 长条变体 2：分段刻度——填充按条宽/10 分格，格间留 1px 空隙露出空槽色，末段按剩余宽截断 */
-    private void segmentedFill(VertexConsumer vc, Matrix4f m, int x, int y, int barWidth, int healthW, int h, int color) {
-        int segW = Math.max(6, barWidth / 10);
+    /**
+     * 长条变体 2：分段刻度——格间留 1px 空隙露出空槽色。
+     * 格数/每格血量/整格显示由 barStyle.segmentCount / segmentHp / segmentWholeOnly 配置：
+     * segmentHp > 0 时按固定血量分格（格数 = 最大血量/每格，超 64 格合并防亚像素），
+     * 否则按 segmentCount 固定格数均分；segmentWholeOnly 时不足一格的剩余血不显示。
+     */
+    private void segmentedFill(VertexConsumer vc, Matrix4f m, int x, int y, int barWidth,
+                               float ratio, float maxHealth, int h, int color) {
+        var barCfg = ConfigManager.getConfig().barStyle;
+        int cells = barCfg.segmentCount;
+        if (barCfg.segmentHp > 0) {
+            cells = Math.max(1, (int) Math.ceil(maxHealth / barCfg.segmentHp));
+            if (cells > 64) cells = 64;
+        }
+        cells = Math.max(1, cells);
+        int segW = Math.max(3, barWidth / cells); // 格子过密时合并（segW 低于 3px 无法分辨格缝）
+        int healthW = Mth.floor(ratio * barWidth);
+        if (barCfg.segmentWholeOnly) healthW = healthW / segW * segW;
         for (int sx = 0; sx < healthW; sx += segW) {
             int w = Math.min(segW - 1, healthW - sx);
             if (w > 0) fillRect(vc, m, x + sx, y, w, h, color);

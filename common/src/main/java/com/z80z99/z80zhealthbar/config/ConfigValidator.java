@@ -105,6 +105,8 @@ public final class ConfigValidator {
         c.barTextOffsetY = clamp(c.barTextOffsetY, -50, 50);
         c.barAlpha = clamp(c.barAlpha, 0, 255);
         c.barVariant = clamp(c.barVariant, 0, 3);
+        c.segmentCount = (int) clamp(c.segmentCount, 1, 64);
+        c.segmentHp = (int) clamp(c.segmentHp, 0, 10000);
         c.barPixelOffsetX = clamp(c.barPixelOffsetX, -200, 200);
         c.barPixelOffsetY = clamp(c.barPixelOffsetY, -200, 200);
     }

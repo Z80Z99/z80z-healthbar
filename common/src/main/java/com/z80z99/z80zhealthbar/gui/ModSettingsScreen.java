@@ -581,6 +581,13 @@ public final class ModSettingsScreen extends Screen {
                 rows.add(cycleRow("z80zhealthbar.option.barStyle.barVariant", List.of(0, 1, 2, 3),
                         () -> c.barStyle.barVariant, v -> c.barStyle.barVariant = v,
                         v -> Component.translatable("z80zhealthbar.option.barStyle.barVariant." + v)));
+                // 分段刻度（长条变体 2）专属：格数 / 每格血量 / 只显示完整格
+                rows.add(sliderRow("z80zhealthbar.option.barStyle.segmentCount", 1, 64, c.barStyle.segmentCount,
+                        v -> c.barStyle.segmentCount = v, String::valueOf));
+                rows.add(sliderRow("z80zhealthbar.option.barStyle.segmentHp", 0, 100, c.barStyle.segmentHp,
+                        v -> c.barStyle.segmentHp = v, v -> v == 0 ? "—" : v + " HP"));
+                rows.add(toggleRow("z80zhealthbar.option.barStyle.segmentWholeOnly", c.barStyle.segmentWholeOnly,
+                        v -> c.barStyle.segmentWholeOnly = v));
                 rows.add(sliderRow("z80zhealthbar.option.barStyle.barScale", 10, 400, (int) (c.barStyle.barScale * 100),
                         v -> c.barStyle.barScale = v / 100.0, v -> v + "%"));
                 rows.add(sliderRow("z80zhealthbar.option.barStyle.barAlpha", 0, 255, c.barStyle.barAlpha,

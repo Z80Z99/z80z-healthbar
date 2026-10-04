@@ -4,6 +4,12 @@ public class BarStyleConfig {
     public boolean enableHealthBar = true;
     /** 长条填充外观：0 = 平面，1 = 渐变，2 = 分段，3 = 高光（原版复刻模式不适用） */
     public int barVariant = 0;
+    /** 分段（变体 2）固定格数：1-64，默认 10；每格血量 = 最大血量 ÷ 格数（segmentHp > 0 时以它为准） */
+    public int segmentCount = 10;
+    /** 分段（变体 2）每格血量：0 = 关闭（按格数均分）；正数 = 固定每格血量，格数随最大血量伸缩（超 64 格合并） */
+    public int segmentHp = 0;
+    /** 分段（变体 2）只显示完整格：不足一格的剩余血量不显示 */
+    public boolean segmentWholeOnly = false;
     public double barScale = 1.0;
     public double barOffsetY = 0.5;
     /** 血条像素偏移（条像素；与文字偏移同空间：正值向右/向下；文字随血条移动） */

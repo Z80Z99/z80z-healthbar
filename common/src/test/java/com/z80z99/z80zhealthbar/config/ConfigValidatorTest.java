@@ -151,4 +151,23 @@ class ConfigValidatorTest {
         ConfigValidator.validate(cfg);
         assertEquals(0.0, cfg.damagePopup.launchAngleDegrees);
     }
+
+    @Test
+    void barStyleSegmentFieldsClamped() {
+        // 分段刻度:格数钳 1-64,每格血量负值归 0(关闭)
+        Z80ZHealthBarConfig cfg = new Z80ZHealthBarConfig();
+        assertEquals(10, cfg.barStyle.segmentCount);
+        assertEquals(0, cfg.barStyle.segmentHp);
+        cfg.barStyle.segmentCount = 0;
+        cfg.barStyle.segmentHp = -5;
+        ConfigValidator.validate(cfg);
+        assertEquals(1, cfg.barStyle.segmentCount);
+        assertEquals(0, cfg.barStyle.segmentHp);
+        cfg.barStyle.segmentCount = 999;
+        cfg.barStyle.segmentHp = 50;
+        ConfigValidator.validate(cfg);
+        assertEquals(64, cfg.barStyle.segmentCount);
+        assertEquals(50, cfg.barStyle.segmentHp);
+        assertFalse(cfg.barStyle.segmentWholeOnly);
+    }
 }
