@@ -366,10 +366,14 @@ public final class ModSettingsScreen extends Screen {
         previewToggle = null;
         if (previewActive) {
             previewW = Math.min(220, width * 2 / 5);
-            int leftW = width - previewW - 14;
-            contentW = Math.min(300, leftW - 12);
-            contentX = Math.max(6, (leftW - contentW) / 2);
-            previewX = leftW + 7;
+            int gap = 4; // 两栏面板外缘之间的呼吸缝
+            // 设置栏与预览栏相邻成组、整组水平居中——此前设置栏在预览左侧的剩余宽度内
+            // 居中，窗口越宽两栏之间的空档越大（用户反馈"预览应贴着设置栏"）
+            contentW = Math.min(300, width - previewW - PANEL_PAD * 4 - gap - 12);
+            int pairW = contentW + PANEL_PAD * 4 + gap + previewW;
+            int startX = Math.max(6, (width - pairW) / 2);
+            contentX = startX + PANEL_PAD;
+            previewX = contentX + contentW + PANEL_PAD * 2 + gap;
             previewY = HEADER_H - 4;
             previewH = height - HEADER_H - FOOTER_H + 8;
             previewToggle = CycleButton.<Boolean>builder(v -> Component.translatable(
