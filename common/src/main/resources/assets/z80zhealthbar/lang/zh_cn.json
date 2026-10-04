@@ -347,7 +347,7 @@
   "z80zhealthbar.option.barStyle.barVariant.3": "高光",
   "z80zhealthbar.option.barStyle.barVariant.tooltip": "长条填充外观：平面=纯色填充；渐变=顶部提亮、底部压暗；分段=固定格数带间隙（格数/每格血量可配）；高光=纯色+顶部高光/底部阴影。状态变色与吸收环对所有样式生效。",
   "z80zhealthbar.option.barStyle.segmentCount.label": "分段格数",
-  "z80zhealthbar.option.barStyle.segmentCount.tooltip": "分段变体（长条填充外观选“分段”时生效）的固定格数：1-64，默认 10。每格血量 = 最大血量 ÷ 格数。仅当“每格血量”为“均分”时生效。",
+  "z80zhealthbar.option.barStyle.segmentCount.tooltip": "分段变体（长条填充外观选“分段”时生效）的固定格数：1-64，默认 10。每格血量 = 最大血量 ÷ 格数（条宽不能整除格数时各格最多相差 1px,选条宽的因数可精确均分）。仅当“每格血量”为“均分”时生效。",
   "z80zhealthbar.option.barStyle.segmentHp.label": "每格血量",
   "z80zhealthbar.option.barStyle.segmentHp.tooltip": "分段变体的分格模式：“均分”=按“分段格数”均分；选择固定血量（如 2=原版心形语义、50=500 血 boss 恰好十格）则格数 = 最大血量 ÷ 每格血量，随生物伸缩（超 64 格自动合并）。",
   "z80zhealthbar.option.barStyle.segmentHp.even": "均分",
