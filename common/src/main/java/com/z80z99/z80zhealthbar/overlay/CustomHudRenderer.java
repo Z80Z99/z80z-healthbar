@@ -194,10 +194,12 @@ public final class CustomHudRenderer {
 
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
-        int healthW = (int) (Mth.clamp(health / max, 0, 1) * w);
+        // 填充按内宽（w-4,左右各留 2px 边距）计算:按整条宽算满值时会越过卡片右边界 2px
+        int innerW = w - 4;
+        int healthW = (int) (Mth.clamp(health / max, 0, 1) * innerW);
         fill(g, 2, 2, healthW, h - 4, color);
         if (absorption > 0) {
-            int absW = (int) (Mth.clamp(absorption / max, 0, 1) * (w - healthW));
+            int absW = (int) (Mth.clamp(absorption / max, 0, 1) * (innerW - healthW));
             if (absW > 0) fill(g, 2 + healthW, 2, absW, h - 4, ColorHelper.parseColor(colors.absorption));
         }
         if (c.iconAnchorParsed() == null) {
@@ -235,7 +237,7 @@ public final class CustomHudRenderer {
         int color = p.hasEffect(MobEffects.HUNGER)
                 ? ColorHelper.parseColor(colors.foodHunger)
                 : ColorHelper.parseColor(colors.foodNormal);
-        fill(g, 2, 2, (int) (Mth.clamp(food / (float) max, 0, 1) * w), h - 4, color);
+        fill(g, 2, 2, (int) (Mth.clamp(food / (float) max, 0, 1) * (w - 4)), h - 4, color);
         if (c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 52, 27);
         }
@@ -258,7 +260,7 @@ public final class CustomHudRenderer {
 
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
-        fill(g, 2, 2, (int) (Mth.clamp(air / (float) maxAir, 0, 1) * w), h - 4,
+        fill(g, 2, 2, (int) (Mth.clamp(air / (float) maxAir, 0, 1) * (w - 4)), h - 4,
                 ColorHelper.parseColor(colors.air));
         if (c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 16, 18);
@@ -276,7 +278,7 @@ public final class CustomHudRenderer {
 
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
-        fill(g, 2, 2, (int) (Mth.clamp(progress, 0, 1) * w), h - 4,
+        fill(g, 2, 2, (int) (Mth.clamp(progress, 0, 1) * (w - 4)), h - 4,
                 ColorHelper.parseColor(colors.experience));
         if (c.showText && c.textAnchorParsed() == null) {
             String text = level > 0 ? ("Lv." + level) : String.valueOf(Math.round(progress * 100)) + "%";
@@ -301,7 +303,7 @@ public final class CustomHudRenderer {
         if (max <= 0) max = 20; // 0 = 跟随原版上限
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
-        fill(g, 2, 2, (int) (Mth.clamp(armor / (float) max, 0, 1) * w), h - 4,
+        fill(g, 2, 2, (int) (Mth.clamp(armor / (float) max, 0, 1) * (w - 4)), h - 4,
                 ColorHelper.parseColor(colors.armor));
         if (c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 34, 9);
@@ -319,7 +321,7 @@ public final class CustomHudRenderer {
 
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
-        fill(g, 2, 2, (int) (Mth.clamp(health / max, 0, 1) * w), h - 4,
+        fill(g, 2, 2, (int) (Mth.clamp(health / max, 0, 1) * (w - 4)), h - 4,
                 ColorHelper.parseColor(colors.mountHealth));
         if (c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 52, 0);
