@@ -55,7 +55,17 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         int emptyColor = ColorHelper.parseColor(colors.healthEmpty);
         int absorptionColor = ColorHelper.parseColor(colors.absorption);
 
-        double displayHealth = getFadeValue(health);
+        // 动态效果统一走 BarFx（与实体血条同源）：填充平滑（90ms 无延迟）、伤害残影（420ms 渐隐）。
+        // 此前填充走 getFadeValue（500ms 起始延迟 + 最长 1s 余弦缓动）——残影 420ms 内已清空而填充
+        // 还停在旧位置，残影被填充盖住永远不可见（实测"残影不见了/预览和实际不匹配"的共同根源）。
+        double maxValue = cfg.fullHealthValue > 0 ? cfg.fullHealthValue : maxHealth;
+        float rawRatio = (float) Math.max(0d, Math.min(1d, health / maxValue));
+        var dxCfg = ConfigManager.getConfig().dynamicFx;
+        var fxSt = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(player.getId(),
+                rawRatio, player.hurtTime > 0, System.currentTimeMillis());
+        float dispR = dxCfg.enabled && dxCfg.smooth ? fxSt.display() : rawRatio;
+        dispR = Math.max(0f, Math.min(1f, dispR));
+        double displayHealth = dispR * maxValue;
 
         // 低血量闪烁
         boolean lowHealth = health / maxHealth <= cfg.lowHealthRate;
@@ -68,7 +78,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
 
         Parameters params = new Parameters();
         params.value = displayHealth;
-        params.maxValue = cfg.fullHealthValue > 0 ? cfg.fullHealthValue : maxHealth;
+        params.maxValue = maxValue;
         params.fillColor = healthColor;
         params.boundColor = boundColor;
         params.emptyColor = emptyColor;
@@ -112,8 +122,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             int absWidth = (int) Math.max(0, absorption / params.maxValue * innerW);
             drawBarCard(graphics, left, top, barWidth, barH);
             // 伤害残影（与样式3同源）：掉血后在 [当前填充, 掉血前血量] 区域画渐隐白
-            drawGhostSegment(graphics, left, top, barWidth, barH, healthW,
-                    (float) (health / params.maxValue), player, 0);
+            drawGhostSegment(graphics, left, top, barWidth, barH, healthW, fxSt, 0);
             // 生命值填充
             HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, healthW, healthColor);
             // 吸收段附加在生命段之后（clamp 到内宽）
@@ -126,7 +135,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             params.blink = blinkBorder;
             drawGhostSegment(graphics, left, top, barWidth, barH,
                     (int) (params.value / params.maxValue * HudBarPainter.innerWidth(barWidth)),
-                    (float) (health / params.maxValue), player, params.verticalShift);
+                    fxSt, params.verticalShift);
             renderBar(graphics, left, top, barWidth, barH, params);
         }
 
@@ -161,17 +170,14 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
 
     /** 伤害残影段（与样式3同源 BarFx 动画）：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）；内宽几何 */
     private void drawGhostSegment(GuiGraphics graphics, int left, int top, int barWidth, int barH,
-                                  int fillW, float rawRatio, Player player, int vShift) {
+                                  int fillW, com.z80z99.z80zhealthbar.mobdisplay.BarFx.State st, int vShift) {
         var dxCfg = ConfigManager.getConfig().dynamicFx;
         if (!dxCfg.enabled || !dxCfg.ghost) return;
-        float ratio = Math.max(0f, Math.min(1f, rawRatio));
-        var st = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(player.getId(),
-                ratio, player.hurtTime > 0, System.currentTimeMillis());
         float ghostA = Math.max(0f, Math.min(1f, st.ghostAlpha()));
         if (ghostA <= 0f) return;
         float preHit = Math.max(0f, Math.min(1f, st.preHit()));
         int innerW = HudBarPainter.innerWidth(barWidth);
-        int preHitW = Math.min(innerW, (int) (preHit * innerW));
+        int preHitW = Math.min(innerW, Math.round(preHit * innerW));
         if (preHitW <= fillW) return;
         int color = ColorHelper.modifyAlpha(ColorHelper.parseColor(dxCfg.ghostColor),
                 (int) (ghostA * 255));
