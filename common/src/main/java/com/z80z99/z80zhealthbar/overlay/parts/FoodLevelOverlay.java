@@ -21,8 +21,8 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
         Player player = mc.player;
         if (player == null) return;
 
-        int foodLevel = player.getFoodData().getFoodLevel();
-        float saturation = player.getFoodData().getSaturationLevel();
+        int foodLevel = HudPreviewState.active ? HudPreviewState.food : player.getFoodData().getFoodLevel();
+        float saturation = HudPreviewState.active ? 0f : player.getFoodData().getSaturationLevel();
 
         int fillColor = ColorHelper.parseColor(colors.foodNormal);
         int boundColor = ColorHelper.parseColor(colors.foodBound);

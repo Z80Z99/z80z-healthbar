@@ -38,9 +38,9 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         Player player = mc.player;
         if (player == null) return;
 
-        float health = player.getHealth();
-        float maxHealth = player.getMaxHealth();
-        float absorption = player.getAbsorptionAmount();
+        float health = HudPreviewState.active ? HudPreviewState.health : player.getHealth();
+        float maxHealth = HudPreviewState.active ? HudPreviewState.maxHealth : player.getMaxHealth();
+        float absorption = HudPreviewState.active ? HudPreviewState.absorption : player.getAbsorptionAmount();
 
         // 确定生命值颜色
         int healthColor = ColorHelper.parseColor(colors.healthNormal);

@@ -21,7 +21,7 @@ public class ArmorLevelOverlay extends SimpleBarOverlay {
         Player player = mc.player;
         if (player == null) return;
 
-        int armor = player.getArmorValue();
+        int armor = HudPreviewState.active ? HudPreviewState.armor : player.getArmorValue();
         if (armor <= 0) return;
 
         int toughness = (int) player.getAttributeValue(Attributes.ARMOR_TOUGHNESS);

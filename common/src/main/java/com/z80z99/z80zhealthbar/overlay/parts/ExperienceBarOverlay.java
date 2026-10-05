@@ -17,8 +17,8 @@ public class ExperienceBarOverlay extends SimpleBarOverlay {
         Player player = mc.player;
         if (player == null) return;
 
-        int expLevel = player.experienceLevel;
-        float expProgress = player.experienceProgress;
+        int expLevel = HudPreviewState.active ? HudPreviewState.xpLevel : player.experienceLevel;
+        float expProgress = HudPreviewState.active ? HudPreviewState.xpProgress : player.experienceProgress;
 
         int fillColor = ColorHelper.parseColor(colors.experience);
         int boundColor = ColorHelper.parseColor(colors.experienceBound);

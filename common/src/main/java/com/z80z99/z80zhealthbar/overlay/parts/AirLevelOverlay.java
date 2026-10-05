@@ -19,10 +19,12 @@ public class AirLevelOverlay extends SimpleBarOverlay {
         var colors = ConfigManager.getConfig().colors;
         Minecraft mc = Minecraft.getInstance();
         Player player = mc.player;
-        if (player == null || !player.isUnderWater()) return;
+        if (player == null) return;
+        boolean preview = HudPreviewState.active;
+        if (!preview && !player.isUnderWater()) return;
 
-        int air = player.getAirSupply();
-        int maxAir = player.getMaxAirSupply();
+        int air = preview ? HudPreviewState.air : player.getAirSupply();
+        int maxAir = preview ? HudPreviewState.maxAir : player.getMaxAirSupply();
         if (air >= maxAir) return;
 
         int fillColor = ColorHelper.parseColor(colors.air);

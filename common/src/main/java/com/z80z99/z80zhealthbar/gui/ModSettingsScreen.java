@@ -1091,9 +1091,16 @@ public final class ModSettingsScreen extends Screen {
         pose.pushPose();
         pose.translate(bx + (bw - virtW * s) / 2f, by + (bh - virtH * s) / 2f, 0);
         pose.scale(s, s, 1);
-        // 与真实管线同帧序：reset + 清文本 → MainOverlay（各条 + 文本层）
-        HudRenderer.onPreRender(mc.gui);
-        HudRenderer.MAIN.renderOverlay(new RenderGui(mc.gui), g, partialTick, virtW, virtH);
+        // 与真实管线同帧序：reset + 清文本 → MainOverlay（各条 + 文本层）；
+        // 预览期间用模拟战斗数据（掉血→低血闪烁/抖动→回血,饥饿下降,氧气下潜,经验循环）驱动动态演示
+        com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.update(System.currentTimeMillis());
+        com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = true;
+        try {
+            HudRenderer.onPreRender(mc.gui);
+            HudRenderer.MAIN.renderOverlay(new RenderGui(mc.gui), g, partialTick, virtW, virtH);
+        } finally {
+            com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = false;
+        }
         pose.popPose();
         g.disableScissor();
     }
