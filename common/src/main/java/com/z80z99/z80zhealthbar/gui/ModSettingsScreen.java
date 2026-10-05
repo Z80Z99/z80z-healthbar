@@ -1070,9 +1070,9 @@ public final class ModSettingsScreen extends Screen {
     }
 
     /**
-     * 玩家 HUD 实时预览：虚拟屏幕内跑真实渲染管线（按 hudStyle 分发——CUSTOM 走 CustomHudRenderer,
-     * 长条走 MainOverlay 编排全部条 + 文本层），预览期间用模拟战斗数据驱动动态演示，
-     * 整体等比缩放进预览框——所见即游戏内相对布局与动态。
+     * 玩家 HUD 实时预览（按 hudStyle 分发,预览期间用模拟战斗数据驱动动态演示）：
+     * CUSTOM —— 按真实屏幕尺寸求解布局（拖拽偏移逐像素与游戏一致）,取景对准全部组件的包围盒并缩放进面板;
+     * 长条 —— 虚拟屏幕跑 MainOverlay 管线（布局全相对,所见即相对排列）;原版 —— 提示。
      */
     private void drawHudPreview(GuiGraphics g, int bx, int by, int bw, int bh, float partialTick) {
         var cfg = cfg();
@@ -1083,32 +1083,58 @@ public final class ModSettingsScreen extends Screen {
         }
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
-        // 虚拟屏幕：宽 = 条长×2 + 图标余量（长条布局 1/2 同时放置居中条与右侧护甲/坐骑条;
-        // 自定义组件条宽上限 400 + 分离文本/图标余量）,高容纳 6 条堆叠；等比缩放进预览框
-        int virtW = Math.max(cfg.overlay.cornerBarLength * 2 + 150, 460);
-        int virtH = 180;
-        float s = Math.min(bw / (float) virtW, bh / (float) virtH);
+        HudStyle st = HudRenderer.hudStyleParsed();
+        if (st == HudStyle.VANILLA) {
+            g.drawCenteredString(font, Component.translatable(
+                    "z80zhealthbar.settings.preview.hudVanilla").getString(),
+                    bx + bw / 2, by + bh / 2 - 4, 0xFF909090);
+            return;
+        }
+
         g.enableScissor(bx, by, bx + bw, by + bh);
         var pose = g.pose();
         pose.pushPose();
-        pose.translate(bx + (bw - virtW * s) / 2f, by + (bh - virtH * s) / 2f, 0);
-        pose.scale(s, s, 1);
-        // 与真实管线同帧序：reset + 清文本 → MainOverlay（各条 + 文本层）；
-        // 预览期间用模拟战斗数据（掉血→低血闪烁/抖动→回血,饥饿下降,氧气下潜,经验循环,回血段吸收）驱动动态演示。
-        // 按当前 HUD 样式分发到同一渲染管线——此前硬编码长条管线,用户样式为自定义时预览与实机完全不符。
         com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.update(System.currentTimeMillis());
         com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = true;
         try {
-            HudStyle st = HudRenderer.hudStyleParsed();
             if (st == HudStyle.CUSTOM) {
-                com.z80z99.z80zhealthbar.overlay.CustomHudRenderer.render(g, partialTick, virtW, virtH);
-            } else if (st == HudStyle.ASTEORBAR) {
+                // 真实屏幕尺寸求解（自定义偏移按真实屏调校,虚拟小屏会让偏移全部错位——"排列奇怪"的根源）,
+                // 取景框对准全部组件包围盒（含 8px 边距）,等比缩放进预览面板
+                int realW = mc.getWindow().getGuiScaledWidth();
+                int realH = mc.getWindow().getGuiScaledHeight();
+                var layout = ConfigManager.getConfig().hudLayout;
+                var sizes = com.z80z99.z80zhealthbar.overlay.CustomHudRenderer.measureAll(layout, mc.player);
+                var boxes = com.z80z99.z80zhealthbar.layout.HudLayoutSolver.solve(layout, sizes, realW, realH);
+                int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE;
+                int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
+                for (var b : boxes.values()) {
+                    minX = Math.min(minX, b.x());
+                    minY = Math.min(minY, b.y());
+                    maxX = Math.max(maxX, b.x() + b.width());
+                    maxY = Math.max(maxY, b.y() + b.height());
+                }
+                if (minX > maxX) { // 全部组件关闭：取景底部居中带（无内容）
+                    minX = realW / 2 - 60; maxX = realW / 2 + 60;
+                    minY = realH - 50; maxY = realH - 10;
+                }
+                int pad = 8;
+                minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+                int cropW = Math.max(40, maxX - minX);
+                int cropH = Math.max(30, maxY - minY);
+                float zs = Math.min(bw / (float) cropW, bh / (float) cropH);
+                pose.translate(bx + (bw - cropW * zs) / 2f, by + (bh - cropH * zs) / 2f, 0);
+                pose.scale(zs, zs, 1);
+                pose.translate(-minX, -minY, 0);
+                com.z80z99.z80zhealthbar.overlay.CustomHudRenderer.render(g, partialTick, realW, realH);
+            } else {
+                // 长条：虚拟屏幕（宽 = 条长×2 + 图标余量,容纳布局 1/2 的居中条与右侧条;高容纳 6 条堆叠）
+                int virtW = Math.max(cfg.overlay.cornerBarLength * 2 + 150, 340);
+                int virtH = 180;
+                float s = Math.min(bw / (float) virtW, bh / (float) virtH);
+                pose.translate(bx + (bw - virtW * s) / 2f, by + (bh - virtH * s) / 2f, 0);
+                pose.scale(s, s, 1);
                 HudRenderer.onPreRender(mc.gui);
                 HudRenderer.MAIN.renderOverlay(new RenderGui(mc.gui), g, partialTick, virtW, virtH);
-            } else {
-                g.drawCenteredString(font, Component.translatable(
-                        "z80zhealthbar.settings.preview.hudVanilla").getString(),
-                        bx + bw / 2, by + bh / 2 - 4, 0xFF909090);
             }
         } finally {
             com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = false;
