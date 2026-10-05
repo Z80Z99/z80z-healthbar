@@ -203,9 +203,25 @@ public final class CustomHudRenderer {
 
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
-        // 填充按内宽（w-4,左右各留 2px 边距）计算:按整条宽算满值时会越过卡片右边界 2px
+        // 动态效果（与长条管线同源 BarFx）：填充平滑（90ms 无延迟）+ 伤害残影（区域+420ms 渐隐）。
+        // 此前自定义生命组件两样都没有——用户 HUD 为自定义样式时残影完全不可见。
+        var dxFxCfg = ConfigManager.getConfig().dynamicFx;
+        float rawRatio = Mth.clamp(health / max, 0f, 1f);
+        var fxSt = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(p.getId(), rawRatio,
+                p.hurtTime > 0, System.currentTimeMillis());
+        float dispR = dxFxCfg.enabled && dxFxCfg.smooth ? Mth.clamp(fxSt.display(), 0f, 1f) : rawRatio;
         int innerW = HudBarPainter.innerWidth(w);
-        int healthW = Math.round(Mth.clamp(health / max, 0, 1) * innerW);
+        int healthW = Math.round(dispR * innerW);
+        // 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）
+        if (dxFxCfg.enabled && dxFxCfg.ghost) {
+            float ghostA = Mth.clamp(fxSt.ghostAlpha(), 0f, 1f);
+            int preHitW = Math.min(innerW, Math.round(Mth.clamp(fxSt.preHit(), 0f, 1f) * innerW));
+            if (preHitW > healthW && ghostA > 0f) {
+                HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, preHitW,
+                        ColorHelper.modifyAlpha(ColorHelper.parseColor(dxFxCfg.ghostColor),
+                                (int) (ghostA * 255)));
+            }
+        }
         HudBarPainter.drawFillWidth(g, 0, 0, w, h, healthW, color);
         if (absorption > 0) {
             int absW = Math.round(Mth.clamp(absorption / max, 0, 1) * Math.max(0, innerW - healthW));
