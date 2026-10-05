@@ -65,26 +65,26 @@ public final class BarFx {
         fx.lastSeen = now;
 
         fx.display += (target - fx.display) * (1f - (float) Math.exp(-dt / SMOOTH_MS));
-        if (target > fx.ghost) {
-            fx.ghost = target; // 治疗：残影立即跟上
-            fx.hitAt = -1;     // 衰减轮结束
-        } else if (target < fx.ghostTarget - 1e-4f || fx.hitAt < 0) {
-            // 新一轮掉血：残影固定时长衰减（ghostAtHit → target,GHOST_MS 走完硬收敛,
-            // 余弦缓动前快后慢）——原指数衰减的低温渐近尾巴会在条上挂 2 秒余的低对比长尾
-            fx.ghostAtHit = Math.max(fx.ghost, target);
-            fx.ghostTarget = target;
-            fx.hitAt = now;
-        }
-        if (fx.hitAt >= 0) {
+        // 残影语义:残影段 = [display, ghost]（当前显示填充 → 掉血前血量）。
+        // 治疗/血量上升:升高的部分不是损失,残影贴住 display(不画);
+        // 掉血:开一轮固定时长衰减(ghostAtHit → target,GHOST_MS 二次缓出,硬收敛不留渐近尾);
+        // 衰减轮中再次掉血则重开一轮(起点取当前残影量)。
+        if (target > fx.display + 1e-4f) {
+            fx.ghost = fx.display;
+            fx.hitAt = -1;
+        } else if (fx.hitAt >= 0 && target >= fx.ghostTarget - 1e-4f) {
             float p = Math.min(1f, (now - fx.hitAt) / GHOST_MS);
-            // 前 70% 快速收缩 + 末段减速的混合曲线：既不瞬消也不拖尾
             fx.ghost = fx.ghostTarget + (fx.ghostAtHit - fx.ghostTarget) * (1f - p * (2f - p));
             if (p >= 1f) {
                 fx.ghost = fx.ghostTarget;
                 fx.hitAt = -1;
             }
         } else {
-            fx.ghost = target; // 无进行中的衰减轮：残影贴住当前血量
+            fx.ghostAtHit = Math.max(fx.ghost, target);
+            fx.ghostTarget = target;
+            boolean hasLoss = fx.ghostAtHit - fx.ghostTarget > 1e-4f;
+            fx.hitAt = hasLoss ? now : -1;
+            fx.ghost = hasLoss ? fx.ghostAtHit : target;
         }
         if (hurt) fx.flash = 1f;
         else fx.flash = Math.max(0f, fx.flash - dt / FLASH_MS);
