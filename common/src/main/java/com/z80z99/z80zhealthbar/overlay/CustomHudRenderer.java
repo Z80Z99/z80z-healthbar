@@ -232,7 +232,10 @@ public final class CustomHudRenderer {
             drawIcon(g, iconX(c, w), 0, h, healthIconU(p), 0);
         }
         if (c.showText && c.textAnchorParsed() == null) {
-            drawText(g, mc.font, fmt(health) + "/" + fmt(max), w, h, c);
+            // 数字滚动（与实体血条同语义,dynamicFx.numRoll）：数字跟随平滑填充一起滚,
+            // 否则掉血瞬间数字即时跳变而条还在缓动——两者不一致（用户实测）
+            float shownHealth = dxFxCfg.enabled && dxFxCfg.numRoll ? dispR * max : health;
+            drawText(g, mc.font, fmt(shownHealth) + "/" + fmt(max), w, h, c);
         }
     }
 

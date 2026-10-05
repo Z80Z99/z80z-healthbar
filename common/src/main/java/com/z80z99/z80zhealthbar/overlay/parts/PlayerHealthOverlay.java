@@ -148,8 +148,10 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
 
         // 生命值文本（条右外侧；RIGHT 布局改画在条左外并右对齐，避免超出屏幕）
         if (cfg.displayHealthText) {
+            // 数字滚动（与实体血条同语义,dynamicFx.numRoll）：数字跟随平滑填充一起滚,
+            // 否则掉血瞬间数字即时跳变而条还在缓动——两者不一致（用户实测）
             // 整数不显示小数（20 而非 20.0）；非整保留一位
-            String text = trimNum(health);
+            String text = trimNum((float) (dxCfg.enabled && dxCfg.numRoll ? displayHealth : health));
             if (absorption > 0) text += " + " + trimNum(absorption);
             int textY = top + barH / 2 - 4;
             if (rightSide) {
