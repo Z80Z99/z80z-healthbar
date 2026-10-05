@@ -211,12 +211,16 @@ public final class CustomHudRenderer {
                 com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.fxKey(p.getId()), rawRatio,
                 p.hurtTime > 0, System.currentTimeMillis());
         float dispR = dxFxCfg.enabled && dxFxCfg.smooth ? Mth.clamp(fxSt.display(), 0f, 1f) : rawRatio;
+        // 吸收容量扩展：显示吸收段时条容量 = max(max, hp+abs)——满血吃金苹果吸收段仍可见
+        //（此前按"剩余空白×吸收/max"缩放,满血时剩余为 0 吸收段归零不可见,且长度随血量下降缩短语义不准）
+        float total = Math.max(max, health + absorption);
+        float compress = absorption > 0 ? max / total : 1f; // BarFx 比例(相对max)→条比例折算
         int innerW = HudBarPainter.innerWidth(w);
-        int healthW = Math.round(dispR * innerW);
+        int healthW = Math.round(dispR * compress * innerW);
         // 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）
         if (dxFxCfg.enabled && dxFxCfg.ghost) {
             float ghostA = Mth.clamp(fxSt.ghostAlpha(), 0f, 1f);
-            int preHitW = Math.min(innerW, Math.round(Mth.clamp(fxSt.preHit(), 0f, 1f) * innerW));
+            int preHitW = Math.min(innerW, Math.round(Mth.clamp(fxSt.preHit(), 0f, 1f) * compress * innerW));
             if (preHitW > healthW && ghostA > 0f) {
                 HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, preHitW,
                         ColorHelper.modifyAlpha(ColorHelper.parseColor(dxFxCfg.ghostColor),
@@ -225,7 +229,7 @@ public final class CustomHudRenderer {
         }
         HudBarPainter.drawFillWidth(g, 0, 0, w, h, healthW, color);
         if (absorption > 0) {
-            int absW = Math.round(Mth.clamp(absorption / max, 0, 1) * Math.max(0, innerW - healthW));
+            int absW = Math.round(Mth.clamp(absorption / total, 0, 1) * innerW);
             HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, healthW + absW,
                     ColorHelper.parseColor(colors.absorption));
         }

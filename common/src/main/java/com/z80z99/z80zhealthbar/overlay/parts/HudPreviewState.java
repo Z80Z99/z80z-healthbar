@@ -42,13 +42,19 @@ public final class HudPreviewState {
             hp = Math.max(3f, hp - dmg);
             foodV = Math.max(4, foodV - 3);
         }
+        // 回血阶段吃金苹果：生命 3→20 平滑回升并保持 4 点吸收——同时演示部分血量时
+        // 吸收段附加在填充后、以及满血时吸收段的容量扩展显示;5800 后金苹果过期吸收归零
+        if (t >= 4600 && t < 5800) {
+            hp = 3f + (t - 4600) / 1200f * 17f;
+            absorption = 4;
+        } else {
+            absorption = 0;
+        }
         health = hp;
         food = foodV;
         armor = 6;
         air = t >= 4200 ? (int) (300 - Math.min(240, (t - 4200) / 1800f * 240)) : 300;
         xpLevel = 7;
         xpProgress = t / (float) CYCLE;
-        // 回血阶段吃金苹果：演示吸收段（金色附加在生命填充之后）与吸收金心图标
-        absorption = (t >= 4600 && t < 5800) ? 4 : 0;
     }
 }

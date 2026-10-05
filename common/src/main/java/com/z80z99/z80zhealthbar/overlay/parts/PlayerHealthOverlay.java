@@ -118,15 +118,19 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         if (cfg.absorptionMode == ABSORPTION_TOGETHER && absorption > 0) {
             // Wave 12 修复：原先只画吸收段导致金苹果后血条被"清空并覆盖"。
             // 正确行为：生命值填充 + 吸收段附加在生命段之后（类似原版金心附加在血心后）
+            // 容量扩展：显示吸收段时条容量 = max(max, hp+abs)——满血吃金苹果时吸收段
+            // 仍然可见（此前终点被钳在内宽,满血时吸收段宽度归零完全不可见）
+            double total = Math.max(params.maxValue, health + absorption);
+            float compress = (float) (params.maxValue / total); // BarFx 比例(相对max)→条比例折算
             int innerW = HudBarPainter.innerWidth(barWidth);
-            int healthW = (int) Math.max(0, Math.min(innerW, params.value / params.maxValue * innerW));
-            int absWidth = (int) Math.max(0, absorption / params.maxValue * innerW);
+            int healthW = (int) Math.max(0, Math.min(innerW, params.value / total * innerW));
+            int absWidth = (int) Math.max(0, absorption / total * innerW);
             drawBarCard(graphics, left, top, barWidth, barH);
             // 伤害残影（与样式3同源）：掉血后在 [当前填充, 掉血前血量] 区域画渐隐白
-            drawGhostSegment(graphics, left, top, barWidth, barH, healthW, fxSt, 0);
+            drawGhostSegment(graphics, left, top, barWidth, barH, healthW, fxSt, 0, compress);
             // 生命值填充
             HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, healthW, healthColor);
-            // 吸收段附加在生命段之后（clamp 到内宽）
+            // 吸收段附加在生命段之后（clamp 到内宽兜底）
             HudBarPainter.drawSegment(graphics, left, top, barWidth, barH,
                     healthW, Math.min(innerW, healthW + absWidth), absorptionColor);
             if (blinkBorder) {
@@ -136,7 +140,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             params.blink = blinkBorder;
             drawGhostSegment(graphics, left, top, barWidth, barH,
                     (int) (params.value / params.maxValue * HudBarPainter.innerWidth(barWidth)),
-                    fxSt, params.verticalShift);
+                    fxSt, params.verticalShift, 1f);
             renderBar(graphics, left, top, barWidth, barH, params);
         }
 
@@ -171,16 +175,18 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         return String.valueOf(r);
     }
 
-    /** 伤害残影段（与样式3同源 BarFx 动画）：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）；内宽几何 */
+    /** 伤害残影段（与样式3同源 BarFx 动画）：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）；内宽几何。
+     * ratioScale：BarFx 比例（相对 max）到条比例的折算系数——吸收段容量扩展时 &lt;1，保证残影边界与填充贴合 */
     private void drawGhostSegment(GuiGraphics graphics, int left, int top, int barWidth, int barH,
-                                  int fillW, com.z80z99.z80zhealthbar.mobdisplay.BarFx.State st, int vShift) {
+                                  int fillW, com.z80z99.z80zhealthbar.mobdisplay.BarFx.State st, int vShift,
+                                  float ratioScale) {
         var dxCfg = ConfigManager.getConfig().dynamicFx;
         if (!dxCfg.enabled || !dxCfg.ghost) return;
         float ghostA = Math.max(0f, Math.min(1f, st.ghostAlpha()));
         if (ghostA <= 0f) return;
         float preHit = Math.max(0f, Math.min(1f, st.preHit()));
         int innerW = HudBarPainter.innerWidth(barWidth);
-        int preHitW = Math.min(innerW, Math.round(preHit * innerW));
+        int preHitW = Math.min(innerW, Math.round(preHit * ratioScale * innerW));
         if (preHitW <= fillW) return;
         int color = ColorHelper.modifyAlpha(ColorHelper.parseColor(dxCfg.ghostColor),
                 (int) (ghostA * 255));
