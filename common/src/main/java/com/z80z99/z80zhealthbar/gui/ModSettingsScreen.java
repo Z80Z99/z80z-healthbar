@@ -1070,8 +1070,9 @@ public final class ModSettingsScreen extends Screen {
     }
 
     /**
-     * 玩家 HUD 实时预览：虚拟屏幕内跑真实渲染管线（MainOverlay 编排全部条 + 文本层，
-     * 用当前玩家数据与配置），整体等比缩放进预览框——所见即游戏内相对大小。
+     * 玩家 HUD 实时预览：虚拟屏幕内跑真实渲染管线（按 hudStyle 分发——CUSTOM 走 CustomHudRenderer,
+     * 长条走 MainOverlay 编排全部条 + 文本层），预览期间用模拟战斗数据驱动动态演示，
+     * 整体等比缩放进预览框——所见即游戏内相对布局与动态。
      */
     private void drawHudPreview(GuiGraphics g, int bx, int by, int bw, int bh, float partialTick) {
         var cfg = cfg();
@@ -1082,9 +1083,9 @@ public final class ModSettingsScreen extends Screen {
         }
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
-        // 虚拟屏幕：宽 = 条长×2 + 图标余量（布局样式 1/2 会同时放置居中条与右侧护甲/坐骑条）,
-        // 高容纳 6 条堆叠；等比缩放进预览框
-        int virtW = Math.max(cfg.overlay.cornerBarLength * 2 + 150, 340);
+        // 虚拟屏幕：宽 = 条长×2 + 图标余量（长条布局 1/2 同时放置居中条与右侧护甲/坐骑条;
+        // 自定义组件条宽上限 400 + 分离文本/图标余量）,高容纳 6 条堆叠；等比缩放进预览框
+        int virtW = Math.max(cfg.overlay.cornerBarLength * 2 + 150, 460);
         int virtH = 180;
         float s = Math.min(bw / (float) virtW, bh / (float) virtH);
         g.enableScissor(bx, by, bx + bw, by + bh);
@@ -1093,12 +1094,22 @@ public final class ModSettingsScreen extends Screen {
         pose.translate(bx + (bw - virtW * s) / 2f, by + (bh - virtH * s) / 2f, 0);
         pose.scale(s, s, 1);
         // 与真实管线同帧序：reset + 清文本 → MainOverlay（各条 + 文本层）；
-        // 预览期间用模拟战斗数据（掉血→低血闪烁/抖动→回血,饥饿下降,氧气下潜,经验循环）驱动动态演示
+        // 预览期间用模拟战斗数据（掉血→低血闪烁/抖动→回血,饥饿下降,氧气下潜,经验循环,回血段吸收）驱动动态演示。
+        // 按当前 HUD 样式分发到同一渲染管线——此前硬编码长条管线,用户样式为自定义时预览与实机完全不符。
         com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.update(System.currentTimeMillis());
         com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = true;
         try {
-            HudRenderer.onPreRender(mc.gui);
-            HudRenderer.MAIN.renderOverlay(new RenderGui(mc.gui), g, partialTick, virtW, virtH);
+            HudStyle st = HudRenderer.hudStyleParsed();
+            if (st == HudStyle.CUSTOM) {
+                com.z80z99.z80zhealthbar.overlay.CustomHudRenderer.render(g, partialTick, virtW, virtH);
+            } else if (st == HudStyle.ASTEORBAR) {
+                HudRenderer.onPreRender(mc.gui);
+                HudRenderer.MAIN.renderOverlay(new RenderGui(mc.gui), g, partialTick, virtW, virtH);
+            } else {
+                g.drawCenteredString(font, Component.translatable(
+                        "z80zhealthbar.settings.preview.hudVanilla").getString(),
+                        bx + bw / 2, by + bh / 2 - 4, 0xFF909090);
+            }
         } finally {
             com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = false;
         }

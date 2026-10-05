@@ -371,6 +371,7 @@
   "z80zhealthbar.settings.preview.title": "实时预览",
   "z80zhealthbar.settings.preview.fullscreen": "全屏预览",
   "z80zhealthbar.settings.preview.hudOff": "玩家 HUD 总开关已关闭",
+  "z80zhealthbar.settings.preview.hudVanilla": "HUD 样式为原版，由游戏本体绘制",
   "z80zhealthbar.settings.preview.pause": "暂停预览",
   "z80zhealthbar.settings.preview.resume": "继续预览",
   "z80zhealthbar.settings.preview.enemy": "敌方单位",

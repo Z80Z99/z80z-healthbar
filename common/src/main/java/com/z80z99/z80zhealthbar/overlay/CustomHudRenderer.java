@@ -41,12 +41,17 @@ public final class CustomHudRenderer {
 
     public static void render(GuiGraphics graphics, float partialTick) {
         Minecraft mc = Minecraft.getInstance();
+        render(graphics, partialTick,
+                mc.getWindow().getGuiScaledWidth(), mc.getWindow().getGuiScaledHeight());
+    }
+
+    /** 指定屏幕尺寸渲染：设置页 HUD 预览用虚拟屏幕调用（所见即布局在真实屏幕的相对位置）；游戏内/编辑器走真实尺寸 */
+    public static void render(GuiGraphics graphics, float partialTick, int screenW, int screenH) {
+        Minecraft mc = Minecraft.getInstance();
         Player player = mc.player;
         if (player == null) return;
 
         HudLayoutConfig layout = ConfigManager.getConfig().hudLayout;
-        int screenW = mc.getWindow().getGuiScaledWidth();
-        int screenH = mc.getWindow().getGuiScaledHeight();
 
         Map<String, int[]> sizes = measureAll(layout, player);
         Map<String, HudLayoutSolver.Box> boxes = HudLayoutSolver.solve(layout, sizes, screenW, screenH);
@@ -116,25 +121,28 @@ public final class CustomHudRenderer {
     /** 组件对应当前数值文本（null = 当前不显示）；分离文本元素与条内文本共用同一来源 */
     public static String valueText(String key, Player p) {
         var cfg = ConfigManager.getConfig();
+        boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
         return switch (key) {
-            case HudLayoutConfig.HEALTH -> fmt(p.getHealth()) + "/" + fmt(Math.max(1, p.getMaxHealth()));
+            case HudLayoutConfig.HEALTH -> fmt(pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.health : p.getHealth())
+                    + "/" + fmt(Math.max(1, pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxHealth : p.getMaxHealth()));
             case HudLayoutConfig.FOOD -> {
                 int max = cfg.overlay.fullFoodLevelValue;
                 if (max <= 0) max = 20;
-                yield p.getFoodData().getFoodLevel() + "/" + max;
+                yield (pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.food : p.getFoodData().getFoodLevel()) + "/" + max;
             }
             case HudLayoutConfig.AIR -> {
-                int air = p.getAirSupply(), maxAir = Math.max(1, p.getMaxAirSupply());
+                int air = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.air : p.getAirSupply();
+                int maxAir = Math.max(1, pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxAir : p.getMaxAirSupply());
                 yield air >= maxAir ? null : String.valueOf(air);
             }
             case HudLayoutConfig.EXPERIENCE -> {
-                if (p.isPassenger()) yield null;
-                float progress = p.experienceProgress;
-                int level = p.experienceLevel;
+                if (!pv && p.isPassenger()) yield null;
+                float progress = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.xpProgress : p.experienceProgress;
+                int level = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.xpLevel : p.experienceLevel;
                 yield level > 0 ? ("Lv." + level) : String.valueOf(Math.round(progress * 100)) + "%";
             }
             case HudLayoutConfig.ARMOR -> {
-                int armor = p.getArmorValue();
+                int armor = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.armor : p.getArmorValue();
                 int max = cfg.overlay.fullArmorValue;
                 if (max <= 0) max = 20;
                 yield armor > 0 ? armor + "/" + max : null;
@@ -162,9 +170,10 @@ public final class CustomHudRenderer {
 
     private static void renderHealth(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
         var colors = ConfigManager.getConfig().colors;
-        float health = p.getHealth();
-        float max = Math.max(1, p.getMaxHealth());
-        float absorption = p.getAbsorptionAmount();
+        boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
+        float health = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.health : p.getHealth();
+        float max = Math.max(1, pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxHealth : p.getMaxHealth());
+        float absorption = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.absorption : p.getAbsorptionAmount();
 
         int color = ColorHelper.parseColor(colors.healthNormal);
         if (p.hasEffect(MobEffects.POISON)) color = ColorHelper.parseColor(colors.healthPoison);
@@ -221,7 +230,8 @@ public final class CustomHudRenderer {
 
     private static void renderFood(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
         var colors = ConfigManager.getConfig().colors;
-        int food = p.getFoodData().getFoodLevel();
+        boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
+        int food = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.food : p.getFoodData().getFoodLevel();
         int max = ConfigManager.getConfig().overlay.fullFoodLevelValue;
         if (max <= 0) max = 20; // 0 = 跟随原版上限
 
@@ -250,8 +260,9 @@ public final class CustomHudRenderer {
 
     private static void renderAir(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
         var colors = ConfigManager.getConfig().colors;
-        int air = p.getAirSupply();
-        int maxAir = Math.max(1, p.getMaxAirSupply());
+        boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
+        int air = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.air : p.getAirSupply();
+        int maxAir = Math.max(1, pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxAir : p.getMaxAirSupply());
         if (air >= maxAir) return; // 仅水下显示
 
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
@@ -274,9 +285,10 @@ public final class CustomHudRenderer {
 
     private static void renderExperience(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
         var colors = ConfigManager.getConfig().colors;
-        if (p.isPassenger()) return;
-        float progress = p.experienceProgress;
-        int level = p.experienceLevel;
+        boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
+        if (!pv && p.isPassenger()) return;
+        float progress = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.xpProgress : p.experienceProgress;
+        int level = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.xpLevel : p.experienceLevel;
 
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
@@ -290,7 +302,8 @@ public final class CustomHudRenderer {
 
     private static void renderArmor(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
         var colors = ConfigManager.getConfig().colors;
-        int armor = p.getArmorValue();
+        boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
+        int armor = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.armor : p.getArmorValue();
         if (armor <= 0) return;
 
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
