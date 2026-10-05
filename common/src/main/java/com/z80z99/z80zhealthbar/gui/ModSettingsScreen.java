@@ -376,7 +376,7 @@ public final class ModSettingsScreen extends Screen {
             previewFullscreenBtn = null;
             previewPauseBtn = null;
         if (previewActive) {
-            previewW = Math.min(220, width * 2 / 5);
+            previewW = Math.min(260, width * 2 / 5);
             int gap = 4; // 两栏面板外缘之间的呼吸缝
             // 设置栏与预览栏相邻成组、整组水平居中——此前设置栏在预览左侧的剩余宽度内
             // 居中，窗口越宽两栏之间的空档越大（用户反馈"预览应贴着设置栏"）
@@ -411,7 +411,7 @@ public final class ModSettingsScreen extends Screen {
                     .build();
             previewFullscreenBtn = Button.builder(
                             Component.translatable("z80zhealthbar.settings.preview.fullscreen"),
-                            b -> minecraft.setScreen(new FullscreenPreviewScreen(this)))
+                            b -> minecraft.setScreen(new FullscreenPreviewScreen(this, page == Page.HUD)))
                     .bounds(previewX + 6 + halfW + 4, previewY + 40, halfW, 18)
                     .build();
         } else {
@@ -1143,24 +1143,28 @@ public final class ModSettingsScreen extends Screen {
         g.disableScissor();
     }
 
-    /** 全屏预览界面：整窗复用同一 mock 战斗循环（drawMockBar），完整查看血条/跳字/实体样式效果 */
+    /** 全屏预览界面：HUD 页 = 1:1 全屏渲染真实 HUD（模拟战斗驱动）;其余页 = 整窗实体 mock 预览 */
     private class FullscreenPreviewScreen extends Screen {
         private final Screen backTo;
+        private final boolean hudMode;
 
-        FullscreenPreviewScreen(Screen backTo) {
+        FullscreenPreviewScreen(Screen backTo, boolean hudMode) {
             super(Component.translatable("z80zhealthbar.settings.preview.title"));
             this.backTo = backTo;
+            this.hudMode = hudMode;
         }
 
         @Override
         protected void init() {
-            // 敌方/友方切换（与设置页共用 previewFriendly 状态）
-            addRenderableWidget(CycleButton.<Boolean>builder(v -> Component.translatable(
-                            v ? "z80zhealthbar.settings.preview.friendly" : "z80zhealthbar.settings.preview.enemy"))
-                    .withValues(List.of(false, true))
-                    .withInitialValue(previewFriendly)
-                    .displayOnlyValue()
-                    .create(width / 2 - 100, 22, 200, 18, Component.empty(), (b, v) -> previewFriendly = v));
+            if (!hudMode) {
+                // 敌方/友方切换（与设置页共用 previewFriendly 状态）
+                addRenderableWidget(CycleButton.<Boolean>builder(v -> Component.translatable(
+                                v ? "z80zhealthbar.settings.preview.friendly" : "z80zhealthbar.settings.preview.enemy"))
+                        .withValues(List.of(false, true))
+                        .withInitialValue(previewFriendly)
+                        .displayOnlyValue()
+                        .create(width / 2 - 100, 22, 200, 18, Component.empty(), (b, v) -> previewFriendly = v));
+            }
             addRenderableWidget(Button.builder(CommonComponents.GUI_BACK, b -> onClose())
                     .bounds(width / 2 - 100, height - 26, 200, 20)
                     .build());
@@ -1168,8 +1172,12 @@ public final class ModSettingsScreen extends Screen {
 
         @Override
         public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-            renderBackground(g);
-            drawMockBar(g, width / 2, 0, height - 32); // 整窗即取景框（底部留返回按钮位）
+            if (hudMode) {
+                drawHudPreviewFull(g, partialTick);
+            } else {
+                renderBackground(g);
+                drawMockBar(g, width / 2, 0, height - 32); // 整窗即取景框（底部留返回按钮位）
+            }
             g.drawCenteredString(font, getTitle(), width / 2, 8, 0xFFFFFF);
             super.render(g, mouseX, mouseY, partialTick);
         }
@@ -1177,6 +1185,38 @@ public final class ModSettingsScreen extends Screen {
         @Override
         public void onClose() {
             minecraft.setScreen(backTo);
+        }
+    }
+
+    /** HUD 全屏预览：真实屏幕尺寸跑当前样式的渲染管线（1:1 = 游戏内原样大小）,模拟战斗驱动动态演示 */
+    private void drawHudPreviewFull(GuiGraphics g, float partialTick) {
+        var cfg = cfg();
+        if (!cfg.overlay.enableOverlay) {
+            renderBackground(g);
+            g.drawCenteredString(font, Component.translatable(
+                    "z80zhealthbar.settings.preview.hudOff").getString(), width / 2, height / 2 - 4, 0xFF909090);
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+        renderBackground(g);
+        HudStyle st = HudRenderer.hudStyleParsed();
+        if (st == HudStyle.VANILLA) {
+            g.drawCenteredString(font, Component.translatable(
+                    "z80zhealthbar.settings.preview.hudVanilla").getString(), width / 2, height / 2 - 4, 0xFF909090);
+            return;
+        }
+        com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.update(System.currentTimeMillis());
+        com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = true;
+        try {
+            if (st == HudStyle.CUSTOM) {
+                com.z80z99.z80zhealthbar.overlay.CustomHudRenderer.render(g, partialTick, width, height);
+            } else {
+                HudRenderer.onPreRender(mc.gui);
+                HudRenderer.MAIN.renderOverlay(new RenderGui(mc.gui), g, partialTick, width, height);
+            }
+        } finally {
+            com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = false;
         }
     }
 
