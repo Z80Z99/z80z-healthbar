@@ -81,7 +81,6 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         int barWidth = OverlayManager.length > 0 ? OverlayManager.length : FILL_FULL_WIDTH_LONG;
         int barH = cfg.overlayBarInnerHeight;
         int margin = cfg.overlayBarVerticalMargin;
-
         OverlayPosition pos = getDefinedPosition();
         int left, top;
 
@@ -111,6 +110,9 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             int healthW = (int)(params.value / params.maxValue * barWidth);
             int absWidth = (int)(absorption / params.maxValue * barWidth);
             drawBarCard(graphics, left, top, barWidth, barH);
+            // 伤害残影（与样式3同源）：掉血后原血量位置留下渐隐白段
+            drawGhostSegment(graphics, left, top, barWidth, barH,
+                    (float) (health / params.maxValue), player, 0);
             // 生命值填充
             drawEmptyFill(graphics, left, top, left + healthW, top + barH, healthColor);
             // 顶部高光（渐变感）
@@ -125,6 +127,8 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             }
         } else {
             params.blink = blinkBorder;
+            drawGhostSegment(graphics, left, top, barWidth, barH,
+                    (float) (health / params.maxValue), player, params.verticalShift);
             renderBar(graphics, left, top, barWidth, barH, params);
         }
 
@@ -155,6 +159,22 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         float r = Math.round(v * 10) / 10f;
         if (r == (int) r) return String.valueOf((int) r);
         return String.valueOf(r);
+    }
+
+    /** 伤害残影段（与样式3同源 BarFx 动画）：掉血后在 [当前填充, 掉血前血量] 区间画渐隐白（dynamicFx.ghost 控制） */
+    private void drawGhostSegment(GuiGraphics graphics, int left, int top, int barWidth, int barH,
+                                  float rawRatio, Player player, int vShift) {
+        var dxCfg = ConfigManager.getConfig().dynamicFx;
+        if (!dxCfg.enabled || !dxCfg.ghost) return;
+        float ratio = Math.max(0f, Math.min(1f, rawRatio));
+        var st = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(player.getId(),
+                ratio, player.hurtTime > 0, System.currentTimeMillis());
+        float ghostR = Math.max(st.ghost(), ratio);
+        int fillW = (int) (ratio * barWidth);
+        int ghostW = (int) (Math.max(0f, Math.min(1f, ghostR)) * barWidth);
+        if (ghostW <= fillW) return;
+        int color = ColorHelper.modifyAlpha(ColorHelper.parseColor(dxCfg.ghostColor), 255);
+        graphics.fill(left + fillW, top + vShift, left + ghostW, top + barH + vShift, color);
     }
 
     private void renderBar(GuiGraphics g, int x, int y, int w, int h, Parameters p) {

@@ -1082,8 +1082,9 @@ public final class ModSettingsScreen extends Screen {
         }
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
-        // 虚拟屏幕：宽容纳条长上限 + 状态图标，高容纳 6 条堆叠；等比缩放进预览框
-        int virtW = Math.max(cfg.overlay.cornerBarLength + 90, 280);
+        // 虚拟屏幕：宽 = 条长×2 + 图标余量（布局样式 1/2 会同时放置居中条与右侧护甲/坐骑条）,
+        // 高容纳 6 条堆叠；等比缩放进预览框
+        int virtW = Math.max(cfg.overlay.cornerBarLength * 2 + 150, 340);
         int virtH = 180;
         float s = Math.min(bw / (float) virtW, bh / (float) virtH);
         g.enableScissor(bx, by, bx + bw, by + bh);
