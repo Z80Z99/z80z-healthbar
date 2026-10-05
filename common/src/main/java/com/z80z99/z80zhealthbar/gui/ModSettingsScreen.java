@@ -9,7 +9,9 @@ import com.z80z99.z80zhealthbar.mobdisplay.MobDisplayRenderer;
 import com.z80z99.z80zhealthbar.mobdisplay.MobHealthBarStyle;
 import com.z80z99.z80zhealthbar.status.EntityStatusSnapshot;
 import com.z80z99.z80zhealthbar.util.ColorHelper;
+import com.z80z99.z80zhealthbar.overlay.HudRenderer;
 import com.z80z99.z80zhealthbar.overlay.HudStyle;
+import com.z80z99.z80zhealthbar.overlay.RenderGui;
 import com.z80z99.z80zhealthbar.platform.PlatformService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -1059,7 +1061,40 @@ public final class ModSettingsScreen extends Screen {
         g.renderOutline(bx, by, bw, bh, 0x40FFFFFF);
 
         g.enableScissor(bx, by, bx + bw, by + bh);
-        drawMockBar(g, bx + bw / 2, by, bh);
+        if (page == Page.HUD) {
+            drawHudPreview(g, bx, by, bw, bh, partialTick);
+        } else {
+            drawMockBar(g, bx + bw / 2, by, bh);
+        }
+        g.disableScissor();
+    }
+
+    /**
+     * 玩家 HUD 实时预览：虚拟屏幕内跑真实渲染管线（MainOverlay 编排全部条 + 文本层，
+     * 用当前玩家数据与配置），整体等比缩放进预览框——所见即游戏内相对大小。
+     */
+    private void drawHudPreview(GuiGraphics g, int bx, int by, int bw, int bh, float partialTick) {
+        var cfg = cfg();
+        if (!cfg.overlay.enableOverlay) {
+            g.drawCenteredString(font, Component.translatable(
+                    "z80zhealthbar.settings.preview.hudOff").getString(), bx + bw / 2, by + bh / 2 - 4, 0xFF909090);
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+        // 虚拟屏幕：宽容纳条长上限 + 状态图标，高容纳 6 条堆叠；等比缩放进预览框
+        int virtW = Math.max(cfg.overlay.cornerBarLength + 90, 280);
+        int virtH = 180;
+        float s = Math.min(bw / (float) virtW, bh / (float) virtH);
+        g.enableScissor(bx, by, bx + bw, by + bh);
+        var pose = g.pose();
+        pose.pushPose();
+        pose.translate(bx + (bw - virtW * s) / 2f, by + (bh - virtH * s) / 2f, 0);
+        pose.scale(s, s, 1);
+        // 与真实管线同帧序：reset + 清文本 → MainOverlay（各条 + 文本层）
+        HudRenderer.onPreRender(mc.gui);
+        HudRenderer.MAIN.renderOverlay(new RenderGui(mc.gui), g, partialTick, virtW, virtH);
+        pose.popPose();
         g.disableScissor();
     }
 
