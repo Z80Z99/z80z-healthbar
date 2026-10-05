@@ -11,6 +11,9 @@ $errLog  = Join-Path $build 'debug-last-run.err.log'
 $stop    = Join-Path $build 'debug-stop'
 if (-not (Test-Path $build)) { New-Item -ItemType Directory -Path $build | Out-Null }
 if (Test-Path $stop) { Remove-Item $stop -Force }
+# 配套看护：自动最大化每个新客户端窗口（独立进程,重复启动无害——同窗口重复最大化幂等）
+Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass',
+    '-File', (Join-Path $PSScriptRoot 'dev-maximize-watcher.ps1')
 
 $run = 0
 $fails = 0
