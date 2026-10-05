@@ -207,7 +207,8 @@ public final class CustomHudRenderer {
         // 此前自定义生命组件两样都没有——用户 HUD 为自定义样式时残影完全不可见。
         var dxFxCfg = ConfigManager.getConfig().dynamicFx;
         float rawRatio = Mth.clamp(health / max, 0f, 1f);
-        var fxSt = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(p.getId(), rawRatio,
+        var fxSt = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
+                com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.fxKey(p.getId()), rawRatio,
                 p.hurtTime > 0, System.currentTimeMillis());
         float dispR = dxFxCfg.enabled && dxFxCfg.smooth ? Mth.clamp(fxSt.display(), 0f, 1f) : rawRatio;
         int innerW = HudBarPainter.innerWidth(w);

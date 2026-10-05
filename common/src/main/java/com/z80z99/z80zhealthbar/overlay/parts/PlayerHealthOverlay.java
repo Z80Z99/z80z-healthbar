@@ -61,7 +61,8 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         double maxValue = cfg.fullHealthValue > 0 ? cfg.fullHealthValue : maxHealth;
         float rawRatio = (float) Math.max(0d, Math.min(1d, health / maxValue));
         var dxCfg = ConfigManager.getConfig().dynamicFx;
-        var fxSt = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(player.getId(),
+        var fxSt = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
+                HudPreviewState.fxKey(player.getId()),
                 rawRatio, player.hurtTime > 0, System.currentTimeMillis());
         float dispR = dxCfg.enabled && dxCfg.smooth ? fxSt.display() : rawRatio;
         dispR = Math.max(0f, Math.min(1f, dispR));

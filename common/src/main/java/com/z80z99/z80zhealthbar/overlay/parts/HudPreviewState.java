@@ -15,6 +15,16 @@ public final class HudPreviewState {
     public static int xpLevel = 7;
     public static float xpProgress;
 
+    /** 预览专用的 BarFx 状态键：设置界面打开时真实 HUD 仍在底层渲染（真实血量）并与预览
+     *  共用同一玩家 ID 的动画状态——两个目标每帧互相拉扯,平滑值卡在中间"掉不下去"。
+     *  预览期间改用此独立键,与真实 HUD 的动画状态彻底隔离。 */
+    private static final int PREVIEW_FX_KEY = -999_999_999;
+
+    /** BarFx 状态键：预览激活时用独立键,否则用实体真实 ID */
+    public static int fxKey(int entityId) {
+        return active ? PREVIEW_FX_KEY : entityId;
+    }
+
     private static final long CYCLE = 6000L;
     private static final long[] BIRTHS = {400, 1300, 2200, 3100, 4000};
 
