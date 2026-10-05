@@ -98,12 +98,18 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         } else {
             fillW = (int) (dispR * barWidth);
         }
-        int ghostW = (int) (ghostR * barWidth);
-        // 残影起点 = 未量化的当前血量像素：整格模式下 [量化填充, 真实血量] 之间是
-        // "被整格隐藏的当前血量"而非损失——若从量化填充边界起画,残影收敛后这段
-        // (ghost==dispR)仍永久残留一节不消退（用户实测）。真正的损失区域从真实血量处开始。
-        int ghostStart = segmented && barCfg.segmentWholeOnly
-                ? (int) (dispR * barWidth) : fillW;
+        // 残影宽度：整格模式下残影终点同样按格量化——残影段与格线/可见填充对齐,
+        // 收缩到填充边界即消失（既无"隐藏当前血量"的残留缝,也不会浮在半格上与填充脱节）;
+        // 非整格按未量化比例连续收缩。
+        int ghostW;
+        if (segmented && barCfg.segmentWholeOnly) {
+            int fillCells = (int) (dispR * cells + 1e-2f);
+            int ghostCells = Math.max(fillCells, (int) (ghostR * cells));
+            ghostW = Math.min(cells, ghostCells) * barWidth / cells;
+        } else {
+            ghostW = (int) (ghostR * barWidth);
+        }
+        int ghostStart = fillW;
         if (ghostW < ghostStart) ghostW = ghostStart;
 
         // 1) 最外 1px 深色描边（压住边框外缘,消除与天空色之间的半透明过渡）
@@ -132,7 +138,7 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         }
         // 4) 空槽
         fillRect(vc, m, x, y, barWidth, barH, emptyColor);
-        // 5) 伤害残影（真实血量边界 → 残影边界,半透明白收缩;整格模式下被隐藏的当前血量段不算残影）
+        // 5) 伤害残影（从可见填充边界起画 → 按格/连续收缩;整格模式下与格线对齐、贴合当前可见填充）
         if (ghostW > ghostStart) {
             fillRect(vc, m, x + ghostStart, y, ghostW - ghostStart, barH,
                     ColorHelper.modifyAlpha(ColorHelper.parseColor(fx.ghostColor), (int) (alphaMul * 255)));
