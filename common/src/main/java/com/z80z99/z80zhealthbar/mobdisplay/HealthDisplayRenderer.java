@@ -63,7 +63,8 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         // 平滑动画指数逼近浮点上永不精确到达(如停在 0.99987):距满血 0.1% 内一律视为满血,
         // 否则"只显示完整格"取整后满血永远差一格、普通填充差一像素(在渲染入口统一钳满,动画层不动)
         if (dispR >= 1f - 1e-3f) dispR = 1f;
-        float ghostR = fx.enabled && fx.ghost ? Math.max(st.ghost(), dispR) : dispR;
+        float preHitR = fx.enabled && fx.ghost ? Math.max(st.preHit(), dispR) : dispR;
+        float ghostAlpha = fx.enabled && fx.ghost ? Math.max(0f, Math.min(1f, st.ghostAlpha())) : 0f;
         float flash = fx.enabled && fx.hurtFlash ? st.flash() : 0f;
         // 受伤脉冲：数字弹跳/变色用——独立于"血条闪白"开关（其关掉不影响数字效果）
         float pulse = fx.enabled ? st.flash() : 0f;
@@ -98,10 +99,9 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         } else {
             fillW = (int) (dispR * barWidth);
         }
-        // 残影段 = [可见填充边界, 填充边界 + 损失量]:损失量 = ghost - dispR 随衰减收敛到 0——
-        // 整格模式下起点在量化填充边界（被隐藏的当前血量不算残影,无残留缝）,收缩连续无跳格
-        float lost = Math.max(0f, Math.min(1f, ghostR - dispR));
-        int ghostW = Math.min(barWidth, fillW + (int) (lost * barWidth));
+        // 残影区域上缘 = 掉血前血量（比例）;透明度随时间线性渐隐（固定 420ms 硬收敛,无渐近尾巴）
+        int preHitW = (int) (Math.max(0f, Math.min(1f, preHitR)) * barWidth);
+        int ghostA = (int) (ghostAlpha * alphaMul * 255);
 
         // 1) 最外 1px 深色描边（压住边框外缘,消除与天空色之间的半透明过渡）
         fillRect(vc, m, x - boundW - 1, y - boundW - 1,
@@ -129,10 +129,10 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         }
         // 4) 空槽
         fillRect(vc, m, x, y, barWidth, barH, emptyColor);
-        // 5) 伤害残影（从可见填充边界起画,宽度 = 损失量,随衰减连续收缩到 0）
-        if (ghostW > fillW) {
-            fillRect(vc, m, x + fillW, y, ghostW - fillW, barH,
-                    ColorHelper.modifyAlpha(ColorHelper.parseColor(fx.ghostColor), (int) (alphaMul * 255)));
+        // 5) 伤害残影（[当前填充, 掉血前血量] 区域,整体白色渐隐;整格模式下下缘 = 可见填充边界）
+        if (preHitW > fillW && ghostA > 0) {
+            fillRect(vc, m, x + fillW, y, preHitW - fillW, barH,
+                    ColorHelper.modifyAlpha(ColorHelper.parseColor(fx.ghostColor), ghostA));
         }
         // 6) 填充（连续矩形）
         if (fillW > 0) {
@@ -479,27 +479,28 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
             }
         }
 
-        // 伤害残影：刚失去心的槽位画白色渐隐心（BarFx ghost 动画与样式3残影段同源;
-        // 受击掉血后残影按 420ms 缓降逐格淡出）。半心损失（满心→半心）画右半白心渐隐——
-        // 消失的是右半,不能叠在左半红心上（红+白=粉色）。残影余量 <0.05 心时跳过:
-        // 指数渐近的尾部只剩 <5% 透明度却要拖约 2 秒,截断后视觉无差。
+        // 伤害残影：[当前心数, 掉血前心数] 区域内的槽位画白色渐隐心（BarFx 区域渐隐模型——
+        // 区域透明度在 420ms 内线性降到 0 后区域清空,无渐近尾巴）。半心损失（满心→半心）
+        // 画右半白心渐隐——消失的是右半,不能叠在左半红心上（红+白=粉色）。
         var dxCfg = ConfigManager.getConfig().dynamicFx;
         if (dxCfg.enabled && dxCfg.ghost) {
             float target = Mth.clamp(Math.max(0f, snap.health) / snap.maxHealth, 0f, 1f);
             var st = BarFx.tick(snap.entityId, target, snap.hurtTime > 0, System.currentTimeMillis());
-            float ghostHearts = Mth.clamp(st.ghost(), 0f, 1f) * slots;
-            if (ghostHearts - cur >= 0.05f) {
+            float ghostA = Math.max(0f, Math.min(1f, st.ghostAlpha()));
+            float preHitHearts = Math.max(0f, Math.min(1f, st.preHit())) * slots;
+            if (ghostA > 0f) {
                 int ghostStart = (int) Math.ceil(cur - 0.01f);
                 boolean halfCur = cur - Math.floor(cur) > 0.01f;
-                if (halfCur && ghostHearts > Math.floor(cur)) {
-                    float ga = Math.min(1f, ghostHearts - cur);
+                // 半心损失（满心→半心）:该槽画右半白心渐隐
+                if (halfCur && preHitHearts > Math.floor(cur)) {
+                    float ga = Math.min(1f, preHitHearts - cur) * ghostA;
                     int wa = (int) (a * ga * 0.8f);
                     heartRightQuad(vc, matrix, x + (int) cur * 9, y, ColorHelper.modifyAlpha(0xFFFFFFFF, wa));
                 }
                 for (int i = ghostStart; i < slots; i++) {
-                    float g = ghostHearts - i; // 该槽剩余残影量 (0..1]
+                    float g = preHitHearts - i; // 该槽残影覆盖 (0..1]
                     if (g <= 0f) break;
-                    int wa = (int) (a * Math.min(1f, g) * 0.8f);
+                    int wa = (int) (a * Math.min(1f, g) * ghostA * 0.8f);
                     heartQuad(vc, matrix, x + i * 9, y, ColorHelper.modifyAlpha(0xFFFFFFFF, wa), false);
                 }
             }

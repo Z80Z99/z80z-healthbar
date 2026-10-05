@@ -120,11 +120,12 @@ public final class MobHealthBarStyle {
 
         fillQuad(vc, m, x, y, w, h, slot);
         int fillW = Mth.floor(f.disp * innerW);
-        int ghostW = Mth.floor(f.ghost * innerW);
-        if (ghostW > fillW) { // 伤害残影：半透明白慢速收缩
-            fillQuad(vc, m, x + insetX + fillW, y + insetY, ghostW - fillW, fillH,
+        int preHitW = Mth.floor(f.preHit * innerW);
+        int ghostA = (int) (f.ghostAlpha * a);
+        if (preHitW > fillW && ghostA > 0) { // 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐
+            fillQuad(vc, m, x + insetX + fillW, y + insetY, preHitW - fillW, fillH,
                     ColorHelper.modifyAlpha(
-                            ColorHelper.parseColor(ConfigManager.getConfig().dynamicFx.ghostColor), a));
+                            ColorHelper.parseColor(ConfigManager.getConfig().dynamicFx.ghostColor), ghostA));
         }
         if (fillW > 0) fillQuad(vc, m, x + insetX, y + insetY, fillW, fillH, fill);
         if (snap.absorption > 0) { // 吸收段:金色,追加在生命填充之后
@@ -168,16 +169,17 @@ public final class MobHealthBarStyle {
         var f = barFx(snap);
         int fillW = Mth.floor(f.disp * INNER_W);
 
-        // 伤害残影：display→ghost 区段半透明白慢速收缩，表达"刚损失的血量"
-        int ghostW = Mth.floor(f.ghost * INNER_W);
-        if (ghostW > fillW) {
+        // 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐（透明度随时间衰减）
+        int preHitW = Mth.floor(f.preHit * INNER_W);
+        int ghostA = (int) (f.ghostAlpha * alpha * 255);
+        if (preHitW > fillW && ghostA > 0) {
             int ghostColor = ColorHelper.modifyAlpha(
                     ColorHelper.parseColor(ConfigManager.getConfig().dynamicFx.ghostColor),
-                    (int) (alpha * 255));
+                    ghostA);
             float gu1 = (variant * FRAME_W + FILL_INSET_X) / 512f, gv1 = 16f / 40f;
             quadColor(empty, matrix, x + FILL_INSET_X + fillW, y + FILL_INSET_Y,
-                    x + FILL_INSET_X + ghostW, y + FILL_INSET_Y + FILL_H,
-                    gu1 + fillW / 512f, gv1, gu1 + ghostW / 512f, gv1 + FILL_H / 40f, ghostColor);
+                    x + FILL_INSET_X + preHitW, y + FILL_INSET_Y + FILL_H,
+                    gu1 + fillW / 512f, gv1, gu1 + preHitW / 512f, gv1 + FILL_H / 40f, ghostColor);
         }
 
         // 填充（白色贴图 → 按血量状态染色；受伤时向白闪）
@@ -269,18 +271,19 @@ public final class MobHealthBarStyle {
         };
     }
 
-    /** 条形动态效果状态（平滑后填充比例 / 残影比例 / 受伤闪白强度）；关闭时全部退化为直读值 */
-    private record FxState(float disp, float ghost, float flash, float pulse, float heal) {}
+    /** 条形动态效果状态（平滑后填充比例 / 残影区域上缘 / 残影不透明度 / 受伤闪白强度）；关闭时全部退化为直读值 */
+    private record FxState(float disp, float preHit, float ghostAlpha, float flash, float pulse, float heal) {}
 
     private static FxState barFx(EntityStatusSnapshot snap) {
         var fx = ConfigManager.getConfig().dynamicFx;
         float ratio = snap.plainHealthRatio();
-        if (!fx.enabled) return new FxState(ratio, ratio, 0f, 0f, 0f);
+        if (!fx.enabled) return new FxState(ratio, ratio, 0f, 0f, 0f, 0f);
         var st = BarFx.tick(snap.entityId, ratio, snap.hurtTime > 0, System.currentTimeMillis());
         float disp = fx.smooth ? st.display() : ratio;
-        float ghost = fx.ghost ? Math.max(st.ghost(), disp) : disp;
+        float preHit = fx.ghost ? Math.max(st.preHit(), disp) : disp;
+        float ghostAlpha = fx.ghost ? st.ghostAlpha() : 0f;
         float flash = fx.hurtFlash ? st.flash() : 0f;
-        return new FxState(disp, ghost, flash, st.flash(), st.heal()); // pulse 不受闪白开关影响
+        return new FxState(disp, preHit, ghostAlpha, flash, st.flash(), st.heal()); // pulse 不受闪白开关影响
     }
 
     private static void renderTexts(EntityStatusSnapshot snap, PoseStack poseStack,
