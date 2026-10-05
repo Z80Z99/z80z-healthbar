@@ -319,9 +319,23 @@ public final class ModSettingsScreen extends Screen {
     private CycleButton<Boolean> previewToggle;
     private Button previewFullscreenBtn;
     private Button previewPauseBtn;
+    private Button previewZoomBtn;
     /** 暂停预览：true 时演示时钟冻结在 previewFreezeAt */
     private boolean previewPaused;
     private long previewFreezeAt;
+    /** HUD 预览缩放模式：true = 1:1 像素精确（可拖动取景框,卡片 1px 细节不失真）;false = 适应（包围盒整览缩放） */
+    private boolean previewZoom11;
+    /** 1:1 模式取景框左上角（真实屏幕坐标）;MIN_VALUE = 未初始化（自动居中包围盒） */
+    private int hudPanX = Integer.MIN_VALUE, hudPanY = Integer.MIN_VALUE;
+    private boolean hudPanning;
+    private int hudPanGrabX, hudPanGrabY, hudPanBaseX, hudPanBaseY;
+
+    private Component zoomLabel() {
+        return Component.translatable("z80zhealthbar.settings.preview.zoom")
+                .append(": ")
+                .append(Component.translatable(previewZoom11
+                        ? "z80zhealthbar.settings.preview.zoom11" : "z80zhealthbar.settings.preview.zoomfit"));
+    }
     private Component feedback;
     private long feedbackUntilMs;
     private int contentH;
@@ -375,6 +389,7 @@ public final class ModSettingsScreen extends Screen {
             previewToggle = null;
             previewFullscreenBtn = null;
             previewPauseBtn = null;
+            previewZoomBtn = null;
         if (previewActive) {
             previewW = Math.min(260, width * 2 / 5);
             int gap = 4; // 两栏面板外缘之间的呼吸缝
@@ -395,9 +410,9 @@ public final class ModSettingsScreen extends Screen {
                     .create(0, 0, previewW - 12, 18, Component.empty(), (b, v) -> previewFriendly = v);
             previewToggle.setX(previewX + 6);
             previewToggle.setY(previewY + 20);
-            // 全屏预览入口 + 暂停预览（同一行两半宽按钮）。
+            // 暂停 / 缩放 / 全屏 三等宽按钮（HUD 页的缩放=1:1 像素精确可拖取景,其余页为整体缩放）。
             // 注意：本界面不经过 super.render，控件须在 drawPreviewPanel 手动渲染并在鼠标事件中转发
-            int halfW = (previewW - 12) / 2 - 2;
+            int thirdW = (previewW - 12 - 8) / 3;
             previewPauseBtn = Button.builder(
                             Component.translatable(previewPaused
                                     ? "z80zhealthbar.settings.preview.resume" : "z80zhealthbar.settings.preview.pause"),
@@ -407,12 +422,19 @@ public final class ModSettingsScreen extends Screen {
                                 b.setMessage(Component.translatable(previewPaused
                                         ? "z80zhealthbar.settings.preview.resume" : "z80zhealthbar.settings.preview.pause"));
                             })
-                    .bounds(previewX + 6, previewY + 40, halfW, 18)
+                    .bounds(previewX + 6, previewY + 40, thirdW, 18)
+                    .build();
+            previewZoomBtn = Button.builder(zoomLabel(), b -> {
+                        previewZoom11 = !previewZoom11;
+                        hudPanX = Integer.MIN_VALUE; // 切换后重置取景（重新居中包围盒）
+                        b.setMessage(zoomLabel());
+                    })
+                    .bounds(previewX + 6 + thirdW + 4, previewY + 40, thirdW, 18)
                     .build();
             previewFullscreenBtn = Button.builder(
                             Component.translatable("z80zhealthbar.settings.preview.fullscreen"),
                             b -> minecraft.setScreen(new FullscreenPreviewScreen(this, page == Page.HUD)))
-                    .bounds(previewX + 6 + halfW + 4, previewY + 40, halfW, 18)
+                    .bounds(previewX + 6 + (thirdW + 4) * 2, previewY + 40, thirdW, 18)
                     .build();
         } else {
             contentW = Math.min(420, width - 24 - PANEL_PAD * 2);
@@ -1054,6 +1076,7 @@ public final class ModSettingsScreen extends Screen {
 
         previewToggle.render(g, mouseX, mouseY, partialTick);
         if (previewPauseBtn != null) previewPauseBtn.render(g, mouseX, mouseY, partialTick);
+        if (previewZoomBtn != null) previewZoomBtn.render(g, mouseX, mouseY, partialTick);
         if (previewFullscreenBtn != null) previewFullscreenBtn.render(g, mouseX, mouseY, partialTick);
 
         int bx = previewX + 2, by = previewY + 64, bw = previewW - 4, bh = previewH - 70;
@@ -1119,12 +1142,30 @@ public final class ModSettingsScreen extends Screen {
                 }
                 int pad = 8;
                 minX -= pad; minY -= pad; maxX += pad; maxY += pad;
-                int cropW = Math.max(40, maxX - minX);
-                int cropH = Math.max(30, maxY - minY);
-                float zs = Math.min(bw / (float) cropW, bh / (float) cropH);
-                pose.translate(bx + (bw - cropW * zs) / 2f, by + (bh - cropH * zs) / 2f, 0);
-                pose.scale(zs, zs, 1);
-                pose.translate(-minX, -minY, 0);
+                if (previewZoom11) {
+                    // 1:1 像素精确：卡片 1px 细节不失真（适应缩放下分数倍率会把描边/高光虚化）,
+                    // 取景框可拖动（预览区内按住拖拽）;未拖动时自动居中包围盒
+                    if (hudPanX == Integer.MIN_VALUE) {
+                        hudPanX = minX + Math.max(0, (maxX - minX - bw) / 2);
+                        hudPanY = minY + Math.max(0, (maxY - minY - bh) / 2);
+                    }
+                    int panMinX = minX - 30, panMaxX = maxX + 30 - bw;
+                    int panMinY = minY - 30, panMaxY = maxY + 30 - bh;
+                    hudPanX = panMinX > panMaxX ? (minX + maxX - bw) / 2
+                            : Math.max(panMinX, Math.min(panMaxX, hudPanX));
+                    hudPanY = panMinY > panMaxY ? (minY + maxY - bh) / 2
+                            : Math.max(panMinY, Math.min(panMaxY, hudPanY));
+                    pose.translate(bx, by, 0);
+                    pose.translate(-hudPanX, -hudPanY, 0);
+                } else {
+                    // 适应：包围盒整览等比缩放进面板
+                    int cropW = Math.max(40, maxX - minX);
+                    int cropH = Math.max(30, maxY - minY);
+                    float zs = Math.min(bw / (float) cropW, bh / (float) cropH);
+                    pose.translate(bx + (bw - cropW * zs) / 2f, by + (bh - cropH * zs) / 2f, 0);
+                    pose.scale(zs, zs, 1);
+                    pose.translate(-minX, -minY, 0);
+                }
                 com.z80z99.z80zhealthbar.overlay.CustomHudRenderer.render(g, partialTick, realW, realH);
             } else {
                 // 长条：虚拟屏幕（宽 = 条长×2 + 图标余量,容纳布局 1/2 的居中条与右侧条;高容纳 6 条堆叠）
@@ -1538,10 +1579,22 @@ public final class ModSettingsScreen extends Screen {
             onClose();
             return true;
         }
-        // 预览面板的敌方/友方切换 + 暂停/全屏预览按钮
+        // 预览面板的敌方/友方切换 + 暂停/缩放/全屏按钮 + 1:1 取景拖动
         if (previewToggle != null && previewToggle.mouseClicked(mx, my, btn)) return true;
         if (previewPauseBtn != null && previewPauseBtn.mouseClicked(mx, my, btn)) return true;
+        if (previewZoomBtn != null && previewZoomBtn.mouseClicked(mx, my, btn)) return true;
         if (previewFullscreenBtn != null && previewFullscreenBtn.mouseClicked(mx, my, btn)) return true;
+        // HUD 预览 1:1 模式：预览框内按住拖动 = 平移取景框
+        if (btn == 0 && page == Page.HUD && previewActive && previewZoom11
+                && mx >= previewX + 2 && mx <= previewX + previewW - 2
+                && my >= previewY + 64 && my <= previewY + previewH - 2) {
+            hudPanning = true;
+            hudPanGrabX = (int) mx;
+            hudPanGrabY = (int) my;
+            hudPanBaseX = hudPanX;
+            hudPanBaseY = hudPanY;
+            return true;
+        }
         // 滚动条（命中轨道 = 开始拖拽；点击空白轨道 = 拇指中心跳到该处）
         if (btn == 0 && maxScroll() > 0 && mx >= scrollbarX() - 2 && mx <= scrollbarX() + 5
                 && my >= scrollbarTrackTop() && my <= scrollbarTrackBottom()) {
@@ -1570,6 +1623,12 @@ public final class ModSettingsScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mx, double my, int btn, double dx, double dy) {
+        if (hudPanning) {
+            // 1:1 取景平移：反方向拖动（拖左往右看 = 取景左移）
+            hudPanX = hudPanBaseX - ((int) mx - hudPanGrabX);
+            hudPanY = hudPanBaseY - ((int) my - hudPanGrabY);
+            return true;
+        }
         if (draggingScrollbar && maxScroll() > 0) {
             int trackH = scrollbarTrackBottom() - scrollbarTrackTop();
             double ratio = (double) viewH / contentH;
@@ -1604,8 +1663,10 @@ public final class ModSettingsScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mx, double my, int btn) {
+        hudPanning = false;
         if (previewToggle != null) previewToggle.mouseReleased(mx, my, btn);
         if (previewPauseBtn != null) previewPauseBtn.mouseReleased(mx, my, btn);
+        if (previewZoomBtn != null) previewZoomBtn.mouseReleased(mx, my, btn);
         if (previewFullscreenBtn != null) previewFullscreenBtn.mouseReleased(mx, my, btn);
         boolean handled = pressedRow != null;
         if (pressedRow != null) {
