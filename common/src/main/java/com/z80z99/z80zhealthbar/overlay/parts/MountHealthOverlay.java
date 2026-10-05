@@ -59,12 +59,8 @@ public class MountHealthOverlay extends SimpleBarOverlay {
         // Wave 11 美化：橙色染色心形图标（原版坐骑风格）
         drawIconColor(graphics, left - 11, top, barH, ICON_HEART_U, ICON_HEART_V, MOUNT_HEART_COLOR);
 
-        int fillW = (int)(health / maxHealth * barWidth);
-        fillW = Math.max(0, Math.min(barWidth, fillW));
-
         drawBarCard(graphics, left, top, barWidth, barH);
-        graphics.fill(left, top, left + fillW, top + barH, fillColor);
-        // 顶部高光（渐变感）
-        graphics.fill(left, top, left + fillW, top + 1, 0x55FFFFFF);
+        HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,
+                health / maxHealth, fillColor);
     }
 }

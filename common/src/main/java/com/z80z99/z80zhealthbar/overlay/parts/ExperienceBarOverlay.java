@@ -46,16 +46,10 @@ public class ExperienceBarOverlay extends SimpleBarOverlay {
             renderGui.setRightHeight(top + barH + margin);
         }
 
-        int fillW = (int)(expProgress * barWidth);
-        fillW = Math.max(0, Math.min(barWidth, fillW));
-
-        // Wave 11 美化：卡片 + 渐变填充
+        // Wave 11 美化：卡片 + 统一填充（高光/压暗由共享原语提供）
         drawBarCard(graphics, left, top, barWidth, barH);
-        graphics.fill(left, top, left + fillW, top + barH, fillColor);
-        // 顶部高光（渐变感）
-        graphics.fill(left, top, left + fillW, top + 1, 0x55FFFFFF);
-        // 底部微光
-        graphics.fill(left, top + barH - 1, left + fillW, top + barH, 0x33FFFFFF);
+        HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,
+                Math.max(0f, Math.min(1f, expProgress)), fillColor);
 
         // 显示等级/进度文本（Wave 11：移至条内居中，原版经验条风格）
         // Wave 12 修复：用户不需要百分比，默认关闭 displayExperienceProgress，

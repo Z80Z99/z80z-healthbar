@@ -72,25 +72,21 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
         drawIcon(graphics, left - 11, top, barH,
                 isHungry ? ICON_FOOD_HUNGRY_U : ICON_FOOD_U, ICON_FOOD_V);
 
-        int fillW = (int)(params.value / params.maxValue * barWidth);
-        fillW = Math.max(0, Math.min(barWidth, fillW));
+        int innerW = HudBarPainter.innerWidth(barWidth);
+        int fillW = (int) Math.max(0, Math.min(innerW, params.value / params.maxValue * innerW));
 
         drawBarCard(graphics, left, top, barWidth, barH);
 
-        // 饱食度填充
-        graphics.fill(left, top + params.verticalShift,
-                left + fillW, top + barH + params.verticalShift, params.fillColor);
-        // 顶部高光（渐变感）
-        graphics.fill(left, top + params.verticalShift,
-                left + fillW, top + params.verticalShift + 1, 0x55FFFFFF);
+        // 饱食度填充（统一内宽填充 + 高光/压暗；低饥饿抖动经 yOffset）
+        HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, fillW,
+                params.fillColor, params.verticalShift);
 
         // 饱和度覆盖（金色叠加在食物条之上，原版逻辑）
         if (cfg.displaySaturation && saturation > 0) {
             float satRatio = saturation / (float)(cfg.fullSaturationValue > 0 ? cfg.fullSaturationValue : 20);
-            int satW = (int)(satRatio * barWidth);
-            satW = Math.max(0, Math.min(barWidth, satW));
-            int satColor = ColorHelper.parseColor(colors.saturation);
-            graphics.fill(left, top, left + satW, top + barH, satColor);
+            int satW = (int) (Math.max(0f, Math.min(1f, satRatio)) * innerW);
+            HudBarPainter.drawSegment(graphics, left, top, barWidth, barH, 0, satW,
+                    ColorHelper.parseColor(colors.saturation));
         }
 
         if (blinkBorder) {

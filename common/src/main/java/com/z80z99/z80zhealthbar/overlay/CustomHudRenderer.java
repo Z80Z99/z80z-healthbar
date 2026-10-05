@@ -195,12 +195,13 @@ public final class CustomHudRenderer {
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
         // 填充按内宽（w-4,左右各留 2px 边距）计算:按整条宽算满值时会越过卡片右边界 2px
-        int innerW = w - 4;
-        int healthW = (int) (Mth.clamp(health / max, 0, 1) * innerW);
-        fill(g, 2, 2, healthW, h - 4, color);
+        int innerW = HudBarPainter.innerWidth(w);
+        int healthW = Math.round(Mth.clamp(health / max, 0, 1) * innerW);
+        HudBarPainter.drawFillWidth(g, 0, 0, w, h, healthW, color);
         if (absorption > 0) {
-            int absW = (int) (Mth.clamp(absorption / max, 0, 1) * (innerW - healthW));
-            if (absW > 0) fill(g, 2 + healthW, 2, absW, h - 4, ColorHelper.parseColor(colors.absorption));
+            int absW = Math.round(Mth.clamp(absorption / max, 0, 1) * Math.max(0, innerW - healthW));
+            HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, healthW + absW,
+                    ColorHelper.parseColor(colors.absorption));
         }
         if (c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, healthIconU(p), 0);
@@ -237,7 +238,8 @@ public final class CustomHudRenderer {
         int color = p.hasEffect(MobEffects.HUNGER)
                 ? ColorHelper.parseColor(colors.foodHunger)
                 : ColorHelper.parseColor(colors.foodNormal);
-        fill(g, 2, 2, (int) (Mth.clamp(food / (float) max, 0, 1) * (w - 4)), h - 4, color);
+        HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                Mth.clamp(food / (float) max, 0, 1), color);
         if (c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 52, 27);
         }
@@ -260,8 +262,8 @@ public final class CustomHudRenderer {
 
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
-        fill(g, 2, 2, (int) (Mth.clamp(air / (float) maxAir, 0, 1) * (w - 4)), h - 4,
-                ColorHelper.parseColor(colors.air));
+        HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                Mth.clamp(air / (float) maxAir, 0, 1), ColorHelper.parseColor(colors.air));
         if (c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 16, 18);
         }
@@ -278,8 +280,8 @@ public final class CustomHudRenderer {
 
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
-        fill(g, 2, 2, (int) (Mth.clamp(progress, 0, 1) * (w - 4)), h - 4,
-                ColorHelper.parseColor(colors.experience));
+        HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                Mth.clamp(progress, 0, 1), ColorHelper.parseColor(colors.experience));
         if (c.showText && c.textAnchorParsed() == null) {
             String text = level > 0 ? ("Lv." + level) : String.valueOf(Math.round(progress * 100)) + "%";
             drawText(g, mc.font, text, w, h, c);
@@ -303,8 +305,8 @@ public final class CustomHudRenderer {
         if (max <= 0) max = 20; // 0 = 跟随原版上限
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
-        fill(g, 2, 2, (int) (Mth.clamp(armor / (float) max, 0, 1) * (w - 4)), h - 4,
-                ColorHelper.parseColor(colors.armor));
+        HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                Mth.clamp(armor / (float) max, 0, 1), ColorHelper.parseColor(colors.armor));
         if (c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 34, 9);
         }
@@ -321,8 +323,8 @@ public final class CustomHudRenderer {
 
         int w = c.barWidth, h = barH(c);
         drawCard(g, 0, 0, w, h);
-        fill(g, 2, 2, (int) (Mth.clamp(health / max, 0, 1) * (w - 4)), h - 4,
-                ColorHelper.parseColor(colors.mountHealth));
+        HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                Mth.clamp(health / max, 0, 1), ColorHelper.parseColor(colors.mountHealth));
         if (c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 52, 0);
         }
@@ -342,8 +344,8 @@ public final class CustomHudRenderer {
         for (var stat : stats) {
             drawCard(g, 0, y, w, h);
             if (stat.max() != null && stat.max() > 0) {
-                int fillW = (int) Math.max(0, Math.min(w, stat.value() / stat.max() * w));
-                fill(g, 2, y + 2, fillW - 4, h - 4, stat.color());
+                HudBarPainter.drawRatioFill(g, 0, y, w, h,
+                        (float) Math.max(0d, Math.min(1d, stat.value() / stat.max())), stat.color());
             }
             if (c.showText) {
                 String vs = stat.value() >= 100 ? String.valueOf(Math.round(stat.value()))
@@ -366,11 +368,7 @@ public final class CustomHudRenderer {
     }
 
     private static void drawCard(GuiGraphics g, int x, int y, int w, int h) {
-        GuiHelper.drawSolidColor(g, x, y, x + w, y + h, 0x66000000);
-        GuiHelper.drawSolidColor(g, x, y, x + w, y + 1, 0x33FFFFFF);
-        GuiHelper.drawSolidColor(g, x, y + h - 1, x + w, y + h, 0x33FFFFFF);
-        GuiHelper.drawSolidColor(g, x, y, x + 1, y + h, 0x33FFFFFF);
-        GuiHelper.drawSolidColor(g, x + w - 1, y, x + w, y + h, 0x33FFFFFF);
+        HudBarPainter.drawCard(g, x, y, w, h);
     }
 
     private static void fill(GuiGraphics g, int x, int y, int w, int h, int color) {

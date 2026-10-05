@@ -86,13 +86,9 @@ public abstract class BaseOverlay {
         GuiHelper.drawTexturedRectColor(VANILLA_ICONS, g, x, iconY, u, v, 9, 9, color);
     }
 
-    /** 半透明深色卡片背景 + 1px 半透明边框（所有 HUD 条的统一底） */
+    /** 统一现代 HUD 卡片：旧 ASTEORBAR 各条与 CUSTOM 共用同一视觉原语。 */
     protected void drawBarCard(GuiGraphics g, int x, int y, int w, int h) {
-        GuiHelper.drawSolidColor(g, x, y, x + w, y + h, 0x66000000);
-        GuiHelper.drawSolidColor(g, x, y, x + w, y + 1, 0x33FFFFFF);
-        GuiHelper.drawSolidColor(g, x, y + h - 1, x + w, y + h, 0x33FFFFFF);
-        GuiHelper.drawSolidColor(g, x, y, x + 1, y + h, 0x33FFFFFF);
-        GuiHelper.drawSolidColor(g, x + w - 1, y, x + w, y + h, 0x33FFFFFF);
+        HudBarPainter.drawCard(g, x, y, w, h);
     }
 
     /** 居中计算：物品栏上方/中心布局时条真正水平居中（符合原版 HUD 逻辑） */

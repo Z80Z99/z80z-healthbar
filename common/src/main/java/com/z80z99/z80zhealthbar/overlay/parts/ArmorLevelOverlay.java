@@ -58,13 +58,9 @@ public class ArmorLevelOverlay extends SimpleBarOverlay {
         // Wave 11 美化：盾牌图标
         drawIcon(graphics, left - 11, top, barH, ICON_SHIELD_U, ICON_SHIELD_V);
 
-        int fillW = (int)(params.value / params.maxValue * barWidth);
-        fillW = Math.max(0, Math.min(barWidth, fillW));
-
         drawBarCard(graphics, left, top, barWidth, barH);
-        graphics.fill(left, top, left + fillW, top + barH, params.fillColor);
-        // 顶部高光（渐变感）
-        graphics.fill(left, top, left + fillW, top + 1, 0x55FFFFFF);
+        HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,
+                (float) (params.value / params.maxValue), params.fillColor);
 
         // 文本：护甲值，开启韧性显示且韧性>0 时追加 (韧性)；RIGHT 布局改条左外右对齐
         StringBuilder text = new StringBuilder(String.valueOf(armor));

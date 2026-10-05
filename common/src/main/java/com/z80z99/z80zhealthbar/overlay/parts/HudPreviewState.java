@@ -25,14 +25,12 @@ public final class HudPreviewState {
         long idx = now / CYCLE;
         float hp = 20f;
         int foodV = 20;
-        int landed = 0;
         for (int i = 0; i < BIRTHS.length; i++) {
             long age = t - BIRTHS[i];
             if (age < 0) break;
             int dmg = 2 + (int) ((idx * 31L + i * 17L) % 6); // 2..7
             hp = Math.max(3f, hp - dmg);
             foodV = Math.max(4, foodV - 3);
-            landed++;
         }
         health = hp;
         food = foodV;
@@ -40,6 +38,7 @@ public final class HudPreviewState {
         air = t >= 4200 ? (int) (300 - Math.min(240, (t - 4200) / 1800f * 240)) : 300;
         xpLevel = 7;
         xpProgress = t / (float) CYCLE;
-        absorption = 0;
+        // 回血阶段吃金苹果：演示吸收段（金色附加在生命填充之后）与吸收金心图标
+        absorption = (t >= 4600 && t < 5800) ? 4 : 0;
     }
 }

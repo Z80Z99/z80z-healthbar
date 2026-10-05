@@ -64,12 +64,8 @@ public class AirLevelOverlay extends SimpleBarOverlay {
         drawIcon(graphics, left - 11, top, barH,
                 lowAir ? ICON_BUBBLE_SPLIT_U : ICON_BUBBLE_U, ICON_BUBBLE_V);
 
-        int fillW = (int)(air / (float)maxAir * barWidth);
-        fillW = Math.max(0, Math.min(barWidth, fillW));
-
         drawBarCard(graphics, left, top, barWidth, barH);
-        graphics.fill(left, top, left + fillW, top + barH, fillColor);
-        // 顶部高光（渐变感）
-        graphics.fill(left, top, left + fillW, top + 1, 0x55FFFFFF);
+        HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,
+                air / (float) maxAir, fillColor);
     }
 }

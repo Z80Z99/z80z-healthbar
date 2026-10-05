@@ -52,9 +52,9 @@ public class CompatStatsOverlay extends SimpleBarOverlay {
         for (CompatAdapters.Stat stat : stats) {
             drawBarCard(graphics, left, top, barWidth, barH);
             if (stat.max() != null && stat.max() > 0) {
-                int fillW = (int) Math.max(0, Math.min(barWidth, stat.value() / stat.max() * barWidth));
-                graphics.fill(left, top, left + fillW, top + barH, stat.color());
-                graphics.fill(left, top, left + fillW, top + 1, 0x55FFFFFF);
+                com.z80z99.z80zhealthbar.overlay.HudBarPainter.drawRatioFill(graphics,
+                        left, top, barWidth, barH,
+                        (float) Math.max(0d, Math.min(1d, stat.value() / stat.max())), stat.color());
             }
             String text = net.minecraft.network.chat.Component.translatable(
                     stat.langKey()).getString() + ": " + format(stat.value(), stat.max());

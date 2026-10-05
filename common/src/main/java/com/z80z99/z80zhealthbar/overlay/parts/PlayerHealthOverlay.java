@@ -107,28 +107,25 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         if (cfg.absorptionMode == ABSORPTION_TOGETHER && absorption > 0) {
             // Wave 12 修复：原先只画吸收段导致金苹果后血条被"清空并覆盖"。
             // 正确行为：生命值填充 + 吸收段附加在生命段之后（类似原版金心附加在血心后）
-            int healthW = (int)(params.value / params.maxValue * barWidth);
-            int absWidth = (int)(absorption / params.maxValue * barWidth);
+            int innerW = HudBarPainter.innerWidth(barWidth);
+            int healthW = (int) Math.max(0, Math.min(innerW, params.value / params.maxValue * innerW));
+            int absWidth = (int) Math.max(0, absorption / params.maxValue * innerW);
             drawBarCard(graphics, left, top, barWidth, barH);
             // 伤害残影（与样式3同源）：掉血后在 [当前填充, 掉血前血量] 区域画渐隐白
             drawGhostSegment(graphics, left, top, barWidth, barH, healthW,
                     (float) (health / params.maxValue), player, 0);
             // 生命值填充
-            drawEmptyFill(graphics, left, top, left + healthW, top + barH, healthColor);
-            // 顶部高光（渐变感）
-            drawEmptyFill(graphics, left, top, left + healthW, top + 1, 0x55FFFFFF);
-            // 吸收段附加在生命段之后（clamp 到条宽内）
-            int absEnd = Math.min(left + barWidth, left + healthW + absWidth);
-            if (absEnd > left + healthW) {
-                drawEmptyFill(graphics, left + healthW, top, absEnd, top + barH, absorptionColor);
-            }
+            HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, healthW, healthColor);
+            // 吸收段附加在生命段之后（clamp 到内宽）
+            HudBarPainter.drawSegment(graphics, left, top, barWidth, barH,
+                    healthW, Math.min(innerW, healthW + absWidth), absorptionColor);
             if (blinkBorder) {
                 drawBound(graphics, left, top, left + barWidth, top + barH, boundColor);
             }
         } else {
             params.blink = blinkBorder;
             drawGhostSegment(graphics, left, top, barWidth, barH,
-                    (int) (params.value / params.maxValue * barWidth),
+                    (int) (params.value / params.maxValue * HudBarPainter.innerWidth(barWidth)),
                     (float) (health / params.maxValue), player, params.verticalShift);
             renderBar(graphics, left, top, barWidth, barH, params);
         }
@@ -162,7 +159,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         return String.valueOf(r);
     }
 
-    /** 伤害残影段（与样式3同源 BarFx 动画）：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制） */
+    /** 伤害残影段（与样式3同源 BarFx 动画）：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）；内宽几何 */
     private void drawGhostSegment(GuiGraphics graphics, int left, int top, int barWidth, int barH,
                                   int fillW, float rawRatio, Player player, int vShift) {
         var dxCfg = ConfigManager.getConfig().dynamicFx;
@@ -173,21 +170,21 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         float ghostA = Math.max(0f, Math.min(1f, st.ghostAlpha()));
         if (ghostA <= 0f) return;
         float preHit = Math.max(0f, Math.min(1f, st.preHit()));
-        int preHitW = (int) (preHit * barWidth);
+        int innerW = HudBarPainter.innerWidth(barWidth);
+        int preHitW = Math.min(innerW, (int) (preHit * innerW));
         if (preHitW <= fillW) return;
         int color = ColorHelper.modifyAlpha(ColorHelper.parseColor(dxCfg.ghostColor),
                 (int) (ghostA * 255));
-        graphics.fill(left + fillW, top + vShift, left + preHitW, top + barH + vShift, color);
+        int top2 = HudBarPainter.fillTop(top, barH) + vShift;
+        graphics.fill(left + HudBarPainter.INSET + fillW, top2,
+                left + HudBarPainter.INSET + preHitW, top2 + HudBarPainter.innerHeight(barH), color);
     }
 
     private void renderBar(GuiGraphics g, int x, int y, int w, int h, Parameters p) {
-        int fillWidth = (int)(p.value / p.maxValue * w);
-        fillWidth = Math.max(0, Math.min(w, fillWidth));
-
         drawBarCard(g, x, y, w, h);
-        drawEmptyFill(g, x, y + p.verticalShift, x + fillWidth, y + h + p.verticalShift, p.fillColor);
-        // 顶部高光（渐变感）
-        drawEmptyFill(g, x, y + p.verticalShift, x + fillWidth, y + p.verticalShift + 1, 0x55FFFFFF);
+        int innerW = HudBarPainter.innerWidth(w);
+        int fillWidth = (int) Math.max(0, Math.min(innerW, p.value / p.maxValue * innerW));
+        HudBarPainter.drawFillWidth(g, x, y, w, h, fillWidth, p.fillColor, p.verticalShift);
 
         if (p.blink) {
             // 低血量闪烁边框（覆盖卡片默认边框）
