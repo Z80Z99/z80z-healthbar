@@ -303,6 +303,21 @@ public final class CustomHudRenderer {
                 com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.fxKeyAbs(p.getId()),
                 absRaw, false, System.currentTimeMillis());
         float absDisp = dxFxCfg.enabled && dxFxCfg.smooth ? Mth.clamp(absFx.display(), 0f, 1f) : absRaw;
+        // 第二层动态效果：低血脉冲/治疗泛光修饰填充色;受击抖动 y 偏移（与残影/填充同帧生效）
+        long nowMs = System.currentTimeMillis();
+        boolean lowHp = rawRatio <= ConfigManager.getConfig().overlay.lowHealthRate;
+        int dynColor = color;
+        if (dxFxCfg.enabled) {
+            if (dxFxCfg.lowHpPulse && lowHp) {
+                dynColor = ColorHelper.lerp(dynColor, 0xFFFFFFFF,
+                        HudFx.pulse(nowMs) * 0.35f);
+            }
+            if (dxFxCfg.healGlow) {
+                dynColor = ColorHelper.lerp(dynColor, 0xFF50E080, fxSt.heal() * 0.45f);
+            }
+        }
+        int hitShift = dxFxCfg.enabled && dxFxCfg.hitShake
+                ? HudFx.shakeOffset(nowMs, fxSt.flash()) : 0;
         int innerW = HudBarPainter.innerWidth(w);
         int healthW = Math.round(dispR * compress * innerW);
         if (c.showBar) {
@@ -313,10 +328,11 @@ public final class CustomHudRenderer {
                 if (preHitW > healthW && ghostA > 0f) {
                     HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, preHitW,
                             ColorHelper.modifyAlpha(ColorHelper.parseColor(dxFxCfg.ghostColor),
-                                    (int) (ghostA * 255)));
+                                    (int) (ghostA * 255)), hitShift);
                 }
             }
-            HudBarPainter.drawFillWidth(g, 0, 0, w, h, healthW, color);
+            HudBarPainter.drawFillWidth(g, 0, 0, w, h, healthW, dynColor, hitShift);
+            drawSheen(g, w, h, healthW);
             if (absorption > 0) {
                 // 金段终点按 (平滑生命+平滑吸收)/total 一次取整——两段各自取整会累计丢 1~2px,
                 // 满血+吸收（总量正好撑满条）时条尾出现细缝（实测"没有填满条"）
@@ -350,7 +366,14 @@ public final class CustomHudRenderer {
             float shownHealth = dxFxCfg.enabled && dxFxCfg.numRoll ? dispR * max : health;
             String txt = c.textFormat != null && !c.textFormat.isBlank()
                     ? formatText(c.textFormat, p) : fmt(shownHealth) + "/" + fmt(max);
-            drawText(g, mc.font, txt, w, h, c);
+            // 数字受伤红/治疗绿（dynamicFx.numTint,与实体条/长条管线同语义）
+            int txtColor = 0xFFFFFFFF;
+            if (dxFxCfg.enabled && dxFxCfg.numTint) {
+                float[] tint = HudFx.textTint(fxSt.flash(), fxSt.heal());
+                if (tint[0] > 0f) txtColor = ColorHelper.lerp(txtColor, 0xFFFF5050, tint[0]);
+                if (tint[1] > 0f) txtColor = ColorHelper.lerp(txtColor, 0xFF50E080, tint[1]);
+            }
+            drawText(g, mc.font, txt, w, h, c, txtColor);
         }
     }
 
@@ -401,8 +424,22 @@ public final class CustomHudRenderer {
         boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
         int air = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.air : p.getAirSupply();
         int maxAir = Math.max(1, pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxAir : p.getMaxAirSupply());
-        if (air >= maxAir) return; // 仅水下显示
+        // 出入水淡入淡出（与长条管线共用 AirFade）：可见 = 水下且氧气未满;淡出期继续渲染
+        boolean wants = (pv || p.isUnderWater()) && air < maxAir;
+        float fade = AirFade.alpha(wants, System.currentTimeMillis());
+        if (!wants && AirFade.fullyHidden(fade)) return;
 
+        if (fade < 1f) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, fade);
+        try {
+            renderAirInner(g, mc, p, c, colors, air, maxAir);
+        } finally {
+            if (fade < 1f) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        }
+    }
+
+    private static void renderAirInner(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c,
+                                       com.z80z99.z80zhealthbar.config.configs.ColorConfig colors,
+                                       int air, int maxAir) {
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
             int bubbles = (int) Math.ceil(air / (float) maxAir * 10);
             for (int i = 0; i < bubbles; i++) GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 16, 18, 9, 9);
@@ -575,12 +612,24 @@ public final class CustomHudRenderer {
     }
 
     /** 数值文本：按组件对齐（左/中/右）+ 文本偏移绘制 */
+    private static void drawText(GuiGraphics g, Font font, String text, int barW, int barH,
+                                 ComponentLayout c, int color) {
+        drawTextIn(g, font, text, barW, barH, 0, c, color);
+    }
+
+    @SuppressWarnings("unused")
     private static void drawText(GuiGraphics g, Font font, String text, int barW, int barH, ComponentLayout c) {
         drawTextIn(g, font, text, barW, barH, 0, c);
     }
 
     private static void drawTextIn(GuiGraphics g, Font font, String text, int barW, int barH,
                                    int yBase, ComponentLayout c) {
+        drawTextIn(g, font, text, barW, barH, yBase, c, 0xFFFFFFFF);
+    }
+
+    /** 文本绘制（带颜色——受伤红/治疗绿等数字动效用） */
+    private static void drawTextIn(GuiGraphics g, Font font, String text, int barW, int barH,
+                                   int yBase, ComponentLayout c, int color) {
         int tw = font.width(text);
         int tx = switch (c.textAlignParsed()) {
             case LEFT -> 4;
@@ -589,7 +638,24 @@ public final class CustomHudRenderer {
         };
         tx += c.textOffsetX;
         int ty = yBase + (barH - 8) / 2 + c.textOffsetY;
-        g.drawString(font, text, tx, ty, 0xFFFFFFFF, true);
+        g.drawString(font, text, tx, ty, color, true);
+    }
+
+    /** 扫光流动（局部坐标版：组件原点即条左上） */
+    private static void drawSheen(GuiGraphics g, int w, int h, int fillW) {
+        var dxCfg = ConfigManager.getConfig().dynamicFx;
+        if (!dxCfg.enabled || !dxCfg.sheen || fillW <= 0) return;
+        int innerW = HudBarPainter.innerWidth(w);
+        int[] band = HudFx.sheenBand(innerW, fillW, System.currentTimeMillis(), 0);
+        if (band == null) return;
+        int x0 = HudBarPainter.INSET + band[0];
+        int x1 = HudBarPainter.INSET + band[1];
+        int edge = HudFx.sheenEdgeW(innerW);
+        int y0 = HudBarPainter.fillTop(0, h);
+        int ih = HudBarPainter.innerHeight(h);
+        if (ih <= 0) return;
+        g.fill(x0 + edge, y0, x1, y0 + ih, 0x10FFFFFF);
+        g.fill(x0, y0, Math.min(x0 + edge, x1), y0 + ih, 0x20FFFFFF);
     }
 
     /** 数值格式化：整数直接显示（20/20 而非 20.0/20.0），非整保留一位小数 */

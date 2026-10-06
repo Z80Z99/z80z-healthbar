@@ -112,9 +112,20 @@ public final class MobHealthBarStyle {
         int border = ColorHelper.modifyAlpha(0xFF6E6E78, a);
         // 动态效果（平滑/残影/闪白）
         var f = barFx(snap);
+        var fxCfg = ConfigManager.getConfig().dynamicFx;
         int baseFill = fillColor(snap, Math.max(0, Math.min(3, cfg.colorVariant)));
         if (f.flash > 0.01f) {
             baseFill = ColorHelper.lerp(baseFill, 0xFFFFFFFF, f.flash * 0.6f);
+        }
+        // 低血脉冲 / 治疗泛光（实体条阈值固定 0.3）
+        if (fxCfg.enabled) {
+            if (fxCfg.lowHpPulse && snap.plainHealthRatio() <= 0.3f) {
+                baseFill = ColorHelper.lerp(baseFill, 0xFFFFFFFF,
+                        com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.35f);
+            }
+            if (fxCfg.healGlow) {
+                baseFill = ColorHelper.lerp(baseFill, 0xFF50E080, f.heal * 0.45f);
+            }
         }
         int fill = ColorHelper.modifyAlpha(baseFill, a);
 
@@ -187,6 +198,17 @@ public final class MobHealthBarStyle {
             int baseColor = fillColor(snap, variant);
             if (f.flash > 0.01f) {
                 baseColor = ColorHelper.lerp(baseColor, 0xFFFFFFFF, f.flash * 0.6f);
+            }
+            // 低血脉冲 / 治疗泛光（帧条变体）
+            var fxCfg2 = ConfigManager.getConfig().dynamicFx;
+            if (fxCfg2.enabled) {
+                if (fxCfg2.lowHpPulse && snap.plainHealthRatio() <= 0.3f) {
+                    baseColor = ColorHelper.lerp(baseColor, 0xFFFFFFFF,
+                            com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.35f);
+                }
+                if (fxCfg2.healGlow) {
+                    baseColor = ColorHelper.lerp(baseColor, 0xFF50E080, f.heal * 0.45f);
+                }
             }
             int fillColor = ColorHelper.modifyAlpha(baseColor, (int) (alpha * 255));
             float tu1 = (variant * FRAME_W + FILL_INSET_X) / 512f, tv1 = 16f / 40f;

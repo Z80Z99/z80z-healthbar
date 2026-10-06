@@ -79,15 +79,33 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             blinkBorder = true;
         }
 
+        // 第二层动态效果（HudFx 纯函数,状态源仍是 BarFx）：
+        // 低血脉冲填充 / 治疗泛光（修饰填充色）、受击抖动（与低血抖动叠加）
+        long nowMs = System.currentTimeMillis();
+        int dynFillColor = healthColor;
+        if (dxCfg.enabled) {
+            if (dxCfg.lowHpPulse && lowHealth) {
+                dynFillColor = ColorHelper.lerp(dynFillColor, 0xFFFFFFFF,
+                        com.z80z99.z80zhealthbar.overlay.HudFx.pulse(nowMs) * 0.35f);
+            }
+            if (dxCfg.healGlow) {
+                dynFillColor = ColorHelper.lerp(dynFillColor, 0xFF50E080, fxSt.heal() * 0.45f);
+            }
+        }
+
         Parameters params = new Parameters();
         params.value = displayHealth;
         params.maxValue = maxValue;
-        params.fillColor = healthColor;
+        params.fillColor = dynFillColor;
         params.boundColor = boundColor;
         params.emptyColor = emptyColor;
 
         if (lowHealth && cfg.shakeHealthAndFoodWhileLow) {
             applyShakeEffect(params, 2);
+        }
+        if (dxCfg.enabled && dxCfg.hitShake) {
+            int hit = com.z80z99.z80zhealthbar.overlay.HudFx.shakeOffset(nowMs, fxSt.flash());
+            params.verticalShift = Math.max(params.verticalShift, hit);
         }
 
         // 计算条形位置
@@ -151,7 +169,8 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             // 伤害残影（与样式3同源）：掉血后在 [当前填充, 掉血前血量] 区域画渐隐白
             drawGhostSegment(graphics, left, top, barWidth, barH, healthW, fxSt, 0, compress);
             // 生命值填充
-            HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, healthW, healthColor);
+            HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, healthW, dynFillColor);
+            drawSheen(graphics, left, top, barWidth, barH, healthW);
             // 吸收段附加在生命段之后
             HudBarPainter.drawSegment(graphics, left, top, barWidth, barH, healthW, absEnd, absorptionColor);
             // 吸收残影：[金段终点, 消耗前终点] 白色渐隐（锚定当前填充右侧,随填充一起收缩）
@@ -177,6 +196,8 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
                     (int) Math.round(params.value / params.maxValue * HudBarPainter.innerWidth(barWidth)),
                     fxSt, params.verticalShift, 1f);
             renderBar(graphics, left, top, barWidth, barH, params);
+            drawSheen(graphics, left, top, barWidth, barH,
+                    (int) Math.round(params.value / params.maxValue * HudBarPainter.innerWidth(barWidth)));
         }
 
         boolean rightSide = pos == OverlayPosition.RIGHT;
@@ -192,16 +213,23 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             // 整数不显示小数（20 而非 20.0）；非整保留一位
             String text = trimNum((float) (dxCfg.enabled && dxCfg.numRoll ? displayHealth : health));
             if (absorption > 0) text += " + " + trimNum(absorption);
+            // 数字受伤红/治疗绿（dynamicFx.numTint,实体条同款语义补齐玩家条）
+            int textColor = 0xFFFFFFFF;
+            if (dxCfg.enabled && dxCfg.numTint) {
+                float[] tint = com.z80z99.z80zhealthbar.overlay.HudFx.textTint(fxSt.flash(), fxSt.heal());
+                if (tint[0] > 0f) textColor = ColorHelper.lerp(textColor, 0xFFFF5050, tint[0]);
+                if (tint[1] > 0f) textColor = ColorHelper.lerp(textColor, 0xFF50E080, tint[1]);
+            }
             int[] to = BarLayouts.textOffset("health");
             int textY = top + barH / 2 - 4 + cfg.overlayBarTextOffsetY + to[1];
             if (rightSide) {
                 // 条左外右对齐,再往左避开条左侧状态心形图标（left-11）——此前 left-5 数字盖住图标
                 int tx = left - 15 + to[0];
-                OverlayManager.addStringRender(text, tx, textY, 0xFFFFFFFF, OverlayManager.ALIGN_RIGHT);
+                OverlayManager.addStringRender(text, tx, textY, textColor, OverlayManager.ALIGN_RIGHT);
                 BarLayouts.recordText("health", tx - mc.font.width(text), textY, mc.font.width(text), 9);
             } else {
                 int tx = left + barWidth + 5 + to[0];
-                OverlayManager.addStringRender(text, tx, textY, 0xFFFFFFFF, OverlayManager.ALIGN_LEFT);
+                OverlayManager.addStringRender(text, tx, textY, textColor, OverlayManager.ALIGN_LEFT);
                 BarLayouts.recordText("health", tx, textY, mc.font.width(text), 9);
             }
         }
@@ -213,6 +241,24 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         float r = Math.round(v * 10) / 10f;
         if (r == (int) r) return String.valueOf((int) r);
         return String.valueOf(r);
+    }
+
+    /** 扫光流动（dynamicFx.sheen）：填充区周期性扫过移动高光带（前缘亮边 + 主体淡带,裁剪在填充内） */
+    private void drawSheen(GuiGraphics graphics, int left, int top, int barWidth, int barH, int fillW) {
+        var dxCfg = ConfigManager.getConfig().dynamicFx;
+        if (!dxCfg.enabled || !dxCfg.sheen || fillW <= 0) return;
+        int innerW = HudBarPainter.innerWidth(barWidth);
+        int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBand(innerW, fillW,
+                System.currentTimeMillis(), 0);
+        if (band == null) return;
+        int x0 = left + HudBarPainter.INSET + band[0];
+        int x1 = left + HudBarPainter.INSET + band[1];
+        int edge = com.z80z99.z80zhealthbar.overlay.HudFx.sheenEdgeW(innerW);
+        int y0 = HudBarPainter.fillTop(top, barH);
+        int h = HudBarPainter.innerHeight(barH);
+        if (h <= 0) return;
+        graphics.fill(x0 + edge, y0, x1, y0 + h, 0x10FFFFFF);
+        graphics.fill(x0, y0, Math.min(x0 + edge, x1), y0 + h, 0x20FFFFFF);
     }
 
     /** 伤害残影段（与样式3同源 BarFx 动画）：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）；内宽几何。

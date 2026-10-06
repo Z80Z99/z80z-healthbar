@@ -23,4 +23,12 @@ public class DynamicFxConfig {
     public boolean numPunch = true;
     /** 数字动态效果：受伤闪红、治疗闪绿 */
     public boolean numTint = true;
+    /** 低血脉冲：低于阈值时填充颜色呼吸明暗（玩家条阈值 = overlay.lowHealthRate,实体条固定 0.3） */
+    public boolean lowHpPulse = true;
+    /** 扫光流动：填充区周期性扫过一道移动高光带 */
+    public boolean sheen = true;
+    /** 治疗泛光：回血时填充短暂泛绿（与 numTint 的数字变绿互补,本效果作用于填充本体） */
+    public boolean healGlow = true;
+    /** 受击抖动：受伤瞬间条本体垂直抖动,幅度随受击闪白衰减收敛 */
+    public boolean hitShake = true;
 }

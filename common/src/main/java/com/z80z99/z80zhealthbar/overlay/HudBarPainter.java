@@ -74,13 +74,19 @@ public final class HudBarPainter {
     /** 在卡片内绘制从 start 到 end 的叠加段（吸收/饱和度/兼容状态）。 */
     public static void drawSegment(GuiGraphics g, int x, int y, int width, int height,
                                    int start, int end, int color) {
+        drawSegment(g, x, y, width, height, start, end, color, 0);
+    }
+
+    /** 叠加段（带 y 偏移——受击抖动等动态位移用,与填充的 yOffset 通道一致）。 */
+    public static void drawSegment(GuiGraphics g, int x, int y, int width, int height,
+                                   int start, int end, int color, int yOffset) {
         int innerW = innerWidth(width);
         int innerH = innerHeight(height);
         start = Math.max(0, Math.min(innerW, start));
         end = Math.max(start, Math.min(innerW, end));
         if (end <= start || innerH <= 0) return;
-        g.fill(x + INSET + start, fillTop(y, height),
-                x + INSET + end, fillTop(y, height) + innerH, color);
+        g.fill(x + INSET + start, fillTop(y, height) + yOffset,
+                x + INSET + end, fillTop(y, height) + yOffset + innerH, color);
     }
 
     /** 在卡片内按比例绘制填充，ratio 会被钳制到 0..1。 */

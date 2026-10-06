@@ -21,11 +21,13 @@ public class AirLevelOverlay extends SimpleBarOverlay {
         Player player = mc.player;
         if (player == null) return;
         boolean preview = HudPreviewState.active;
-        if (!preview && !player.isUnderWater()) return;
-
+        // 出入水淡入淡出：可见性 = 水下且氧气未满;淡出期（离水后短暂保留）也要继续渲染
+        boolean wantsVisible = (preview || player.isUnderWater());
         int air = preview ? HudPreviewState.air : player.getAirSupply();
         int maxAir = preview ? HudPreviewState.maxAir : player.getMaxAirSupply();
-        if (air >= maxAir) return;
+        wantsVisible = wantsVisible && air < maxAir;
+        float fade = com.z80z99.z80zhealthbar.overlay.AirFade.alpha(wantsVisible, System.currentTimeMillis());
+        if (!wantsVisible && com.z80z99.z80zhealthbar.overlay.AirFade.fullyHidden(fade)) return;
         if (!BarLayouts.visible("air")) return; // 单条显示开关（编辑器组件级配置）
 
         int fillColor = ColorHelper.parseColor(colors.air);
@@ -63,19 +65,25 @@ public class AirLevelOverlay extends SimpleBarOverlay {
             renderGui.setRightHeight(top + barH + margin);
         }
 
-        // Wave 11 美化：气泡图标（空气不足 1/4 时用破裂气泡;编辑器可关/拆分独立偏移）
-        boolean lowAir = air <= maxAir / 4;
-        if (BarLayouts.showIcon("air")) {
-            int[] io = BarLayouts.iconOffset("air");
-            int ix = left - 11 + io[0], iy = top + io[1];
-            drawIcon(graphics, ix, iy, barH,
-                    lowAir ? ICON_BUBBLE_SPLIT_U : ICON_BUBBLE_U, ICON_BUBBLE_V);
-            BarLayouts.recordIcon("air", ix, iy, 9, 9);
-        }
+        // 淡入淡出：整体透明度经 shader color 应用（含卡片/填充/图标）,结束后恢复
+        if (fade < 1f) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, fade);
+        try {
+            // Wave 11 美化：气泡图标（空气不足 1/4 时用破裂气泡;编辑器可关/拆分独立偏移）
+            boolean lowAir = air <= maxAir / 4;
+            if (BarLayouts.showIcon("air")) {
+                int[] io = BarLayouts.iconOffset("air");
+                int ix = left - 11 + io[0], iy = top + io[1];
+                drawIcon(graphics, ix, iy, barH,
+                        lowAir ? ICON_BUBBLE_SPLIT_U : ICON_BUBBLE_U, ICON_BUBBLE_V);
+                BarLayouts.recordIcon("air", ix, iy, 9, 9);
+            }
 
-        drawBarCard(graphics, left, top, barWidth, barH);
-        HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,
-                air / (float) maxAir, fillColor);
-        BarLayouts.record("air", left, top, barWidth, barH);
+            drawBarCard(graphics, left, top, barWidth, barH);
+            HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,
+                    air / (float) maxAir, fillColor);
+            BarLayouts.record("air", left, top, barWidth, barH);
+        } finally {
+            if (fade < 1f) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        }
     }
 }

@@ -655,7 +655,7 @@ public final class ModSettingsScreen extends Screen {
         rows.add(toggleRow("z80zhealthbar.option.addons.airRow", c.entityAddons.airRow, v -> c.entityAddons.airRow = v));
     }
 
-    /** 动态效果（条形样式 1/3 通用）：平滑过渡/伤害残影/受伤闪白 */
+    /** 动态效果（实体条样式 1/3 与玩家 HUD 血条通用）：平滑/残影/闪白/数字动效 + 第二层特效 */
     private void buildFxRows() {
         var fx = cfg().dynamicFx;
         rows.add(new SectionRow("z80zhealthbar.settings.section.barfx"));
@@ -666,6 +666,11 @@ public final class ModSettingsScreen extends Screen {
         rows.add(toggleRow("z80zhealthbar.option.barfx.numRoll", fx.numRoll, v -> fx.numRoll = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.numPunch", fx.numPunch, v -> fx.numPunch = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.numTint", fx.numTint, v -> fx.numTint = v));
+        // 第二层特效（HudFx 纯函数 + BarFx 现有状态,渲染层计算）
+        rows.add(toggleRow("z80zhealthbar.option.barfx.lowHpPulse", fx.lowHpPulse, v -> fx.lowHpPulse = v));
+        rows.add(toggleRow("z80zhealthbar.option.barfx.sheen", fx.sheen, v -> fx.sheen = v));
+        rows.add(toggleRow("z80zhealthbar.option.barfx.healGlow", fx.healGlow, v -> fx.healGlow = v));
+        rows.add(toggleRow("z80zhealthbar.option.barfx.hitShake", fx.hitShake, v -> fx.hitShake = v));
         rows.add(new TextRow("z80zhealthbar.option.barfx.note"));
     }
 

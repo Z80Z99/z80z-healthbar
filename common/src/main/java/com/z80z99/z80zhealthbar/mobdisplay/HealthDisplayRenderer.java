@@ -72,6 +72,16 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         if (flash > 0.01f) {
             fillColor = ColorHelper.lerp(fillColor, 0xFFFFFFFF, flash * 0.6f);
         }
+        // 第二层动态效果：低血脉冲（实体条阈值固定 0.3）/ 治疗泛光（填充本体,与数字变绿互补）
+        if (fx.enabled) {
+            if (fx.lowHpPulse && ratio <= 0.3f) {
+                fillColor = ColorHelper.lerp(fillColor, 0xFFFFFFFF,
+                        com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.35f);
+            }
+            if (fx.healGlow) {
+                fillColor = ColorHelper.lerp(fillColor, 0xFF50E080, st.heal() * 0.45f);
+            }
+        }
         int emptyColor = ColorHelper.modifyAlpha(ColorHelper.parseColor(colors.mobBarEmpty), (int) (alphaMul * 255));
         int boundColor = ColorHelper.modifyAlpha(ColorHelper.parseColor(colors.mobBarBound), (int) (alphaMul * 255));
         fillColor = ColorHelper.modifyAlpha(fillColor, (int) (alphaMul * 255));
@@ -142,7 +152,20 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
                 default -> fillRect(vc, m, x, y, fillW, barH, fillColor);
             }
         }
-        // 7) 分格刻度线（变体 2）：叠加式 1px 纵向刻度,画在填充/残影之上——
+        // 7) 扫光流动：填充区周期性扫过移动高光带（前缘亮边 + 主体淡带,裁剪在填充内;
+        //    per-entity 相位偏移防多根条同步）。绘制于填充之上、刻度之下
+        if (fx.enabled && fx.sheen && fillW > 0) {
+            int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBand(
+                    barWidth, fillW, System.currentTimeMillis(), snap.entityId * 400);
+            if (band != null) {
+                int edge = com.z80z99.z80zhealthbar.overlay.HudFx.sheenEdgeW(barWidth);
+                int a1 = (int) (0x10 * alphaMul) << 24 | 0xFFFFFF;
+                int a2 = (int) (0x20 * alphaMul) << 24 | 0xFFFFFF;
+                fillRect(vc, m, x + band[0] + edge, y, band[1] - band[0] - edge, barH, a1);
+                fillRect(vc, m, x + band[0], y, Math.min(edge, band[1] - band[0]), barH, a2);
+            }
+        }
+        // 8) 分格刻度线（变体 2）：叠加式 1px 纵向刻度,画在填充/残影之上——
         //    不再在填充里切缝,格边界整数化后不存在尾部缝隙与对位问题;格宽不足 2px（连 1px 刻度
         //    + 1px 填充都放不下）才省略,此前阈值 4px 过于保守,19 格/72px 条会被整条省掉
         if (segmented && cells > 1) {
