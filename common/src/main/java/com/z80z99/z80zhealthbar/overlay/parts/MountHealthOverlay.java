@@ -45,8 +45,11 @@ public class MountHealthOverlay extends SimpleBarOverlay {
 
         int left, top;
         OverlayPosition pos = cfg.mountHealthOnLeftSide ? OverlayPosition.LEFT : OverlayPosition.RIGHT;
-
-        if (pos == OverlayPosition.LEFT) {
+        int[] free = BarLayouts.resolve("mount", screenW, screenH, barWidth, barH);
+        if (free != null) {
+            left = free[0];
+            top = free[1];
+        } else if (pos == OverlayPosition.LEFT) {
             left = OverlayManager.horizontalOffset;
             top = renderGui.getLeftHeight(margin);
             renderGui.setLeftHeight(top + barH + margin);
@@ -62,5 +65,6 @@ public class MountHealthOverlay extends SimpleBarOverlay {
         drawBarCard(graphics, left, top, barWidth, barH);
         HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,
                 health / maxHealth, fillColor);
+        BarLayouts.record("mount", left, top, barWidth, barH);
     }
 }

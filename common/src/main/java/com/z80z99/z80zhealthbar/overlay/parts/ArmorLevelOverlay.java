@@ -39,8 +39,11 @@ public class ArmorLevelOverlay extends SimpleBarOverlay {
 
         int left, top;
         OverlayPosition pos = getDefinedPosition();
-
-        if (pos == OverlayPosition.CENTER) {
+        int[] free = BarLayouts.resolve("armor", screenW, screenH, barWidth, barH);
+        if (free != null) {
+            left = free[0];
+            top = free[1];
+        } else if (pos == OverlayPosition.CENTER) {
             // Wave 11 修复：物品栏上方布局真正水平居中
             left = centerBarLeft(screenW, barWidth);
             top = renderGui.getLeftHeight(margin);
@@ -77,5 +80,6 @@ public class ArmorLevelOverlay extends SimpleBarOverlay {
             OverlayManager.addStringRender(text.toString(), left + barWidth + 5, textY, 0xFFFFFFFF,
                     OverlayManager.ALIGN_LEFT);
         }
+        BarLayouts.record("armor", left, top, barWidth, barH);
     }
 }

@@ -78,6 +78,13 @@ public final class ConfigValidator {
         c.overlayBarInnerHeight = clamp(c.overlayBarInnerHeight, 1, 12);
         c.overlayBarVerticalMargin = clamp(c.overlayBarVerticalMargin, 0, 16);
         c.overlayBarTextOffsetY = clamp(c.overlayBarTextOffsetY, -50, 50);
+        if (c.barFreePos != null) { // 长条自由摆放坐标（编辑器拖拽写回）
+            c.barFreePos.values().removeIf(java.util.Objects::isNull);
+            for (var p : c.barFreePos.values()) {
+                p.x = clamp(p.x, 0, 10000);
+                p.y = clamp(p.y, 0, 10000);
+            }
+        }
         c.fullFoodLevelValue = clamp(c.fullFoodLevelValue, 0, 40);
         c.fullSaturationValue = clamp(c.fullSaturationValue, 0, 40);
         c.fullArmorValue = clamp(c.fullArmorValue, 0, 100);

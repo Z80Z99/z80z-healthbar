@@ -5,6 +5,7 @@ import com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig;
 import com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout;
 import com.z80z99.z80zhealthbar.layout.HudAnchor;
 import com.z80z99.z80zhealthbar.layout.HudLayoutSolver;
+import com.z80z99.z80zhealthbar.overlay.BarLayouts;
 import com.z80z99.z80zhealthbar.overlay.CustomHudRenderer;
 import com.z80z99.z80zhealthbar.overlay.HudRenderer;
 import com.z80z99.z80zhealthbar.overlay.HudStyle;
@@ -63,6 +64,11 @@ public final class HudLayoutScreen extends Screen {
     private int draggingX, draggingY;
     private int dragStartOffX, dragStartOffY;
     private boolean dragging;
+
+    /** 长条样式：预览中选中的条 + 拖拽状态（BarLayouts.KEYS 之一） */
+    private String selectedAsteorBar;
+    private String draggingAsteorBar;
+    private int barGrabDX, barGrabDY;
 
     // ---- 悬浮面板状态 ----
     private final List<PEntry> panelEntries = new ArrayList<>();
@@ -279,6 +285,7 @@ public final class HudLayoutScreen extends Screen {
                 () -> {
                     HudStyle[] vals = HudStyle.values();
                     o.hudStyle = vals[(hudStyle().ordinal() + 1) % vals.length].name();
+                    selectedAsteorBar = null; // 换样式后长条选择失效
                     rebuildWidgets();
                 });
     }
@@ -310,6 +317,45 @@ public final class HudLayoutScreen extends Screen {
                 () -> o.forceRenderAtCorner, v -> o.forceRenderAtCorner = v));
         panelEntries.add(toggle("z80zhealthbar.option.overlay.mountHealthOnLeftSide",
                 () -> o.mountHealthOnLeftSide, v -> o.mountHealthOnLeftSide = v));
+        // 自由摆放：预览中直接拖拽任意条即可脱离布局预设;选中后在此精确微调
+        panelEntries.add(new PEntry(null, "z80zhealthbar.editor.asteor.note", null));
+        panelEntries.add(cycler("z80zhealthbar.editor.asteor.select",
+                () -> selectedAsteorBar == null
+                        ? Component.translatable("z80zhealthbar.editor.asteor.none").getString()
+                        : Component.translatable("z80zhealthbar.hud.component." + selectedAsteorBar).getString(),
+                () -> {
+                    List<String> avail = new java.util.ArrayList<>();
+                    for (String k : BarLayouts.KEYS) {
+                        if (BarLayouts.lastRect(k) != null) avail.add(k);
+                    }
+                    if (avail.isEmpty()) return;
+                    int i = selectedAsteorBar == null ? -1 : avail.indexOf(selectedAsteorBar);
+                    selectedAsteorBar = avail.get((i + 1) % avail.size());
+                    rebuildWidgets();
+                }));
+        if (selectedAsteorBar != null) {
+            var p = BarLayouts.get(selectedAsteorBar);
+            panelEntries.add(toggle("z80zhealthbar.editor.asteor.free",
+                    () -> p.free, v -> p.free = v));
+            panelEntries.add(stepper("z80zhealthbar.editor.asteor.x",
+                    () -> p.x, v -> p.x = (int) Math.round(v), 0, 2000, 1));
+            panelEntries.add(stepper("z80zhealthbar.editor.asteor.y",
+                    () -> p.y, v -> p.y = (int) Math.round(v), 0, 2000, 1));
+            panelEntries.add(cycler("z80zhealthbar.editor.asteor.bar_one",
+                    () -> Component.translatable("z80zhealthbar.editor.asteor.reset").getString(),
+                    () -> {
+                        BarLayouts.reset(selectedAsteorBar);
+                        selectedAsteorBar = null;
+                        rebuildWidgets();
+                    }));
+        }
+        panelEntries.add(cycler("z80zhealthbar.editor.asteor.bar_all",
+                () -> Component.translatable("z80zhealthbar.editor.asteor.reset").getString(),
+                () -> {
+                    BarLayouts.resetAll();
+                    selectedAsteorBar = null;
+                    rebuildWidgets();
+                }));
     }
 
     /** 自定义样式的参数分组（模式 / 组件 / 条形 / 文本 / 图标） */
@@ -566,7 +612,7 @@ public final class HudLayoutScreen extends Screen {
             graphics.fill(width * 2 / 3, 0, width * 2 / 3 + 1, height, 0x18FFFFFF);
         }
 
-        // 3) 元素框 + 选中高亮（仅自定义样式；与渲染器同款测量）
+        // 3) 元素框 + 选中高亮（自定义 = 测量求解;长条 = 渲染时记录的矩形）
         if (st == HudStyle.CUSTOM) {
             Map<String, int[]> sizes = CustomHudRenderer.measureAll(layout(), minecraft == null ? null : minecraft.player);
             Map<String, HudLayoutSolver.Box> boxes = HudLayoutSolver.solve(layout(), sizes, width, height);
@@ -585,6 +631,20 @@ public final class HudLayoutScreen extends Screen {
                             box.x() + box.width() / 2, box.y() - 10, 0xFF40FF40);
                 }
             }
+        } else if (st == HudStyle.ASTEORBAR) {
+            // 长条样式：预览渲染时各条记录了矩形,直接框选（未渲染的条如坐骑无框）
+            for (String key : BarLayouts.KEYS) {
+                int[] r = BarLayouts.lastRect(key);
+                if (r == null) continue;
+                boolean isSel = key.equals(selectedAsteorBar);
+                int color = isSel ? 0x8040FF40 : 0x50FFFFFF;
+                graphics.renderOutline(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2, color);
+                if (isSel) {
+                    graphics.drawCenteredString(font,
+                            Component.translatable("z80zhealthbar.hud.component." + key).getString(),
+                            r[0] + r[2] / 2, r[1] - 10, 0xFF40FF40);
+                }
+            }
         }
 
         // 4) 悬浮面板底板（深色 + 青色强调 + 投影）
@@ -601,15 +661,20 @@ public final class HudLayoutScreen extends Screen {
                 width / 2, height - 34, 0xFFCFCFCF);
     }
 
-    /** 长条样式预览：走游戏内实渲染路径（临时覆写样式为 ASTEORBAR，随后还原） */
+    /** 长条样式预览：走游戏内实渲染路径（临时覆写样式为 ASTEORBAR,随后还原）;
+     *  模拟战斗驱动数据（氧气/吸收等按循环演示）,渲染时各条记录矩形供框选/拖拽 */
     private void renderAsteorPreview(GuiGraphics graphics, float partialTick) {
         if (minecraft == null || minecraft.player == null) return;
+        BarLayouts.clearRects();
+        com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.update(System.currentTimeMillis());
+        com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = true;
         HudRenderer.setStyleOverride(HudStyle.ASTEORBAR);
         try {
             HudRenderer.onPreRender(minecraft.gui);
             HudRenderer.render(graphics, partialTick);
         } finally {
             HudRenderer.setStyleOverride(null);
+            com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = false;
         }
     }
 
@@ -705,7 +770,30 @@ public final class HudLayoutScreen extends Screen {
         if (overAnyWidget(mouseX, mouseY)) {
             return super.mouseClicked(mouseX, mouseY, button);
         }
-        // 3) 元素命中（条/文本/图标）→ 开始拖拽（仅自定义样式；其他样式无自由元素）
+        // 3) 元素命中 → 开始拖拽（自定义 = 组件/文本/图标;长条 = 预览中的条）
+        if (hudStyle() == HudStyle.ASTEORBAR) {
+            for (String key : BarLayouts.KEYS) {
+                int[] r = BarLayouts.lastRect(key);
+                if (r == null) continue;
+                if (mouseX >= r[0] && mouseX < r[0] + r[2] && mouseY >= r[1] && mouseY < r[1] + r[3]) {
+                    boolean changed = !key.equals(selectedAsteorBar);
+                    selectedAsteorBar = key;
+                    draggingAsteorBar = key;
+                    int[] f = BarLayouts.resolve(key, width, height, r[2], r[3]);
+                    int bx = f != null ? f[0] : r[0];
+                    int by = f != null ? f[1] : r[1];
+                    barGrabDX = (int) mouseX - bx;
+                    barGrabDY = (int) mouseY - by;
+                    if (changed) rebuildWidgets(); // 面板刷新为选中条
+                    return true;
+                }
+            }
+            if (selectedAsteorBar != null) {
+                selectedAsteorBar = null;
+                rebuildWidgets();
+            }
+            return super.mouseClicked(mouseX, mouseY, button);
+        }
         if (!editingCustom()) {
             return super.mouseClicked(mouseX, mouseY, button);
         }
@@ -740,6 +828,17 @@ public final class HudLayoutScreen extends Screen {
             layout().panelY = panelY;
             return true;
         }
+        if (draggingAsteorBar != null) {
+            // 长条自由摆放：首次拖拽即脱离预设布局（free=true）,位置钳制在屏幕内
+            int[] r = BarLayouts.lastRect(draggingAsteorBar);
+            if (r != null) {
+                var p = BarLayouts.get(draggingAsteorBar);
+                p.free = true;
+                p.x = Math.max(0, Math.min((int) mouseX - barGrabDX, Math.max(0, width - r[2])));
+                p.y = Math.max(0, Math.min((int) mouseY - barGrabDY, Math.max(0, height - r[3])));
+            }
+            return true;
+        }
         if (dragging && editingCustom()) {
             applyDrag(selected, dragStartOffX + (int) mouseX - draggingX,
                     dragStartOffY + (int) mouseY - draggingY);
@@ -751,6 +850,7 @@ public final class HudLayoutScreen extends Screen {
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         dragging = false;
+        draggingAsteorBar = null;
         panelDragging = false;
         return super.mouseReleased(mouseX, mouseY, button);
     }

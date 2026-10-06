@@ -1,5 +1,8 @@
 package com.z80z99.z80zhealthbar.config.configs;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 public class OverlayConfig {
     public boolean enableOverlay = true;
     /** 玩家 HUD 样式（HudStyle 名称字符串，防御性解析） */
@@ -34,4 +37,13 @@ public class OverlayConfig {
     public int cornerVerticalPadding = 5;
     public boolean forceRenderAtCorner = false;
     public boolean mountHealthOnLeftSide = false;
+
+    /** 长条样式逐条自由摆放（HUD 布局编辑器拖拽写回）：free=true 的条脱离预设布局
+     *  （overlayLayoutStyle 0-8 + 边距堆叠）按绝对坐标渲染；未拖过的条不在此表 = 跟随预设 */
+    public Map<String, BarFreePos> barFreePos = new LinkedHashMap<>();
+
+    public static class BarFreePos {
+        public boolean free;
+        public int x, y;
+    }
 }

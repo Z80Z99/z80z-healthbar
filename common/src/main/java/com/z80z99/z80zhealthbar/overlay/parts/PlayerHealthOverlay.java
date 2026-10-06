@@ -94,8 +94,11 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         int margin = cfg.overlayBarVerticalMargin;
         OverlayPosition pos = getDefinedPosition();
         int left, top;
-
-        if (pos == OverlayPosition.CENTER) {
+        int[] free = BarLayouts.resolve("health", screenW, screenH, barWidth, barH);
+        if (free != null) {
+            left = free[0];
+            top = free[1];
+        } else if (pos == OverlayPosition.CENTER) {
             // Wave 11 修复：物品栏上方布局真正水平居中（原版 HUD 逻辑）
             left = centerBarLeft(screenW, barWidth);
             top = renderGui.getLeftHeight(margin);
@@ -190,6 +193,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
                 OverlayManager.addStringRender(text, textX, textY, 0xFFFFFFFF, OverlayManager.ALIGN_LEFT);
             }
         }
+        BarLayouts.record("health", left, top, barWidth, barH);
     }
 
     /** 数值整数化：整数不显示小数（20 而非 20.0），非整保留一位 */

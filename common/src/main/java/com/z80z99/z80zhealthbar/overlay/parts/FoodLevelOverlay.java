@@ -52,8 +52,11 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
 
         OverlayPosition pos = getDefinedPosition();
         int left, top;
-
-        if (pos == OverlayPosition.CENTER) {
+        int[] free = BarLayouts.resolve("food", screenW, screenH, barWidth, barH);
+        if (free != null) {
+            left = free[0];
+            top = free[1];
+        } else if (pos == OverlayPosition.CENTER) {
             // Wave 11 修复：物品栏上方布局真正水平居中
             left = centerBarLeft(screenW, barWidth);
             top = renderGui.getLeftHeight(margin);
@@ -108,5 +111,6 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
                         OverlayManager.ALIGN_LEFT);
             }
         }
+        BarLayouts.record("food", left, top, barWidth, barH);
     }
 }
