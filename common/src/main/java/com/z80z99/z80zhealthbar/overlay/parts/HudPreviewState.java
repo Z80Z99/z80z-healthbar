@@ -25,6 +25,11 @@ public final class HudPreviewState {
         return active ? PREVIEW_FX_KEY : entityId;
     }
 
+    /** 吸收段专用 BarFx 键（与生命键互不干扰）：预览用独立负键,实机用 -(entityId+1)（实体 ID 非负,不冲突） */
+    public static int fxKeyAbs(int entityId) {
+        return active ? PREVIEW_FX_KEY - 1 : -(entityId + 1);
+    }
+
     private static final long CYCLE = 6000L;
     private static final long[] BIRTHS = {400, 1300, 2200, 3100, 4000};
 

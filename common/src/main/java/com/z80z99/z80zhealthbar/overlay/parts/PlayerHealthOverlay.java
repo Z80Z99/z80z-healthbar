@@ -123,16 +123,39 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             double total = Math.max(params.maxValue, health + absorption);
             float compress = (float) (params.maxValue / total); // BarFx 比例(相对max)→条比例折算
             int innerW = HudBarPainter.innerWidth(barWidth);
+            // 吸收段动态效果（与生命同款 BarFx,独立状态键）：吃金苹果平滑增长、被消耗
+            // 平滑消退并在消耗区域留白色渐隐残影——此前直接用原始值,与生命的动态不一致
+            float absRaw = (float) Math.max(0d, Math.min(1d, absorption / maxValue));
+            var absFx = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
+                    HudPreviewState.fxKeyAbs(player.getId()), absRaw, false, System.currentTimeMillis());
+            float absDisp = dxCfg.enabled && dxCfg.smooth
+                    ? Math.max(0f, Math.min(1f, absFx.display())) : absRaw;
             int healthW = (int) Math.max(0, Math.min(innerW, params.value / total * innerW));
-            int absWidth = (int) Math.max(0, absorption / total * innerW);
+            // 金段终点按 (平滑生命+平滑吸收)/total 一次取整——红/金两段各自取整会累计丢
+            // 1~2px,满血+吸收（总量正好撑满条）时条尾出现细缝（实测"没有填满条"）
+            int absEnd = (int) Math.max(healthW, Math.min(innerW,
+                    Math.round((params.value + absDisp * maxValue) / total * innerW)));
             drawBarCard(graphics, left, top, barWidth, barH);
             // 伤害残影（与样式3同源）：掉血后在 [当前填充, 掉血前血量] 区域画渐隐白
             drawGhostSegment(graphics, left, top, barWidth, barH, healthW, fxSt, 0, compress);
             // 生命值填充
             HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, healthW, healthColor);
-            // 吸收段附加在生命段之后（clamp 到内宽兜底）
-            HudBarPainter.drawSegment(graphics, left, top, barWidth, barH,
-                    healthW, Math.min(innerW, healthW + absWidth), absorptionColor);
+            // 吸收段附加在生命段之后
+            HudBarPainter.drawSegment(graphics, left, top, barWidth, barH, healthW, absEnd, absorptionColor);
+            // 吸收残影：[金段终点, 消耗前终点] 白色渐隐（锚定当前填充右侧,随填充一起收缩）
+            if (dxCfg.enabled && dxCfg.ghost) {
+                float gA = Math.max(0f, Math.min(1f, absFx.ghostAlpha()));
+                float pre = Math.max(0f, Math.min(1f, absFx.preHit()));
+                if (gA > 0f && pre > absDisp) {
+                    int ghostW = Math.round((float) ((pre - absDisp) * maxValue / total * innerW));
+                    int ghostEnd = Math.min(innerW, absEnd + ghostW);
+                    if (ghostEnd > absEnd) {
+                        HudBarPainter.drawSegment(graphics, left, top, barWidth, barH, absEnd, ghostEnd,
+                                ColorHelper.modifyAlpha(ColorHelper.parseColor(dxCfg.ghostColor),
+                                        (int) (gA * 255)));
+                    }
+                }
+            }
             if (blinkBorder) {
                 drawBound(graphics, left, top, left + barWidth, top + barH, boundColor);
             }
@@ -146,10 +169,8 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
 
         boolean rightSide = pos == OverlayPosition.RIGHT;
 
-        // 吸收金心：条右外侧（原版逻辑：金心跟在血条后）；RIGHT 布局该处越出屏幕，省略
-        if (absorption > 0 && !rightSide) {
-            drawIcon(graphics, left + barWidth + 2, top, barH, ICON_ABSORB_U, ICON_ABSORB_V);
-        }
+        // 吸收状态由左侧状态心形图标（selectHeartIcon 吸收时变金心）+ 文本 "+N" 表达;
+        // 此前条右外侧还画一个专门金心,与左侧金心重复（实测"重复的图标"）,已移除
 
         // 生命值文本（条右外侧；RIGHT 布局改画在条左外并右对齐，避免超出屏幕）
         if (cfg.displayHealthText) {
@@ -162,7 +183,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             if (rightSide) {
                 OverlayManager.addStringRender(text, left - 5, textY, 0xFFFFFFFF, OverlayManager.ALIGN_RIGHT);
             } else {
-                int textX = left + barWidth + (absorption > 0 ? 15 : 5);
+                int textX = left + barWidth + 5;
                 OverlayManager.addStringRender(text, textX, textY, 0xFFFFFFFF, OverlayManager.ALIGN_LEFT);
             }
         }

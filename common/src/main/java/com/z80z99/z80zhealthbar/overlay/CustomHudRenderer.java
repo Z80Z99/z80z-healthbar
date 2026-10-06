@@ -215,6 +215,13 @@ public final class CustomHudRenderer {
         //（此前按"剩余空白×吸收/max"缩放,满血时剩余为 0 吸收段归零不可见,且长度随血量下降缩短语义不准）
         float total = Math.max(max, health + absorption);
         float compress = absorption > 0 ? max / total : 1f; // BarFx 比例(相对max)→条比例折算
+        // 吸收段动态效果（与生命同款 BarFx,独立状态键）：吃金苹果平滑增长、被消耗平滑消退
+        // 并在消耗区域留白色渐隐残影——此前直接用原始值,与生命的动态不一致
+        float absRaw = Mth.clamp(absorption / max, 0f, 1f);
+        var absFx = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
+                com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.fxKeyAbs(p.getId()),
+                absRaw, false, System.currentTimeMillis());
+        float absDisp = dxFxCfg.enabled && dxFxCfg.smooth ? Mth.clamp(absFx.display(), 0f, 1f) : absRaw;
         int innerW = HudBarPainter.innerWidth(w);
         int healthW = Math.round(dispR * compress * innerW);
         // 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）
@@ -229,9 +236,26 @@ public final class CustomHudRenderer {
         }
         HudBarPainter.drawFillWidth(g, 0, 0, w, h, healthW, color);
         if (absorption > 0) {
-            int absW = Math.round(Mth.clamp(absorption / total, 0, 1) * innerW);
-            HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, healthW + absW,
+            // 金段终点按 (平滑生命+平滑吸收)/total 一次取整——两段各自取整会累计丢 1~2px,
+            // 满血+吸收（总量正好撑满条）时条尾出现细缝（实测"没有填满条"）
+            int absEnd = Math.min(innerW, Math.max(healthW,
+                    Math.round((dispR * max + absDisp * max) / total * innerW)));
+            HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, absEnd,
                     ColorHelper.parseColor(colors.absorption));
+            // 吸收残影：[金段终点, 消耗前终点] 白色渐隐（锚定当前填充右侧,随填充一起收缩）
+            if (dxFxCfg.enabled && dxFxCfg.ghost) {
+                float gA = Mth.clamp(absFx.ghostAlpha(), 0f, 1f);
+                float pre = Mth.clamp(absFx.preHit(), 0f, 1f);
+                if (gA > 0f && pre > absDisp) {
+                    int ghostW = Math.round((pre - absDisp) * max / total * innerW);
+                    int ghostEnd = Math.min(innerW, absEnd + ghostW);
+                    if (ghostEnd > absEnd) {
+                        HudBarPainter.drawSegment(g, 0, 0, w, h, absEnd, ghostEnd,
+                                ColorHelper.modifyAlpha(ColorHelper.parseColor(dxFxCfg.ghostColor),
+                                        (int) (gA * 255)));
+                    }
+                }
+            }
         }
         if (c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, healthIconU(p), 0);
