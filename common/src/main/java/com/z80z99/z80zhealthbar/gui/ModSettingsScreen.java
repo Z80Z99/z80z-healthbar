@@ -470,6 +470,9 @@ public final class ModSettingsScreen extends Screen {
 
         // 快捷操作（编辑器入口自"玩家 HUD"页迁来，作为全局落地入口）
         rows.add(new SectionRow("z80zhealthbar.settings.section.quick"));
+        // HUD 管线切换（自定义/长条）——编辑器面板不再提供（切换会整套更换 HUD,组件编辑中误触反人类）
+        rows.add(cycleEnumRow("z80zhealthbar.hud.style", HudStyle.class,
+                ModSettingsScreen::hudStyle, v -> c.overlay.hudStyle = v.name()));
         rows.add(actionRow("z80zhealthbar.settings.open_editor", () -> {
             c.overlay.hudStyle = HudStyle.CUSTOM.name();
             ConfigManager.saveConfig();
