@@ -41,6 +41,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         float health = HudPreviewState.active ? HudPreviewState.health : player.getHealth();
         float maxHealth = HudPreviewState.active ? HudPreviewState.maxHealth : player.getMaxHealth();
         float absorption = HudPreviewState.active ? HudPreviewState.absorption : player.getAbsorptionAmount();
+        if (!BarLayouts.visible("health")) return; // 单条显示开关（编辑器组件级配置）
         if (hideUnchanged(health)) return; // 数值长期不变时隐藏（hideUnchangingBarAfterSeconds）
 
         // 确定生命值颜色
@@ -114,9 +115,14 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             renderGui.setRightHeight(top + barH + margin);
         }
 
-        // Wave 11 美化：状态心形图标（条左侧 2px 间距）
+        // Wave 11 美化：状态心形图标（条左侧 2px 间距;编辑器可关/拆分独立偏移）
         int[] icon = selectHeartIcon(player);
-        drawIcon(graphics, left - 11, top, barH, icon[0], icon[1]);
+        if (BarLayouts.showIcon("health")) {
+            int[] io = BarLayouts.iconOffset("health");
+            int ix = left - 11 + io[0], iy = top + io[1];
+            drawIcon(graphics, ix, iy, barH, icon[0], icon[1]);
+            BarLayouts.recordIcon("health", ix, iy, 9, 9);
+        }
 
         // 与吸收值一起显示
         if (cfg.absorptionMode == ABSORPTION_TOGETHER && absorption > 0) {

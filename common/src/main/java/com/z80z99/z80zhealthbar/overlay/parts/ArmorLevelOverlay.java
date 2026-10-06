@@ -23,6 +23,7 @@ public class ArmorLevelOverlay extends SimpleBarOverlay {
 
         int armor = HudPreviewState.active ? HudPreviewState.armor : player.getArmorValue();
         if (armor <= 0) return;
+        if (!BarLayouts.visible("armor")) return; // 单条显示开关（编辑器组件级配置）
         if (hideUnchanged(armor)) return; // 数值长期不变时隐藏（hideUnchangingBarAfterSeconds）
 
         int toughness = (int) player.getAttributeValue(Attributes.ARMOR_TOUGHNESS);
@@ -59,8 +60,13 @@ public class ArmorLevelOverlay extends SimpleBarOverlay {
             renderGui.setRightHeight(top + barH + margin);
         }
 
-        // Wave 11 美化：盾牌图标
-        drawIcon(graphics, left - 11, top, barH, ICON_SHIELD_U, ICON_SHIELD_V);
+        // Wave 11 美化：盾牌图标（编辑器可关/拆分独立偏移）
+        if (BarLayouts.showIcon("armor")) {
+            int[] io = BarLayouts.iconOffset("armor");
+            int ix = left - 11 + io[0], iy = top + io[1];
+            drawIcon(graphics, ix, iy, barH, ICON_SHIELD_U, ICON_SHIELD_V);
+            BarLayouts.recordIcon("armor", ix, iy, 9, 9);
+        }
 
         drawBarCard(graphics, left, top, barWidth, barH);
         HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,

@@ -23,6 +23,7 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
 
         int foodLevel = HudPreviewState.active ? HudPreviewState.food : player.getFoodData().getFoodLevel();
         float saturation = HudPreviewState.active ? 0f : player.getFoodData().getSaturationLevel();
+        if (!BarLayouts.visible("food")) return; // 单条显示开关（编辑器组件级配置）
         if (hideUnchanged(foodLevel)) return; // 数值长期不变时隐藏（hideUnchangingBarAfterSeconds）
 
         int fillColor = ColorHelper.parseColor(colors.foodNormal);
@@ -72,9 +73,14 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
             renderGui.setRightHeight(top + barH + margin);
         }
 
-        // Wave 11 美化：鸡腿图标（饥饿时红色饥饿鸡腿）
-        drawIcon(graphics, left - 11, top, barH,
-                isHungry ? ICON_FOOD_HUNGRY_U : ICON_FOOD_U, ICON_FOOD_V);
+        // Wave 11 美化：鸡腿图标（饥饿时红色饥饿鸡腿;编辑器可关/拆分独立偏移）
+        if (BarLayouts.showIcon("food")) {
+            int[] io = BarLayouts.iconOffset("food");
+            int ix = left - 11 + io[0], iy = top + io[1];
+            drawIcon(graphics, ix, iy, barH,
+                    isHungry ? ICON_FOOD_HUNGRY_U : ICON_FOOD_U, ICON_FOOD_V);
+            BarLayouts.recordIcon("food", ix, iy, 9, 9);
+        }
 
         int innerW = HudBarPainter.innerWidth(barWidth);
         // Math.round 而非 (int) 截断——BarFx 类平滑值稳态略小于 1.0 时截断会裁掉 1px 填充

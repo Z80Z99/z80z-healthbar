@@ -20,11 +20,31 @@ public final class BarLayouts {
 
     /** 本帧渲染记录的条矩形（编辑器框选用）: key → {x, y, w, h} */
     private static final Map<String, int[]> LAST_RECTS = new LinkedHashMap<>();
+    /** 本帧渲染记录的状态图标矩形（编辑器框选/拖拽拆分用）: key → {x, y, w, h} */
+    private static final Map<String, int[]> LAST_ICON_RECTS = new LinkedHashMap<>();
 
-    /** 取某条的自由摆放数据（无则创建占位,free=false） */
+    /** 取某条的组件配置（无则创建占位,默认可见/显示图标/无偏移） */
     public static OverlayConfig.BarFreePos get(String key) {
         return ConfigManager.getConfig().overlay.barFreePos
                 .computeIfAbsent(key, k -> new OverlayConfig.BarFreePos());
+    }
+
+    /** 单条显示开关（关闭 = 整条不渲染,即"删除血条组件"） */
+    public static boolean visible(String key) {
+        OverlayConfig.BarFreePos p = ConfigManager.getConfig().overlay.barFreePos.get(key);
+        return p == null || p.visible;
+    }
+
+    /** 状态图标开关（关闭 = 只渲染条本体） */
+    public static boolean showIcon(String key) {
+        OverlayConfig.BarFreePos p = ConfigManager.getConfig().overlay.barFreePos.get(key);
+        return p == null || p.showIcon;
+    }
+
+    /** 状态图标相对条默认位（条左外 -11px）的独立偏移——图标与条拆开摆放 */
+    public static int[] iconOffset(String key) {
+        OverlayConfig.BarFreePos p = ConfigManager.getConfig().overlay.barFreePos.get(key);
+        return p == null ? new int[]{0, 0} : new int[]{p.iconOffX, p.iconOffY};
     }
 
     /** free 条的绝对位置（钳制在屏幕内）;非 free 返回 null → 调用方走预设布局 */
@@ -41,13 +61,22 @@ public final class BarLayouts {
         LAST_RECTS.put(key, new int[]{x, y, w, h});
     }
 
+    public static void recordIcon(String key, int x, int y, int w, int h) {
+        LAST_ICON_RECTS.put(key, new int[]{x, y, w, h});
+    }
+
     public static int[] lastRect(String key) {
         return LAST_RECTS.get(key);
+    }
+
+    public static int[] lastIconRect(String key) {
+        return LAST_ICON_RECTS.get(key);
     }
 
     /** 每帧预览渲染前清空（条消失时不残留旧框） */
     public static void clearRects() {
         LAST_RECTS.clear();
+        LAST_ICON_RECTS.clear();
     }
 
     /** 单条释放回预设布局 */

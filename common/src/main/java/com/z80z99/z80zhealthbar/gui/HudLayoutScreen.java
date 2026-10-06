@@ -69,6 +69,9 @@ public final class HudLayoutScreen extends Screen {
     private String selectedAsteorBar;
     private String draggingAsteorBar;
     private int barGrabDX, barGrabDY;
+    /** 状态图标拆分拖拽：图标与条可分离摆放（写回 iconOff*） */
+    private boolean draggingAsteorIcon;
+    private int iconGrabX, iconGrabY, iconStartOffX, iconStartOffY;
 
     // ---- 悬浮面板状态 ----
     private final List<PEntry> panelEntries = new ArrayList<>();
@@ -200,7 +203,6 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     protected void init() {
-        if (editingCustom()) buildCustomControls();
         buildPanelEntries();
         // 面板默认右上（曾拖动过则用记录值）
         panelX = layout().panelX < 0 ? width - PANEL_W - 6 : layout().panelX;
@@ -208,40 +210,8 @@ public final class HudLayoutScreen extends Screen {
         layoutPanel();
         clampPanel();
         layoutPanel();
-        // 右上功能键全部样式通用——此前"完成/重置"只在自定义样式构建,长条/原版样式无完成按钮
-        int fx = width - 150;
-        if (editingCustom()) {
-            addRenderableWidget(flat(140, 16, () -> Component.translatable("z80zhealthbar.editor.reset_component"),
-                    () -> layout().resetComponent(baseKey(selected)), fx, 28));
-            addRenderableWidget(flat(140, 16, () -> Component.translatable("z80zhealthbar.editor.reset_all"),
-                    () -> layout().resetToDefaults(), fx, 46));
-            addRenderableWidget(flat(140, 16, () -> CommonComponents.GUI_DONE, this::onClose, fx, 64));
-        } else {
-            addRenderableWidget(flat(140, 16, () -> CommonComponents.GUI_DONE, this::onClose, fx, 28));
-        }
-    }
-
-    /** 自定义样式的专属控件：底栏（仅组件选择）+ 预设（一步应用）;右上功能键全部样式通用（init） */
-    private void buildCustomControls() {
-        int y = height - 24;
-        int x = 8;
-        addRenderableWidget(CycleButton.<String>builder(v -> Component.translatable("z80zhealthbar.hud.component." + v))
-                                .withValues(COMPONENT_ORDER)
-                                .withInitialValue(baseKey(selected))
-                .create(x, y, Math.min(240, width - 16), 18, Component.empty(), (b, v) -> {
-                    selected = v;
-                    rebuildWidgets();
-                }));
-
-        // 预设布局（左上,一步应用：点击 = 立即应用当前显示的整套设计并轮换到下一个）
-        addRenderableWidget(flat(150, 16, () -> Component.translatable("z80zhealthbar.editor.preset.apply")
-                        .copy().append(": ")
-                        .append(Component.translatable("z80zhealthbar.editor.preset." + presetSel)),
-                () -> {
-                    layout().applyPreset(presetSel);
-                    presetSel = nextPreset(presetSel);
-                    rebuildWidgets();
-                }, 8, 28));
+        // 屏幕上的常驻按钮已全部移除：组件选择底栏/预设按钮/重置/完成均整合进属性面板
+        // （组件选择 = 点击预览元素;预设/重置/完成 = 面板动作行）
     }
 
     private static String nextPreset(String cur) {
@@ -265,6 +235,9 @@ public final class HudLayoutScreen extends Screen {
         HudStyle st = hudStyle();
         if (st == HudStyle.VANILLA) {
             panelEntries.add(new PEntry(null, "z80zhealthbar.editor.vanilla_note", null));
+            panelEntries.add(cycler("z80zhealthbar.editor.done",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    this::onClose));
             return;
         }
         if (st == HudStyle.ASTEORBAR) {
@@ -315,26 +288,30 @@ public final class HudLayoutScreen extends Screen {
                 v -> Math.round(v * 100) + "%"));
         panelEntries.add(toggle("z80zhealthbar.option.overlay.mountHealthOnLeftSide.label",
                 () -> o.mountHealthOnLeftSide, v -> o.mountHealthOnLeftSide = v));
-        // 自由摆放：预览中直接拖拽任意条即可脱离布局预设;选中后在此精确微调
+        // 自由摆放：预览中直接拖拽任意条即可脱离布局预设;选中后在此精确微调。
+        // 选中条列表含已隐藏条（visible=false 不渲染无框,但可通过此行选中重新打开）
         panelEntries.add(new PEntry(null, "z80zhealthbar.editor.asteor.note", null));
         panelEntries.add(cycler("z80zhealthbar.editor.asteor.select",
                 () -> selectedAsteorBar == null
                         ? Component.translatable("z80zhealthbar.editor.asteor.none").getString()
                         : Component.translatable("z80zhealthbar.hud.component." + selectedAsteorBar).getString(),
                 () -> {
-                    List<String> avail = new java.util.ArrayList<>();
-                    for (String k : BarLayouts.KEYS) {
-                        if (BarLayouts.lastRect(k) != null) avail.add(k);
-                    }
-                    if (avail.isEmpty()) return;
-                    int i = selectedAsteorBar == null ? -1 : avail.indexOf(selectedAsteorBar);
-                    selectedAsteorBar = avail.get((i + 1) % avail.size());
+                    int i = selectedAsteorBar == null ? -1 : BarLayouts.KEYS.indexOf(selectedAsteorBar);
+                    selectedAsteorBar = BarLayouts.KEYS.get((i + 1) % BarLayouts.KEYS.size());
                     rebuildWidgets();
                 }));
         if (selectedAsteorBar != null) {
             var p = BarLayouts.get(selectedAsteorBar);
+            panelEntries.add(toggle("z80zhealthbar.editor.asteor.visible",
+                    () -> p.visible, v -> p.visible = v));
             panelEntries.add(toggle("z80zhealthbar.editor.asteor.free",
                     () -> p.free, v -> p.free = v));
+            panelEntries.add(toggle("z80zhealthbar.editor.asteor.icon",
+                    () -> p.showIcon, v -> p.showIcon = v));
+            panelEntries.add(stepper("z80zhealthbar.editor.asteor.icon_x",
+                    () -> p.iconOffX, v -> p.iconOffX = (int) Math.round(v), -500, 500, 1));
+            panelEntries.add(stepper("z80zhealthbar.editor.asteor.icon_y",
+                    () -> p.iconOffY, v -> p.iconOffY = (int) Math.round(v), -500, 500, 1));
             panelEntries.add(stepper("z80zhealthbar.editor.asteor.x",
                     () -> p.x, v -> p.x = (int) Math.round(v), 0, 2000, 1));
             panelEntries.add(stepper("z80zhealthbar.editor.asteor.y",
@@ -392,23 +369,35 @@ public final class HudLayoutScreen extends Screen {
                 0, 600, 5));
         // ---- 数值上限（0 = 跟随实际值;长条/自定义两样式共用） ----
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.asteor_caps", null, null));
-        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullHealthValue",
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullHealthValue.label",
                 () -> o.fullHealthValue, v -> o.fullHealthValue = (int) Math.round(v), 0, 100000, 1,
                 v -> v <= 0 ? "—" : String.valueOf((int) Math.round(v))));
-        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullFoodLevelValue",
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullFoodLevelValue.label",
                 () -> o.fullFoodLevelValue, v -> o.fullFoodLevelValue = (int) Math.round(v), 0, 40, 1,
                 v -> v <= 0 ? "—" : String.valueOf((int) Math.round(v))));
-        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullArmorValue",
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullArmorValue.label",
                 () -> o.fullArmorValue, v -> o.fullArmorValue = (int) Math.round(v), 0, 100, 1,
                 v -> v <= 0 ? "—" : String.valueOf((int) Math.round(v))));
-        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullSaturationValue",
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullSaturationValue.label",
                 () -> o.fullSaturationValue, v -> o.fullSaturationValue = v, 0, 40, 0.5,
                 v -> v <= 0 ? "—" : String.format(java.util.Locale.ROOT, "%.1f", v)));
+        // ---- 动作 ----
+        panelEntries.add(cycler("z80zhealthbar.editor.done",
+                () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                this::onClose));
     }
 
-    /** 自定义样式的参数分组（模式 / 组件 / 条形 / 文本 / 图标） */
+    /** 自定义样式的参数分组（预设 / 模式 / 组件 / 条形 / 文本 / 图标 / 动作） */
     private void buildCustomEntries() {
         ComponentLayout c = sel();
+        // 预设布局（原屏幕左上按钮移入面板,一步应用:点击 = 应用当前显示的整套设计并轮换）
+        panelEntries.add(cycler("z80zhealthbar.editor.preset.apply",
+                () -> Component.translatable("z80zhealthbar.editor.preset." + presetSel).getString(),
+                () -> {
+                    layout().applyPreset(presetSel);
+                    presetSel = nextPreset(presetSel);
+                    rebuildWidgets();
+                }));
         // 组件显示形式:长条/图标/关闭(自设置页迁入,作用于当前选中组件)
         panelEntries.add(cycler("z80zhealthbar.editor.component_mode",
                 () -> Component.translatable("z80zhealthbar.editor.mode."
@@ -509,6 +498,16 @@ public final class HudLayoutScreen extends Screen {
                 () -> c.iconOffsetY, v -> c.iconOffsetY = (int) Math.round(v), -500, 500, 1));
         panelEntries.add(stepper1("z80zhealthbar.editor.icon_scale",
                 () -> c.iconScale, v -> c.iconScale = v, 0.25, 3.0, 0.1));
+        // ---- 动作（原右上按钮移入面板） ----
+        panelEntries.add(cycler("z80zhealthbar.editor.reset_component",
+                () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                () -> layout().resetComponent(baseKey(selected))));
+        panelEntries.add(cycler("z80zhealthbar.editor.reset_all",
+                () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                () -> layout().resetToDefaults()));
+        panelEntries.add(cycler("z80zhealthbar.editor.done",
+                () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                this::onClose));
     }
 
     /** HudAnchor 循环下一项（面板 cycler 用；底栏 CycleButton 移除后的替代） */
@@ -680,17 +679,24 @@ public final class HudLayoutScreen extends Screen {
                 }
             }
         } else if (st == HudStyle.ASTEORBAR) {
-            // 长条样式：预览渲染时各条记录了矩形,直接框选（未渲染的条如坐骑无框）
+            // 长条样式：预览渲染时各条/图标记录了矩形,直接框选（未渲染的条如坐骑无框）
             for (String key : BarLayouts.KEYS) {
                 int[] r = BarLayouts.lastRect(key);
-                if (r == null) continue;
-                boolean isSel = key.equals(selectedAsteorBar);
-                int color = isSel ? 0x8040FF40 : 0x50FFFFFF;
-                graphics.renderOutline(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2, color);
-                if (isSel) {
-                    graphics.drawCenteredString(font,
-                            Component.translatable("z80zhealthbar.hud.component." + key).getString(),
-                            r[0] + r[2] / 2, r[1] - 10, 0xFF40FF40);
+                if (r != null) {
+                    boolean isSel = key.equals(selectedAsteorBar);
+                    graphics.renderOutline(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2,
+                            isSel ? 0x8040FF40 : 0x50FFFFFF);
+                    if (isSel) {
+                        graphics.drawCenteredString(font,
+                                Component.translatable("z80zhealthbar.hud.component." + key).getString(),
+                                r[0] + r[2] / 2, r[1] - 10, 0xFF40FF40);
+                    }
+                }
+                int[] ir = BarLayouts.lastIconRect(key);
+                if (ir != null) {
+                    boolean iconSel = key.equals(selectedAsteorBar);
+                    graphics.renderOutline(ir[0] - 1, ir[1] - 1, ir[2] + 2, ir[3] + 2,
+                            iconSel ? 0x8040FF40 : 0x30FFFFFF);
                 }
             }
         }
@@ -818,8 +824,26 @@ public final class HudLayoutScreen extends Screen {
         if (overAnyWidget(mouseX, mouseY)) {
             return super.mouseClicked(mouseX, mouseY, button);
         }
-        // 3) 元素命中 → 开始拖拽（自定义 = 组件/文本/图标;长条 = 预览中的条）
+        // 3) 元素命中 → 开始拖拽（自定义 = 组件/文本/图标;长条 = 预览中的条/状态图标）
         if (hudStyle() == HudStyle.ASTEORBAR) {
+            // 图标命中优先（更小;拖拽 = 拆分独立摆放,写回 iconOff*）
+            for (String key : BarLayouts.KEYS) {
+                int[] ir = BarLayouts.lastIconRect(key);
+                if (ir == null) continue;
+                if (mouseX >= ir[0] - 1 && mouseX < ir[0] + ir[2] + 1
+                        && mouseY >= ir[1] - 1 && mouseY < ir[1] + ir[3] + 1) {
+                    boolean changed = !key.equals(selectedAsteorBar);
+                    selectedAsteorBar = key;
+                    draggingAsteorIcon = true;
+                    iconGrabX = (int) mouseX;
+                    iconGrabY = (int) mouseY;
+                    var p = BarLayouts.get(key);
+                    iconStartOffX = p.iconOffX;
+                    iconStartOffY = p.iconOffY;
+                    if (changed) rebuildWidgets();
+                    return true;
+                }
+            }
             for (String key : BarLayouts.KEYS) {
                 int[] r = BarLayouts.lastRect(key);
                 if (r == null) continue;
@@ -877,6 +901,13 @@ public final class HudLayoutScreen extends Screen {
             return true;
         }
         if (draggingAsteorBar != null) {
+            if (draggingAsteorIcon) {
+                // 状态图标拆分拖拽：偏移 = 拖拽起点偏移 + 鼠标位移（钳制与面板步进同域）
+                var p = BarLayouts.get(draggingAsteorBar);
+                p.iconOffX = Math.max(-500, Math.min(500, iconStartOffX + (int) mouseX - iconGrabX));
+                p.iconOffY = Math.max(-500, Math.min(500, iconStartOffY + (int) mouseY - iconGrabY));
+                return true;
+            }
             // 长条自由摆放：首次拖拽即脱离预设布局（free=true）,位置钳制在屏幕内
             int[] r = BarLayouts.lastRect(draggingAsteorBar);
             if (r != null) {
@@ -899,6 +930,7 @@ public final class HudLayoutScreen extends Screen {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         dragging = false;
         draggingAsteorBar = null;
+        draggingAsteorIcon = false;
         panelDragging = false;
         return super.mouseReleased(mouseX, mouseY, button);
     }

@@ -26,6 +26,7 @@ public class AirLevelOverlay extends SimpleBarOverlay {
         int air = preview ? HudPreviewState.air : player.getAirSupply();
         int maxAir = preview ? HudPreviewState.maxAir : player.getMaxAirSupply();
         if (air >= maxAir) return;
+        if (!BarLayouts.visible("air")) return; // 单条显示开关（编辑器组件级配置）
 
         int fillColor = ColorHelper.parseColor(colors.air);
         int boundColor = ColorHelper.parseColor(colors.airBound);
@@ -62,10 +63,15 @@ public class AirLevelOverlay extends SimpleBarOverlay {
             renderGui.setRightHeight(top + barH + margin);
         }
 
-        // Wave 11 美化：气泡图标（空气不足 1/4 时用破裂气泡）
+        // Wave 11 美化：气泡图标（空气不足 1/4 时用破裂气泡;编辑器可关/拆分独立偏移）
         boolean lowAir = air <= maxAir / 4;
-        drawIcon(graphics, left - 11, top, barH,
-                lowAir ? ICON_BUBBLE_SPLIT_U : ICON_BUBBLE_U, ICON_BUBBLE_V);
+        if (BarLayouts.showIcon("air")) {
+            int[] io = BarLayouts.iconOffset("air");
+            int ix = left - 11 + io[0], iy = top + io[1];
+            drawIcon(graphics, ix, iy, barH,
+                    lowAir ? ICON_BUBBLE_SPLIT_U : ICON_BUBBLE_U, ICON_BUBBLE_V);
+            BarLayouts.recordIcon("air", ix, iy, 9, 9);
+        }
 
         drawBarCard(graphics, left, top, barWidth, barH);
         HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,

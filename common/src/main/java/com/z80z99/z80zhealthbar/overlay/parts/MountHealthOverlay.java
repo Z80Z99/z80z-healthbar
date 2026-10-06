@@ -23,6 +23,7 @@ public class MountHealthOverlay extends SimpleBarOverlay {
 
         var vehicle = player.getVehicle();
         if (!(vehicle instanceof LivingEntity mount)) return;
+        if (!BarLayouts.visible("mount")) return; // 单条显示开关（编辑器组件级配置）
 
         float health = mount.getHealth();
         float maxHealth = mount.getMaxHealth();
@@ -59,8 +60,13 @@ public class MountHealthOverlay extends SimpleBarOverlay {
             renderGui.setRightHeight(top + barH + margin);
         }
 
-        // Wave 11 美化：橙色染色心形图标（原版坐骑风格）
-        drawIconColor(graphics, left - 11, top, barH, ICON_HEART_U, ICON_HEART_V, MOUNT_HEART_COLOR);
+        // Wave 11 美化：橙色染色心形图标（原版坐骑风格;编辑器可关/拆分独立偏移）
+        if (BarLayouts.showIcon("mount")) {
+            int[] io = BarLayouts.iconOffset("mount");
+            int ix = left - 11 + io[0], iy = top + io[1];
+            drawIconColor(graphics, ix, iy, barH, ICON_HEART_U, ICON_HEART_V, MOUNT_HEART_COLOR);
+            BarLayouts.recordIcon("mount", ix, iy, 9, 9);
+        }
 
         drawBarCard(graphics, left, top, barWidth, barH);
         HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,
