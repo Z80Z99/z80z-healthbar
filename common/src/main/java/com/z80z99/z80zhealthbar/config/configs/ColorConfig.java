@@ -21,8 +21,8 @@ public class ColorConfig {
     public String foodBoundBlink = "#FFFF0000";
     public String foodEmpty = "#FF000000";
 
-    // 饱和度
-    public String saturation = "#FF4080FF";
+    // 饱和度（金色,与原版饱和度语义一致——蓝色为旧默认,易与氧气条混淆）
+    public String saturation = "#FFF0C040";
 
     // 经验值
     public String experience = "#FF00FF00";
