@@ -632,13 +632,25 @@ public final class MobDisplayRenderer {
                 alpha *= Mth.clamp((gameTime - first) / (float) cfg.fadeInTicks, 0f, 1f);
             }
             if (cfg.fadeOnDeath && snap.dying) {
-                alpha *= 1f - snap.deathProgress;
+                // 死亡进度用渲染侧本地时钟（不依赖实体 deathTime 同步——同步时序问题会让
+                // deathTime 一步跳满,alpha 瞬间归零,实测血条"瞬间消失"而无渐隐/收缩）
+                alpha *= 1f - deathProgressLocal(entityId, System.currentTimeMillis());
             }
             return alpha;
         }
 
         /** 弹入首次出现时间（ms）;容量超限整表重建（与 FIRST_SEEN 同生命周期语义） */
         private static final Map<Integer, Long> SPAWN_AT = new HashMap<>();
+        /** 死亡起始时间（ms,渲染侧本地计时,1 秒动画）;实体未死即移除记录 */
+        private static final Map<Integer, Long> DEATH_AT = new HashMap<>();
+
+        /** 本地死亡进度 0..1（1 秒）;死亡期间保证平滑推进,与实体 deathTime 解耦。
+         *  记录仅在容量超限时整表重建（实体死亡 1 秒后即从管线消失,无逐条清理必要） */
+        static float deathProgressLocal(int entityId, long now) {
+            if (DEATH_AT.size() > 1024) DEATH_AT.clear();
+            long at = DEATH_AT.computeIfAbsent(entityId, k -> now);
+            return Mth.clamp((now - at) / 1000f, 0f, 1f);
+        }
 
         /**
          * 整条位移动画：在 billboard（mulPose 相机朝向）之后、镜像缩放之前调用。
@@ -673,9 +685,9 @@ public final class MobDisplayRenderer {
             }
 
             if (fx.deathShrink && snap.dying) {
-                // 收缩用 sqrt 前置曲线 + 幅度加大：死亡渐隐（alpha=1-dp）同步进行,线性小幅度收缩
-                // 会被渐隐完全掩盖（实测"死亡收缩没见到"）——dp=0.25 时即完成一半收缩,可见
-                float dp = Mth.sqrt(Mth.clamp(snap.deathProgress, 0f, 1f));
+                // 收缩同样用本地时钟（与渐隐同源）;sqrt 前置曲线保证渐隐早期即明显塌缩。
+                // 不做 dp>=1 清记录——清了会让下一帧重新起表,死亡动画循环重播
+                float dp = Mth.sqrt(deathProgressLocal(snap.entityId, now));
                 float s = 1f - 0.4f * dp;
                 pose.translate(0, 6f * dp, 0);
                 pose.scale(s, s, 1f);
