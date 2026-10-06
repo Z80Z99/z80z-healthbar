@@ -32,10 +32,11 @@ public final class HudBarPainter {
         return y + insetY(height);
     }
 
-    /** 现代紧凑卡片：外部暗投影、深色底、冷色细描边、顶部高光。 */
+    /** 现代紧凑卡片：深色底、冷色细描边、顶部高光、底部 1px 淡投影（投影曾为卡片下方 2px
+     *  半透明黑且左右扩边,在游戏背景上呈明显黑块,实测"所有条下面都有黑色区域"）。 */
     public static void drawCard(GuiGraphics g, int x, int y, int w, int h) {
         if (w <= 0 || h <= 0) return;
-        g.fill(x - 1, y + 1, x + w + 1, y + h + 2, 0x50000000);
+        g.fill(x + 1, y + h, x + w, y + h + 1, 0x30000000);
         g.fill(x, y, x + w, y + h, 0xD00B1018);
         g.fill(x, y, x + w, y + 1, 0x8092A8BB);
         g.fill(x, y + 1, x + 1, y + h - 1, 0x605E7588);

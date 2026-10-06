@@ -66,6 +66,10 @@ public class HudLayoutConfig {
         /** 图标微调偏移（px，正值向右/向下；跟随条时相对条，独立时相对锚点） */
         public int iconOffsetX = 0;
         public int iconOffsetY = 0;
+        /** 逻辑分组名（空 = 未分组）。同组组件在编辑器列表中收纳为一行,便于分开调整。 */
+        public String group = "";
+        /** 外部图标贴图文件名（config/z80zhealthbar/icons/ 下的 png;空 = 原版 icons.png 图标） */
+        public String iconTexture = "";
 
         public ComponentMode modeParsed() {
             try {
@@ -130,6 +134,7 @@ public class HudLayoutConfig {
             c.textAnchor = textAnchor; c.textScale = textScale;
             c.iconAnchor = iconAnchor; c.iconScale = iconScale;
             c.iconOffsetX = iconOffsetX; c.iconOffsetY = iconOffsetY;
+            c.group = group; c.iconTexture = iconTexture;
             return c;
         }
     }

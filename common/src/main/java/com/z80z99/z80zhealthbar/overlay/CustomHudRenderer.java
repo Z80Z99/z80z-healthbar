@@ -78,7 +78,7 @@ public final class CustomHudRenderer {
                 float s = (float) (c.scale * c.iconScale);
                 graphics.pose().scale(s, s, 1f);
                 int[] uv = iconUV(base, player);
-                if (uv != null) GuiHelper.drawTexturedRect(ICONS, graphics, 0, 0, uv[0], uv[1], 9, 9);
+                if (uv != null) drawComponentIcon(graphics, c, 0, 0, 9, uv[0], uv[1]);
             } else {
                 float scale = (float) c.scale;
                 graphics.pose().scale(scale, scale, 1f);
@@ -93,7 +93,7 @@ public final class CustomHudRenderer {
                 } else if (type.endsWith("_icon")) {
                     // 纯图标组件：只渲染状态图标
                     int[] uv = iconUV(type, player);
-                    if (uv != null) GuiHelper.drawTexturedRect(ICONS, graphics, 0, 0, uv[0], uv[1], 9, 9);
+                    if (uv != null) drawComponentIcon(graphics, c, 0, 0, 9, uv[0], uv[1]);
                 } else if (type.equals("text")) {
                     // 自由文本组件：内容 = 模板串（可引用任意玩家数据变量,组件间互相调用）
                     String t = formatText(c.textFormat, player);
@@ -341,7 +341,7 @@ public final class CustomHudRenderer {
             }
         }
         if (c.showIcon && c.iconAnchorParsed() == null) {
-            drawIcon(g, iconX(c, w), 0, h, healthIconU(p), 0);
+            drawComponentIcon(g, c, iconX(c, w), 0, h, healthIconU(p), 0);
         }
         if (c.showText && c.textAnchorParsed() == null) {
             // 数字滚动（与实体血条同语义,dynamicFx.numRoll）：数字跟随平滑填充一起滚,
@@ -387,7 +387,7 @@ public final class CustomHudRenderer {
                     Mth.clamp(food / (float) max, 0, 1), color);
         }
         if (c.showIcon && c.iconAnchorParsed() == null) {
-            drawIcon(g, iconX(c, w), 0, h, 52, 27);
+            drawComponentIcon(g, c, iconX(c, w), 0, h, 52, 27);
         }
         if (c.showText && c.textAnchorParsed() == null) {
             String txt = c.textFormat != null && !c.textFormat.isBlank()
@@ -416,7 +416,7 @@ public final class CustomHudRenderer {
                     Mth.clamp(air / (float) maxAir, 0, 1), ColorHelper.parseColor(colors.air));
         }
         if (c.showIcon && c.iconAnchorParsed() == null) {
-            drawIcon(g, iconX(c, w), 0, h, 16, 18);
+            drawComponentIcon(g, c, iconX(c, w), 0, h, 16, 18);
         }
         if (c.showText && c.textAnchorParsed() == null) {
             String txt = c.textFormat != null && !c.textFormat.isBlank()
@@ -482,7 +482,7 @@ public final class CustomHudRenderer {
                     Mth.clamp(armor / (float) max, 0, 1), ColorHelper.parseColor(colors.armor));
         }
         if (c.showIcon && c.iconAnchorParsed() == null) {
-            drawIcon(g, iconX(c, w), 0, h, 34, 9);
+            drawComponentIcon(g, c, iconX(c, w), 0, h, 34, 9);
         }
         if (c.showText && c.textAnchorParsed() == null) {
             String txt = c.textFormat != null && !c.textFormat.isBlank()
@@ -504,7 +504,7 @@ public final class CustomHudRenderer {
                     Mth.clamp(health / max, 0, 1), ColorHelper.parseColor(colors.mountHealth));
         }
         if (c.showIcon && c.iconAnchorParsed() == null) {
-            drawIcon(g, iconX(c, w), 0, h, 52, 0);
+            drawComponentIcon(g, c, iconX(c, w), 0, h, 52, 0);
         }
         if (c.showText && c.textAnchorParsed() == null) {
             String txt = c.textFormat != null && !c.textFormat.isBlank()
@@ -559,6 +559,19 @@ public final class CustomHudRenderer {
     private static void drawIcon(GuiGraphics g, int x, int y, int barH, int u, int v) {
         int iconY = y + (barH - 9) / 2;
         GuiHelper.drawTexturedRect(ICONS, g, x, iconY, u, v, 9, 9);
+    }
+
+    /** 按组件配置画图标：iconTexture 非空用外部贴图（config/z80zhealthbar/icons/,整图缩放 9×9）,
+     *  否则原版 icons.png UV。外部缺失时回退原版。 */
+    private static void drawComponentIcon(GuiGraphics g, ComponentLayout c, int x, int y, int barH, int u, int v) {
+        int iconY = y + (barH - 9) / 2;
+        var tex = c.iconTexture != null && !c.iconTexture.isBlank()
+                ? IconTextures.get(c.iconTexture) : null;
+        if (tex != null) {
+            g.blit(tex, x, iconY, 0, 0, 9, 9, 9, 9);
+        } else {
+            GuiHelper.drawTexturedRect(ICONS, g, x, iconY, u, v, 9, 9);
+        }
     }
 
     /** 数值文本：按组件对齐（左/中/右）+ 文本偏移绘制 */
