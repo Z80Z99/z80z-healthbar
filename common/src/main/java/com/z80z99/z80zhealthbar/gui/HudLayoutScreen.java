@@ -165,6 +165,9 @@ public final class HudLayoutScreen extends Screen {
         }
 
         boolean isHeader() { return headerKey != null; }
+
+        /** note 行（无值行）换行后的行数（layoutPanel 计算,渲染与占高共用） */
+        int noteLines = 1;
     }
 
     /** 扁平小按钮：面板内的 −/+ 与循环行（比原版按钮更紧凑，贴合深色面板） */
@@ -247,15 +250,15 @@ public final class HudLayoutScreen extends Screen {
         buildCustomEntries();
     }
 
-    /** 样式选择行：原版 / 长条 / 自定义（写回配置；预览同步切换） */
+    /** 样式选择行：长条/自定义二选一切换（原版样式无可调参数,不再出现在编辑器循环里） */
     private PEntry styleRow() {
         var o = ConfigManager.getConfig().overlay;
         return cycler("z80zhealthbar.editor.edit_style",
                 () -> Component.translatable("z80zhealthbar.style.hudstyle."
                         + hudStyle().name().toLowerCase(Locale.ROOT)).getString(),
                 () -> {
-                    HudStyle[] vals = HudStyle.values();
-                    o.hudStyle = vals[(hudStyle().ordinal() + 1) % vals.length].name();
+                    // 原版（若外部设为原版）也一并切到长条——编辑器内只在两种可编辑样式间切换
+                    o.hudStyle = (hudStyle() == HudStyle.CUSTOM ? HudStyle.ASTEORBAR : HudStyle.CUSTOM).name();
                     selectedAsteorBar = null; // 换样式后长条选择失效
                     rebuildWidgets();
                 });
@@ -653,12 +656,17 @@ public final class HudLayoutScreen extends Screen {
 
     /** 按面板原点更新全部控件位置，并计算面板高度（内容超高时启用滚动,行按滚动物画出裁剪） */
     private void layoutPanel() {
-        // 1) 内容坐标（不含滚动）——同时得出内容总高
+        // 1) 内容坐标（不含滚动）——同时得出内容总高。
+        //    note 行（无值无节标题）按面板内宽换行,行数决定占高——此前固定单行高,长文案溢出面板
         int cursor = TITLE_H + 4;
         for (PEntry e : panelEntries) {
             if (e.isHeader()) {
                 e.relY = cursor + 2;
                 cursor += HEADER_H;
+            } else if (e.value == null) {
+                e.noteLines = Math.max(1, font.split(Component.translatable(e.labelKey), PANEL_W - 12).size());
+                e.relY = cursor;
+                cursor += e.noteLines * 10 + 6;
             } else {
                 e.relY = cursor;
                 cursor += ROW_H + ROW_GAP;
@@ -850,6 +858,15 @@ public final class HudLayoutScreen extends Screen {
             if (e.isHeader()) {
                 if (y >= panelY + TITLE_H + 2 && y + HEADER_H <= panelY + panelH) {
                     g.drawString(font, Component.translatable(e.headerKey), panelX + 6, y + 1, 0xFF7FD4FF);
+                }
+                continue;
+            }
+            if (e.value == null) {
+                // note 行：按面板内宽换行绘制（layoutPanel 已按行数计高）
+                if (y < panelY + TITLE_H + 2 || y + e.noteLines * 10 > panelY + panelH - 1) continue;
+                var lines = font.split(Component.translatable(e.labelKey), PANEL_W - 12);
+                for (int i = 0; i < lines.size(); i++) {
+                    g.drawString(font, lines.get(i), panelX + 6, y + i * 10, 0xFFB8C4D0);
                 }
                 continue;
             }

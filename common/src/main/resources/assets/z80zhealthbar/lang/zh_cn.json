@@ -494,7 +494,7 @@
   "z80zhealthbar.editor.asteor.bar_one": "此条",
   "z80zhealthbar.editor.asteor.bar_all": "全部条",
   "z80zhealthbar.editor.asteor.reset": "重置",
-  "z80zhealthbar.editor.vanilla_note": "原版样式由游戏本体绘制，无可调参数；切换\"编辑样式\"可编辑其他模式。",
+  "z80zhealthbar.editor.vanilla_note": "当前为原版样式（由游戏本体绘制，无参数可调）。点击上方切换到长条或自定义进行编辑。",
   "z80zhealthbar.editor.section.asteor_display": "显示开关",
   "z80zhealthbar.editor.section.asteor_dynamic": "动态与闪烁",
   "z80zhealthbar.editor.section.asteor_caps": "数值上限（0 = 跟随实际值）",
