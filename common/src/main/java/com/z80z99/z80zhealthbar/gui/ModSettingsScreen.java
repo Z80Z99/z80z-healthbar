@@ -9,9 +9,7 @@ import com.z80z99.z80zhealthbar.mobdisplay.MobDisplayRenderer;
 import com.z80z99.z80zhealthbar.mobdisplay.MobHealthBarStyle;
 import com.z80z99.z80zhealthbar.status.EntityStatusSnapshot;
 import com.z80z99.z80zhealthbar.util.ColorHelper;
-import com.z80z99.z80zhealthbar.overlay.HudRenderer;
 import com.z80z99.z80zhealthbar.overlay.HudStyle;
-import com.z80z99.z80zhealthbar.overlay.RenderGui;
 import com.z80z99.z80zhealthbar.platform.PlatformService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -50,14 +48,13 @@ public final class ModSettingsScreen extends Screen {
     private static final int PANEL_PAD = 6;
     private static final int WIDGET_W = 150;
 
-    private enum Page { MAIN, STYLE, POPUP, VISIBILITY, HUD, COMPAT, ADVANCED }
+    private enum Page { MAIN, STYLE, POPUP, VISIBILITY, COMPAT, ADVANCED }
 
     private static final String[] PAGE_KEYS = {
             "z80zhealthbar.settings.page.main",
             "z80zhealthbar.settings.page.style",
             "z80zhealthbar.settings.page.popup",
             "z80zhealthbar.settings.page.visibility",
-            "z80zhealthbar.settings.page.hud",
             "z80zhealthbar.settings.page.compat",
             "z80zhealthbar.settings.page.advanced",
     };
@@ -68,7 +65,6 @@ public final class ModSettingsScreen extends Screen {
             "z80zhealthbar.settings.pagedesc.style",
             "z80zhealthbar.settings.pagedesc.popup",
             "z80zhealthbar.settings.pagedesc.visibility",
-            "z80zhealthbar.settings.pagedesc.hud",
             "z80zhealthbar.settings.pagedesc.compat",
             "z80zhealthbar.settings.pagedesc.advanced",
     };
@@ -319,23 +315,10 @@ public final class ModSettingsScreen extends Screen {
     private CycleButton<Boolean> previewToggle;
     private Button previewFullscreenBtn;
     private Button previewPauseBtn;
-    private Button previewZoomBtn;
     /** 暂停预览：true 时演示时钟冻结在 previewFreezeAt */
     private boolean previewPaused;
     private long previewFreezeAt;
-    /** HUD 预览缩放模式：true = 1:1 像素精确（可拖动取景框,卡片 1px 细节不失真）;false = 适应（包围盒整览缩放） */
-    private boolean previewZoom11;
-    /** 1:1 模式取景框左上角（真实屏幕坐标）;MIN_VALUE = 未初始化（自动居中包围盒） */
-    private int hudPanX = Integer.MIN_VALUE, hudPanY = Integer.MIN_VALUE;
-    private boolean hudPanning;
-    private int hudPanGrabX, hudPanGrabY, hudPanBaseX, hudPanBaseY;
 
-    private Component zoomLabel() {
-        return Component.translatable("z80zhealthbar.settings.preview.zoom")
-                .append(": ")
-                .append(Component.translatable(previewZoom11
-                        ? "z80zhealthbar.settings.preview.zoom11" : "z80zhealthbar.settings.preview.zoomfit"));
-    }
     private Component feedback;
     private long feedbackUntilMs;
     private int contentH;
@@ -379,7 +362,6 @@ public final class ModSettingsScreen extends Screen {
             case STYLE -> buildStyle();
             case POPUP -> buildPopup();
             case VISIBILITY -> buildVisibility();
-            case HUD -> buildHud();
             case COMPAT -> buildCompat();
             case ADVANCED -> buildAdvanced();
         }
@@ -389,7 +371,6 @@ public final class ModSettingsScreen extends Screen {
             previewToggle = null;
             previewFullscreenBtn = null;
             previewPauseBtn = null;
-            previewZoomBtn = null;
         if (previewActive) {
             previewW = Math.min(260, width * 2 / 5);
             int gap = 4; // 两栏面板外缘之间的呼吸缝
@@ -410,9 +391,10 @@ public final class ModSettingsScreen extends Screen {
                     .create(0, 0, previewW - 12, 18, Component.empty(), (b, v) -> previewFriendly = v);
             previewToggle.setX(previewX + 6);
             previewToggle.setY(previewY + 20);
-            // 暂停 / 缩放 / 全屏 三等宽按钮（HUD 页的缩放=1:1 像素精确可拖取景,其余页为整体缩放）。
+            // 暂停 / 全屏 两等宽按钮（暂停 = 冻结演示时钟;玩家 HUD 页已删除,玩家 HUD 的编辑与
+            // 预览统一在 HUD 布局编辑器内进行）。
             // 注意：本界面不经过 super.render，控件须在 drawPreviewPanel 手动渲染并在鼠标事件中转发
-            int thirdW = (previewW - 12 - 8) / 3;
+            int halfW = (previewW - 12 - 4) / 2;
             previewPauseBtn = Button.builder(
                             Component.translatable(previewPaused
                                     ? "z80zhealthbar.settings.preview.resume" : "z80zhealthbar.settings.preview.pause"),
@@ -422,19 +404,12 @@ public final class ModSettingsScreen extends Screen {
                                 b.setMessage(Component.translatable(previewPaused
                                         ? "z80zhealthbar.settings.preview.resume" : "z80zhealthbar.settings.preview.pause"));
                             })
-                    .bounds(previewX + 6, previewY + 40, thirdW, 18)
-                    .build();
-            previewZoomBtn = Button.builder(zoomLabel(), b -> {
-                        previewZoom11 = !previewZoom11;
-                        hudPanX = Integer.MIN_VALUE; // 切换后重置取景（重新居中包围盒）
-                        b.setMessage(zoomLabel());
-                    })
-                    .bounds(previewX + 6 + thirdW + 4, previewY + 40, thirdW, 18)
+                    .bounds(previewX + 6, previewY + 40, halfW, 18)
                     .build();
             previewFullscreenBtn = Button.builder(
                             Component.translatable("z80zhealthbar.settings.preview.fullscreen"),
-                            b -> minecraft.setScreen(new FullscreenPreviewScreen(this, page == Page.HUD)))
-                    .bounds(previewX + 6 + (thirdW + 4) * 2, previewY + 40, thirdW, 18)
+                            b -> minecraft.setScreen(new FullscreenPreviewScreen(this)))
+                    .bounds(previewX + 6 + halfW + 4, previewY + 40, halfW, 18)
                     .build();
         } else {
             contentW = Math.min(420, width - 24 - PANEL_PAD * 2);
@@ -723,24 +698,6 @@ public final class ModSettingsScreen extends Screen {
         rows.add(toggleRow("z80zhealthbar.option.damagePopup.hitMarkerSound", dp.hitMarkerSound,
                 v -> dp.hitMarkerSound = v));
         rows.add(new TextRow("z80zhealthbar.damagePopup.note"));
-    }
-
-    private void buildHud() {
-        var c = cfg();
-        var o = c.overlay;
-
-        // HUD 样式选择归位于本页顶部（主页不再重复）；节名与实体样式页区分，避免同名混淆。
-        rows.add(new SectionRow("z80zhealthbar.settings.section.hud_style"));
-        rows.add(cycleEnumRow("z80zhealthbar.hud.style", HudStyle.class,
-                ModSettingsScreen::hudStyle, v -> o.hudStyle = v.name()));
-
-        rows.add(new SectionRow("z80zhealthbar.settings.section.hud_asteorbar"));
-        // 布局/显示开关/动态/数值上限等全部长条参数已整合进 HUD 布局编辑器（切换"编辑样式"到长条）
-        rows.add(new TextRow("z80zhealthbar.hud.layout_note"));
-
-        rows.add(new SectionRow("z80zhealthbar.settings.section.hud_custom"));
-        // 编辑器入口已上移至主页"快捷操作"（全局落地入口，避免双按钮）
-        rows.add(new TextRow("z80zhealthbar.hud.custom_note"));
     }
 
     private void buildCompat() {
@@ -1052,7 +1009,6 @@ public final class ModSettingsScreen extends Screen {
 
         previewToggle.render(g, mouseX, mouseY, partialTick);
         if (previewPauseBtn != null) previewPauseBtn.render(g, mouseX, mouseY, partialTick);
-        if (previewZoomBtn != null) previewZoomBtn.render(g, mouseX, mouseY, partialTick);
         if (previewFullscreenBtn != null) previewFullscreenBtn.render(g, mouseX, mouseY, partialTick);
 
         int bx = previewX + 2, by = previewY + 64, bw = previewW - 4, bh = previewH - 70;
@@ -1060,128 +1016,28 @@ public final class ModSettingsScreen extends Screen {
         g.renderOutline(bx, by, bw, bh, 0x40FFFFFF);
 
         g.enableScissor(bx, by, bx + bw, by + bh);
-        if (page == Page.HUD) {
-            drawHudPreview(g, bx, by, bw, bh, partialTick);
-        } else {
-            drawMockBar(g, bx + bw / 2, by, bh);
-        }
+        drawMockBar(g, bx + bw / 2, by, bh);
         g.disableScissor();
     }
 
-    /**
-     * 玩家 HUD 实时预览（按 hudStyle 分发,预览期间用模拟战斗数据驱动动态演示）：
-     * CUSTOM —— 按真实屏幕尺寸求解布局（拖拽偏移逐像素与游戏一致）,取景对准全部组件的包围盒并缩放进面板;
-     * 长条 —— 虚拟屏幕跑 MainOverlay 管线（布局全相对,所见即相对排列）;原版 —— 提示。
-     */
-    private void drawHudPreview(GuiGraphics g, int bx, int by, int bw, int bh, float partialTick) {
-        var cfg = cfg();
-        if (!cfg.overlay.enableOverlay) {
-            g.drawCenteredString(font, Component.translatable(
-                    "z80zhealthbar.settings.preview.hudOff").getString(), bx + bw / 2, by + bh / 2 - 4, 0xFF909090);
-            return;
-        }
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-        HudStyle st = HudRenderer.hudStyleParsed();
-        if (st == HudStyle.VANILLA) {
-            g.drawCenteredString(font, Component.translatable(
-                    "z80zhealthbar.settings.preview.hudVanilla").getString(),
-                    bx + bw / 2, by + bh / 2 - 4, 0xFF909090);
-            return;
-        }
-
-        g.enableScissor(bx, by, bx + bw, by + bh);
-        var pose = g.pose();
-        pose.pushPose();
-        com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.update(System.currentTimeMillis());
-        com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = true;
-        try {
-            if (st == HudStyle.CUSTOM) {
-                // 真实屏幕尺寸求解（自定义偏移按真实屏调校,虚拟小屏会让偏移全部错位——"排列奇怪"的根源）,
-                // 取景框对准全部组件包围盒（含 8px 边距）,等比缩放进预览面板
-                int realW = mc.getWindow().getGuiScaledWidth();
-                int realH = mc.getWindow().getGuiScaledHeight();
-                var layout = ConfigManager.getConfig().hudLayout;
-                var sizes = com.z80z99.z80zhealthbar.overlay.CustomHudRenderer.measureAll(layout, mc.player);
-                var boxes = com.z80z99.z80zhealthbar.layout.HudLayoutSolver.solve(layout, sizes, realW, realH);
-                int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE;
-                int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE;
-                for (var b : boxes.values()) {
-                    minX = Math.min(minX, b.x());
-                    minY = Math.min(minY, b.y());
-                    maxX = Math.max(maxX, b.x() + b.width());
-                    maxY = Math.max(maxY, b.y() + b.height());
-                }
-                if (minX > maxX) { // 全部组件关闭：取景底部居中带（无内容）
-                    minX = realW / 2 - 60; maxX = realW / 2 + 60;
-                    minY = realH - 50; maxY = realH - 10;
-                }
-                int pad = 8;
-                minX -= pad; minY -= pad; maxX += pad; maxY += pad;
-                if (previewZoom11) {
-                    // 1:1 像素精确：卡片 1px 细节不失真（适应缩放下分数倍率会把描边/高光虚化）,
-                    // 取景框可拖动（预览区内按住拖拽）;未拖动时自动居中包围盒
-                    if (hudPanX == Integer.MIN_VALUE) {
-                        hudPanX = minX + Math.max(0, (maxX - minX - bw) / 2);
-                        hudPanY = minY + Math.max(0, (maxY - minY - bh) / 2);
-                    }
-                    int panMinX = minX - 30, panMaxX = maxX + 30 - bw;
-                    int panMinY = minY - 30, panMaxY = maxY + 30 - bh;
-                    hudPanX = panMinX > panMaxX ? (minX + maxX - bw) / 2
-                            : Math.max(panMinX, Math.min(panMaxX, hudPanX));
-                    hudPanY = panMinY > panMaxY ? (minY + maxY - bh) / 2
-                            : Math.max(panMinY, Math.min(panMaxY, hudPanY));
-                    pose.translate(bx, by, 0);
-                    pose.translate(-hudPanX, -hudPanY, 0);
-                } else {
-                    // 适应：包围盒整览等比缩放进面板
-                    int cropW = Math.max(40, maxX - minX);
-                    int cropH = Math.max(30, maxY - minY);
-                    float zs = Math.min(bw / (float) cropW, bh / (float) cropH);
-                    pose.translate(bx + (bw - cropW * zs) / 2f, by + (bh - cropH * zs) / 2f, 0);
-                    pose.scale(zs, zs, 1);
-                    pose.translate(-minX, -minY, 0);
-                }
-                com.z80z99.z80zhealthbar.overlay.CustomHudRenderer.render(g, partialTick, realW, realH);
-            } else {
-                // 长条：虚拟屏幕（宽 = 条长×2 + 图标余量,容纳布局 1/2 的居中条与右侧条;高容纳 6 条堆叠）
-                int virtW = Math.max(cfg.overlay.cornerBarLength * 2 + 150, 340);
-                int virtH = 180;
-                float s = Math.min(bw / (float) virtW, bh / (float) virtH);
-                pose.translate(bx + (bw - virtW * s) / 2f, by + (bh - virtH * s) / 2f, 0);
-                pose.scale(s, s, 1);
-                HudRenderer.onPreRender(mc.gui);
-                HudRenderer.MAIN.renderOverlay(new RenderGui(mc.gui), g, partialTick, virtW, virtH);
-            }
-        } finally {
-            com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = false;
-        }
-        pose.popPose();
-        g.disableScissor();
-    }
-
-    /** 全屏预览界面：HUD 页 = 1:1 全屏渲染真实 HUD（模拟战斗驱动）;其余页 = 整窗实体 mock 预览 */
+    /** 全屏预览界面：整窗实体 mock 预览（玩家 HUD 的编辑与预览统一在 HUD 布局编辑器内） */
     private class FullscreenPreviewScreen extends Screen {
         private final Screen backTo;
-        private final boolean hudMode;
 
-        FullscreenPreviewScreen(Screen backTo, boolean hudMode) {
+        FullscreenPreviewScreen(Screen backTo) {
             super(Component.translatable("z80zhealthbar.settings.preview.title"));
             this.backTo = backTo;
-            this.hudMode = hudMode;
         }
 
         @Override
         protected void init() {
-            if (!hudMode) {
-                // 敌方/友方切换（与设置页共用 previewFriendly 状态）
-                addRenderableWidget(CycleButton.<Boolean>builder(v -> Component.translatable(
-                                v ? "z80zhealthbar.settings.preview.friendly" : "z80zhealthbar.settings.preview.enemy"))
-                        .withValues(List.of(false, true))
-                        .withInitialValue(previewFriendly)
-                        .displayOnlyValue()
-                        .create(width / 2 - 100, 22, 200, 18, Component.empty(), (b, v) -> previewFriendly = v));
-            }
+            // 敌方/友方切换（与设置页共用 previewFriendly 状态）
+            addRenderableWidget(CycleButton.<Boolean>builder(v -> Component.translatable(
+                            v ? "z80zhealthbar.settings.preview.friendly" : "z80zhealthbar.settings.preview.enemy"))
+                    .withValues(List.of(false, true))
+                    .withInitialValue(previewFriendly)
+                    .displayOnlyValue()
+                    .create(width / 2 - 100, 22, 200, 18, Component.empty(), (b, v) -> previewFriendly = v));
             addRenderableWidget(Button.builder(CommonComponents.GUI_BACK, b -> onClose())
                     .bounds(width / 2 - 100, height - 26, 200, 20)
                     .build());
@@ -1189,12 +1045,8 @@ public final class ModSettingsScreen extends Screen {
 
         @Override
         public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-            if (hudMode) {
-                drawHudPreviewFull(g, partialTick);
-            } else {
-                renderBackground(g);
-                drawMockBar(g, width / 2, 0, height - 32); // 整窗即取景框（底部留返回按钮位）
-            }
+            renderBackground(g);
+            drawMockBar(g, width / 2, 0, height - 32); // 整窗即取景框（底部留返回按钮位）
             g.drawCenteredString(font, getTitle(), width / 2, 8, 0xFFFFFF);
             super.render(g, mouseX, mouseY, partialTick);
         }
@@ -1202,38 +1054,6 @@ public final class ModSettingsScreen extends Screen {
         @Override
         public void onClose() {
             minecraft.setScreen(backTo);
-        }
-    }
-
-    /** HUD 全屏预览：真实屏幕尺寸跑当前样式的渲染管线（1:1 = 游戏内原样大小）,模拟战斗驱动动态演示 */
-    private void drawHudPreviewFull(GuiGraphics g, float partialTick) {
-        var cfg = cfg();
-        if (!cfg.overlay.enableOverlay) {
-            renderBackground(g);
-            g.drawCenteredString(font, Component.translatable(
-                    "z80zhealthbar.settings.preview.hudOff").getString(), width / 2, height / 2 - 4, 0xFF909090);
-            return;
-        }
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-        renderBackground(g);
-        HudStyle st = HudRenderer.hudStyleParsed();
-        if (st == HudStyle.VANILLA) {
-            g.drawCenteredString(font, Component.translatable(
-                    "z80zhealthbar.settings.preview.hudVanilla").getString(), width / 2, height / 2 - 4, 0xFF909090);
-            return;
-        }
-        com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.update(System.currentTimeMillis());
-        com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = true;
-        try {
-            if (st == HudStyle.CUSTOM) {
-                com.z80z99.z80zhealthbar.overlay.CustomHudRenderer.render(g, partialTick, width, height);
-            } else {
-                HudRenderer.onPreRender(mc.gui);
-                HudRenderer.MAIN.renderOverlay(new RenderGui(mc.gui), g, partialTick, width, height);
-            }
-        } finally {
-            com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = false;
         }
     }
 
@@ -1555,22 +1375,10 @@ public final class ModSettingsScreen extends Screen {
             onClose();
             return true;
         }
-        // 预览面板的敌方/友方切换 + 暂停/缩放/全屏按钮 + 1:1 取景拖动
+        // 预览面板的敌方/友方切换 + 暂停/全屏按钮
         if (previewToggle != null && previewToggle.mouseClicked(mx, my, btn)) return true;
         if (previewPauseBtn != null && previewPauseBtn.mouseClicked(mx, my, btn)) return true;
-        if (previewZoomBtn != null && previewZoomBtn.mouseClicked(mx, my, btn)) return true;
         if (previewFullscreenBtn != null && previewFullscreenBtn.mouseClicked(mx, my, btn)) return true;
-        // HUD 预览 1:1 模式：预览框内按住拖动 = 平移取景框
-        if (btn == 0 && page == Page.HUD && previewActive && previewZoom11
-                && mx >= previewX + 2 && mx <= previewX + previewW - 2
-                && my >= previewY + 64 && my <= previewY + previewH - 2) {
-            hudPanning = true;
-            hudPanGrabX = (int) mx;
-            hudPanGrabY = (int) my;
-            hudPanBaseX = hudPanX;
-            hudPanBaseY = hudPanY;
-            return true;
-        }
         // 滚动条（命中轨道 = 开始拖拽；点击空白轨道 = 拇指中心跳到该处）
         if (btn == 0 && maxScroll() > 0 && mx >= scrollbarX() - 2 && mx <= scrollbarX() + 5
                 && my >= scrollbarTrackTop() && my <= scrollbarTrackBottom()) {
@@ -1599,12 +1407,6 @@ public final class ModSettingsScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mx, double my, int btn, double dx, double dy) {
-        if (hudPanning) {
-            // 1:1 取景平移：反方向拖动（拖左往右看 = 取景左移）
-            hudPanX = hudPanBaseX - ((int) mx - hudPanGrabX);
-            hudPanY = hudPanBaseY - ((int) my - hudPanGrabY);
-            return true;
-        }
         if (draggingScrollbar && maxScroll() > 0) {
             int trackH = scrollbarTrackBottom() - scrollbarTrackTop();
             double ratio = (double) viewH / contentH;
@@ -1639,10 +1441,8 @@ public final class ModSettingsScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mx, double my, int btn) {
-        hudPanning = false;
         if (previewToggle != null) previewToggle.mouseReleased(mx, my, btn);
         if (previewPauseBtn != null) previewPauseBtn.mouseReleased(mx, my, btn);
-        if (previewZoomBtn != null) previewZoomBtn.mouseReleased(mx, my, btn);
         if (previewFullscreenBtn != null) previewFullscreenBtn.mouseReleased(mx, my, btn);
         boolean handled = pressedRow != null;
         if (pressedRow != null) {

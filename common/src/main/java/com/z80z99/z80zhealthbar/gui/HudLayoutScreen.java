@@ -208,10 +208,20 @@ public final class HudLayoutScreen extends Screen {
         layoutPanel();
         clampPanel();
         layoutPanel();
+        // 右上功能键全部样式通用——此前"完成/重置"只在自定义样式构建,长条/原版样式无完成按钮
+        int fx = width - 150;
+        if (editingCustom()) {
+            addRenderableWidget(flat(140, 16, () -> Component.translatable("z80zhealthbar.editor.reset_component"),
+                    () -> layout().resetComponent(baseKey(selected)), fx, 28));
+            addRenderableWidget(flat(140, 16, () -> Component.translatable("z80zhealthbar.editor.reset_all"),
+                    () -> layout().resetToDefaults(), fx, 46));
+            addRenderableWidget(flat(140, 16, () -> CommonComponents.GUI_DONE, this::onClose, fx, 64));
+        } else {
+            addRenderableWidget(flat(140, 16, () -> CommonComponents.GUI_DONE, this::onClose, fx, 28));
+        }
     }
 
-    /** 自定义样式的专属控件：底栏（仅组件选择）+ 重置 + 预设（其他样式下隐藏，避免无效控件）。
-     *  组件的全部参数（模式/锚点/位置/缩放/间距/文本/图标）已集中到悬浮属性面板，底栏不再重复。 */
+    /** 自定义样式的专属控件：底栏（仅组件选择）+ 预设（一步应用）;右上功能键全部样式通用（init） */
     private void buildCustomControls() {
         int y = height - 24;
         int x = 8;
@@ -223,27 +233,15 @@ public final class HudLayoutScreen extends Screen {
                     rebuildWidgets();
                 }));
 
-        // 右上功能键（扁平风格）
-        int fx = width - 150;
-        addRenderableWidget(flat(140, 16, () -> Component.translatable("z80zhealthbar.editor.reset_component"),
-                () -> layout().resetComponent(baseKey(selected)), fx, 28));
-        addRenderableWidget(flat(140, 16, () -> Component.translatable("z80zhealthbar.editor.reset_all"),
-                () -> layout().resetToDefaults(), fx, 46));
-        addRenderableWidget(flat(140, 16, () -> CommonComponents.GUI_DONE, this::onClose, fx, 64));
-
-        // 预设布局（左上：选择 + 应用，一键切换整套设计）
-        addRenderableWidget(flat(150, 16, () -> Component.translatable("z80zhealthbar.editor.preset")
+        // 预设布局（左上,一步应用：点击 = 立即应用当前显示的整套设计并轮换到下一个）
+        addRenderableWidget(flat(150, 16, () -> Component.translatable("z80zhealthbar.editor.preset.apply")
                         .copy().append(": ")
                         .append(Component.translatable("z80zhealthbar.editor.preset." + presetSel)),
                 () -> {
+                    layout().applyPreset(presetSel);
                     presetSel = nextPreset(presetSel);
                     rebuildWidgets();
                 }, 8, 28));
-        addRenderableWidget(flat(150, 16, () -> Component.translatable("z80zhealthbar.editor.preset.apply"),
-                () -> {
-                    layout().applyPreset(presetSel);
-                    rebuildWidgets();
-                }, 8, 46));
     }
 
     private static String nextPreset(String cur) {
@@ -382,14 +380,14 @@ public final class HudLayoutScreen extends Screen {
                 () -> o.enableFoodBlink, v -> o.enableFoodBlink = v));
         panelEntries.add(toggle("z80zhealthbar.option.overlay.shakeHealthAndFoodWhileLow",
                 () -> o.shakeHealthAndFoodWhileLow, v -> o.shakeHealthAndFoodWhileLow = v));
-        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.lowHealthRate",
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.lowHealthRate.label",
                 () -> o.lowHealthRate, v -> o.lowHealthRate = v, 0.05, 0.95, 0.01,
                 v -> Math.round(v * 100) + "%"));
-        panelEntries.add(cycler("z80zhealthbar.option.overlay.absorptionMode",
+        panelEntries.add(cycler("z80zhealthbar.option.overlay.absorptionMode.label",
                 () -> Component.translatable("z80zhealthbar.overlay.absorptionMode."
                         + Math.min(1, Math.max(0, o.absorptionMode))).getString(),
                 () -> o.absorptionMode = (o.absorptionMode + 1) % 2));
-        panelEntries.add(stepper("z80zhealthbar.option.overlay.hideUnchangingBarAfterSeconds",
+        panelEntries.add(stepper("z80zhealthbar.option.overlay.hideUnchangingBarAfterSeconds.label",
                 () -> o.hideUnchangingBarAfterSeconds, v -> o.hideUnchangingBarAfterSeconds = (int) Math.round(v),
                 0, 600, 5));
         // ---- 数值上限（0 = 跟随实际值;长条/自定义两样式共用） ----
@@ -907,14 +905,14 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        if (!editingCustom()) return super.mouseScrolled(mouseX, mouseY, delta);
-        // 悬停面板 → 滚动属性面板（内容超高时）；面板外 → 缩放选中组件（原行为）
+        // 悬停面板 → 滚动属性面板（全部样式：长条面板内容远超面板高,此前非自定义直接 return 滚不动）
         if (mouseX >= panelX && mouseX <= panelX + PANEL_W
                 && mouseY >= panelY && mouseY <= panelY + panelH) {
             panelScrollTarget -= (float) delta * 24f;
             layoutPanel();
             return true;
         }
+        if (!editingCustom()) return super.mouseScrolled(mouseX, mouseY, delta);
         nudgeScale(delta > 0 ? 0.05 : -0.05);
         return true;
     }
