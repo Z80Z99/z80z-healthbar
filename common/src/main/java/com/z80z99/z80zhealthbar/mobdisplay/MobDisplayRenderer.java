@@ -61,6 +61,12 @@ public final class MobDisplayRenderer {
 
         double distSqr = entity.distanceToSqr(player);
         if (barEnabled && !MobVisibilityChecker.shouldRender(entity, distSqr)) barEnabled = false;
+        // 诊断（临时）：死亡实体被可见性拒绝时记录拒绝码,定位"死亡瞬间血条消失"
+        if (entity.isDeadOrDying()) {
+            int code = MobVisibilityChecker.check(entity, player, distSqr);
+            if (code != 0) System.out.println("[z80z-dbg] dying " + entity.getId()
+                    + " rejected by visibility code=" + code);
+        }
         if (!barEnabled && !popupEnabled) return;
 
         long gameTime = mc.level.getGameTime();
@@ -139,10 +145,10 @@ public final class MobDisplayRenderer {
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f); // 复位残留染色
 
         long now = System.currentTimeMillis();
-        // 碎裂顶点缓冲（首帧死亡即可能触发,无条件获取;空会话时无绘制开销）
-        var vcShatter = ShatterFx.begin(bs);
-        PoseStack orphanBase = new PoseStack();
-        orphanBase.mulPoseMatrix(viewMatrix);
+        // 碎裂接管收集（循环后统一绘制——循环内样式切换 render type 会提前 flush barRect 批,
+        // 提前 get 的顶点引用会写进已结束的批次,碎片丢失）
+        record ShatterJob(int id, PoseStack pose, double rx, double ry, double rz) {}
+        List<ShatterJob> shatterJobs = new ArrayList<>();
 
         for (PendingBar st : list) {
             PoseStack pose = new PoseStack();
@@ -150,9 +156,13 @@ public final class MobDisplayRenderer {
             pose.translate((float) (st.x() - camPos.x), (float) (st.y() - camPos.y),
                     (float) (st.z() - camPos.z)); // 实体脚部世界锚点,样式方法内部按 entityHeight 抬升
             // 死亡碎裂接管：dying + shatter + 有条矩形记录 → 原样式不画,碎片起飞
-            if (st.snap().dying && ShatterFx.hasBox(st.snap().entityId)
-                    && ShatterFx.render(st.snap().entityId, pose, vcShatter, now,
-                    st.x() - camPos.x, st.y() - camPos.y, st.z() - camPos.z, true)) {
+            if (st.snap().dying) {
+                System.out.println("[z80z-dbg] dying " + st.snap().entityId + " in pipeline, hasBox="
+                        + ShatterFx.hasBox(st.snap().entityId));
+            }
+            if (st.snap().dying && ShatterFx.hasBox(st.snap().entityId)) {
+                shatterJobs.add(new ShatterJob(st.snap().entityId, pose,
+                        st.x() - camPos.x, st.y() - camPos.y, st.z() - camPos.z));
                 continue;
             }
             switch (st.style()) {
@@ -165,8 +175,17 @@ public final class MobDisplayRenderer {
                 default -> { }
             }
         }
-        // 遗留碎片：实体已离开渲染管线的碎裂会话继续飞散直至寿命耗尽
-        ShatterFx.renderOrphans(orphanBase, vcShatter, now);
+        // 碎裂绘制（含遗留碎片）：全新 buffer 引用,不受样式渲染批切换影响
+        if (!shatterJobs.isEmpty() || ShatterFx.hasActive()) {
+            var vcShatter = ShatterFx.begin(bs);
+            for (ShatterJob job : shatterJobs) {
+                ShatterFx.render(job.id(), job.pose(), vcShatter, now,
+                        job.rx(), job.ry(), job.rz(), true);
+            }
+            PoseStack orphanBase = new PoseStack();
+            orphanBase.mulPoseMatrix(viewMatrix);
+            ShatterFx.renderOrphans(orphanBase, vcShatter, now);
+        }
         bs.endBatch();
     }
 
