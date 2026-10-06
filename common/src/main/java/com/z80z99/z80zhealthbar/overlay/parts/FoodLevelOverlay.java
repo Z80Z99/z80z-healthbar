@@ -105,17 +105,21 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
             drawBound(graphics, left, top, left + barWidth, top + barH, boundColor);
         }
 
-        // 文本（条右外侧；RIGHT 布局改画在条左外并右对齐,再往左避开条左侧图标——
-        // 此前 x=left-5 与 left-11 处的图标重叠,数字盖住图标）
-        if (cfg.displayFoodText) {
-            int textY = top + barH / 2 - 4 + cfg.overlayBarTextOffsetY;
+        // 文本（条右外侧；RIGHT 布局改画在条左外并右对齐;编辑器可关/拆分独立偏移）
+        if (cfg.displayFoodText && BarLayouts.showText("food")) {
+            int[] to = BarLayouts.textOffset("food");
+            int textY = top + barH / 2 - 4 + cfg.overlayBarTextOffsetY + to[1];
             String text = foodLevel + "/" + (int) params.maxValue;
             if (pos == OverlayPosition.RIGHT) {
-                OverlayManager.addStringRender(text, left - 15, textY, 0xFFFFFFFF,
+                int tx = left - 15 + to[0];
+                OverlayManager.addStringRender(text, tx, textY, 0xFFFFFFFF,
                         OverlayManager.ALIGN_RIGHT);
+                BarLayouts.recordText("food", tx - mc.font.width(text), textY, mc.font.width(text), 9);
             } else {
-                OverlayManager.addStringRender(text, left + barWidth + 5, textY, 0xFFFFFFFF,
+                int tx = left + barWidth + 5 + to[0];
+                OverlayManager.addStringRender(text, tx, textY, 0xFFFFFFFF,
                         OverlayManager.ALIGN_LEFT);
+                BarLayouts.recordText("food", tx, textY, mc.font.width(text), 9);
             }
         }
         BarLayouts.record("food", left, top, barWidth, barH);

@@ -56,19 +56,22 @@ public class ExperienceBarOverlay extends SimpleBarOverlay {
         HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,
                 Math.max(0f, Math.min(1f, expProgress)), fillColor);
 
-        // 显示等级/进度文本（Wave 11：移至条内居中，原版经验条风格）
+        // 显示等级/进度文本（Wave 11：移至条内居中,原版经验条风格;组件化:可关/拆分独立偏移）
         // Wave 12 修复：用户不需要百分比，默认关闭 displayExperienceProgress，
         // 保留配置开关供需要时开启（配置驱动，避免死配置）
-        if (cfg.displayExperienceLevel || cfg.displayExperienceProgress) {
+        if ((cfg.displayExperienceLevel || cfg.displayExperienceProgress) && BarLayouts.showText("experience")) {
             StringBuilder sb = new StringBuilder();
             if (cfg.displayExperienceLevel) sb.append(expLevel);
             if (cfg.displayExperienceProgress) {
                 if (!sb.isEmpty()) sb.append(" ");
                 sb.append(String.format("%.0f%%", expProgress * 100));
             }
-            int textX = left + barWidth / 2;
-            int textY = top + barH / 2 - 4 + ConfigManager.getConfig().overlay.overlayBarTextOffsetY;
+            int[] to = BarLayouts.textOffset("experience");
+            int textX = left + barWidth / 2 + to[0];
+            int textY = top + barH / 2 - 4 + ConfigManager.getConfig().overlay.overlayBarTextOffsetY + to[1];
             OverlayManager.addStringRender(sb.toString(), textX, textY, 0xFFFFFFFF);
+            BarLayouts.recordText("experience", textX - mc.font.width(sb.toString()) / 2, textY,
+                    mc.font.width(sb.toString()), 9);
         }
         BarLayouts.record("experience", left, top, barWidth, barH);
     }

@@ -75,17 +75,26 @@ public class ArmorLevelOverlay extends SimpleBarOverlay {
         // 文本：护甲值/满值（与生命/饱食度条 "x/max" 格式一致）,开启韧性显示且韧性>0 时
         // 追加 (韧性)；RIGHT 布局改条左外右对齐,再往左避开条左侧图标——此前 x=left-5
         // 与 left-11 处的盾牌图标重叠,数字把图标盖住只看到"5"悬在条边（实测"护甲条奇怪"）
-        StringBuilder text = new StringBuilder(armor + "/" + (int) params.maxValue);
-        if (cfg.displayArmorToughness && toughness > 0) {
-            text.append(" (").append(toughness).append(")");
-        }
-        int textY = top + barH / 2 - 4 + ConfigManager.getConfig().overlay.overlayBarTextOffsetY;
-        if (pos == OverlayPosition.RIGHT) {
-            OverlayManager.addStringRender(text.toString(), left - 15, textY, 0xFFFFFFFF,
-                    OverlayManager.ALIGN_RIGHT);
-        } else {
-            OverlayManager.addStringRender(text.toString(), left + barWidth + 5, textY, 0xFFFFFFFF,
-                    OverlayManager.ALIGN_LEFT);
+        // 组件化：编辑器可关/拆分独立偏移（displayArmorToughness 只控制韧性后缀）
+        if (BarLayouts.showText("armor")) {
+            StringBuilder text = new StringBuilder(armor + "/" + (int) params.maxValue);
+            if (cfg.displayArmorToughness && toughness > 0) {
+                text.append(" (").append(toughness).append(")");
+            }
+            int[] to = BarLayouts.textOffset("armor");
+            int textY = top + barH / 2 - 4 + ConfigManager.getConfig().overlay.overlayBarTextOffsetY + to[1];
+            if (pos == OverlayPosition.RIGHT) {
+                int tx = left - 15 + to[0];
+                OverlayManager.addStringRender(text.toString(), tx, textY, 0xFFFFFFFF,
+                        OverlayManager.ALIGN_RIGHT);
+                BarLayouts.recordText("armor", tx - mc.font.width(text.toString()), textY,
+                        mc.font.width(text.toString()), 9);
+            } else {
+                int tx = left + barWidth + 5 + to[0];
+                OverlayManager.addStringRender(text.toString(), tx, textY, 0xFFFFFFFF,
+                        OverlayManager.ALIGN_LEFT);
+                BarLayouts.recordText("armor", tx, textY, mc.font.width(text.toString()), 9);
+            }
         }
         BarLayouts.record("armor", left, top, barWidth, barH);
     }

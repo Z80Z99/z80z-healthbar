@@ -22,6 +22,8 @@ public final class BarLayouts {
     private static final Map<String, int[]> LAST_RECTS = new LinkedHashMap<>();
     /** 本帧渲染记录的状态图标矩形（编辑器框选/拖拽拆分用）: key → {x, y, w, h} */
     private static final Map<String, int[]> LAST_ICON_RECTS = new LinkedHashMap<>();
+    /** 本帧渲染记录的数值文本矩形（编辑器框选/拖拽拆分用）: key → {x, y, w, h} */
+    private static final Map<String, int[]> LAST_TEXT_RECTS = new LinkedHashMap<>();
 
     /** 取某条的组件配置（无则创建占位,默认可见/显示图标/无偏移） */
     public static OverlayConfig.BarFreePos get(String key) {
@@ -39,6 +41,18 @@ public final class BarLayouts {
     public static boolean showIcon(String key) {
         OverlayConfig.BarFreePos p = ConfigManager.getConfig().overlay.barFreePos.get(key);
         return p == null || p.showIcon;
+    }
+
+    /** 数值文本开关（关闭 = 只渲染条与图标;全局开关与此为"与"关系） */
+    public static boolean showText(String key) {
+        OverlayConfig.BarFreePos p = ConfigManager.getConfig().overlay.barFreePos.get(key);
+        return p == null || p.showText;
+    }
+
+    /** 数值文本相对默认位的独立偏移——文本与条拆开摆放 */
+    public static int[] textOffset(String key) {
+        OverlayConfig.BarFreePos p = ConfigManager.getConfig().overlay.barFreePos.get(key);
+        return p == null ? new int[]{0, 0} : new int[]{p.textOffX, p.textOffY};
     }
 
     /** 状态图标相对条默认位（条左外 -11px）的独立偏移——图标与条拆开摆放 */
@@ -65,6 +79,10 @@ public final class BarLayouts {
         LAST_ICON_RECTS.put(key, new int[]{x, y, w, h});
     }
 
+    public static void recordText(String key, int x, int y, int w, int h) {
+        LAST_TEXT_RECTS.put(key, new int[]{x, y, w, h});
+    }
+
     public static int[] lastRect(String key) {
         return LAST_RECTS.get(key);
     }
@@ -73,10 +91,15 @@ public final class BarLayouts {
         return LAST_ICON_RECTS.get(key);
     }
 
+    public static int[] lastTextRect(String key) {
+        return LAST_TEXT_RECTS.get(key);
+    }
+
     /** 每帧预览渲染前清空（条消失时不残留旧框） */
     public static void clearRects() {
         LAST_RECTS.clear();
         LAST_ICON_RECTS.clear();
+        LAST_TEXT_RECTS.clear();
     }
 
     /** 单条释放回预设布局 */

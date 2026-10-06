@@ -38,7 +38,8 @@ public class OverlayConfig {
 
     /** 长条样式逐条自由摆放（HUD 布局编辑器拖拽写回）：free=true 的条脱离预设布局
      *  （overlayLayoutStyle 0-8 + 边距堆叠）按绝对坐标渲染；未拖过的条不在此表 = 跟随预设。
-     *  visible/showIcon/iconOff* 为组件级配置：单条显示开关、状态图标开关与独立偏移（图标与条拆开摆放）。 */
+     *  visible/showIcon/iconOffX/iconOffY/showText/textOffX/textOffY 为组件级配置：
+     *  条本体显示开关、状态图标开关与独立偏移（图标与条拆开）、数值文本开关与独立偏移（文本与条拆开）。 */
     public Map<String, BarFreePos> barFreePos = new LinkedHashMap<>();
 
     public static class BarFreePos {
@@ -47,5 +48,7 @@ public class OverlayConfig {
         public boolean visible = true;
         public boolean showIcon = true;
         public int iconOffX, iconOffY;
+        public boolean showText = true;
+        public int textOffX, textOffY;
     }
 }

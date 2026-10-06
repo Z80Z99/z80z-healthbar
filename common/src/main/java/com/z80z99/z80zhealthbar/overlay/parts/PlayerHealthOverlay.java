@@ -185,19 +185,24 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         // 此前条右外侧还画一个专门金心,与左侧金心重复（实测"重复的图标"）,已移除
 
         // 生命值文本（条右外侧；RIGHT 布局改画在条左外并右对齐，避免超出屏幕）
-        if (cfg.displayHealthText) {
+        // 组件化：编辑器可关/拆分独立偏移（文本与条分离摆放）
+        if (cfg.displayHealthText && BarLayouts.showText("health")) {
             // 数字滚动（与实体血条同语义,dynamicFx.numRoll）：数字跟随平滑填充一起滚,
             // 否则掉血瞬间数字即时跳变而条还在缓动——两者不一致（用户实测）
             // 整数不显示小数（20 而非 20.0）；非整保留一位
             String text = trimNum((float) (dxCfg.enabled && dxCfg.numRoll ? displayHealth : health));
             if (absorption > 0) text += " + " + trimNum(absorption);
-            int textY = top + barH / 2 - 4 + cfg.overlayBarTextOffsetY;
+            int[] to = BarLayouts.textOffset("health");
+            int textY = top + barH / 2 - 4 + cfg.overlayBarTextOffsetY + to[1];
             if (rightSide) {
                 // 条左外右对齐,再往左避开条左侧状态心形图标（left-11）——此前 left-5 数字盖住图标
-                OverlayManager.addStringRender(text, left - 15, textY, 0xFFFFFFFF, OverlayManager.ALIGN_RIGHT);
+                int tx = left - 15 + to[0];
+                OverlayManager.addStringRender(text, tx, textY, 0xFFFFFFFF, OverlayManager.ALIGN_RIGHT);
+                BarLayouts.recordText("health", tx - mc.font.width(text), textY, mc.font.width(text), 9);
             } else {
-                int textX = left + barWidth + 5;
-                OverlayManager.addStringRender(text, textX, textY, 0xFFFFFFFF, OverlayManager.ALIGN_LEFT);
+                int tx = left + barWidth + 5 + to[0];
+                OverlayManager.addStringRender(text, tx, textY, 0xFFFFFFFF, OverlayManager.ALIGN_LEFT);
+                BarLayouts.recordText("health", tx, textY, mc.font.width(text), 9);
             }
         }
         BarLayouts.record("health", left, top, barWidth, barH);

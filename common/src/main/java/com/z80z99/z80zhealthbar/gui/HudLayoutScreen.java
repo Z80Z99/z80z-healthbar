@@ -72,6 +72,9 @@ public final class HudLayoutScreen extends Screen {
     /** 状态图标拆分拖拽：图标与条可分离摆放（写回 iconOff*） */
     private boolean draggingAsteorIcon;
     private int iconGrabX, iconGrabY, iconStartOffX, iconStartOffY;
+    /** 数值文本拆分拖拽：文本与条可分离摆放（写回 textOff*） */
+    private boolean draggingAsteorText;
+    private int textGrabX, textGrabY, textStartOffX, textStartOffY;
 
     // ---- 悬浮面板状态 ----
     private final List<PEntry> panelEntries = new ArrayList<>();
@@ -312,6 +315,12 @@ public final class HudLayoutScreen extends Screen {
                     () -> p.iconOffX, v -> p.iconOffX = (int) Math.round(v), -500, 500, 1));
             panelEntries.add(stepper("z80zhealthbar.editor.asteor.icon_y",
                     () -> p.iconOffY, v -> p.iconOffY = (int) Math.round(v), -500, 500, 1));
+            panelEntries.add(toggle("z80zhealthbar.editor.asteor.text",
+                    () -> p.showText, v -> p.showText = v));
+            panelEntries.add(stepper("z80zhealthbar.editor.asteor.text_x",
+                    () -> p.textOffX, v -> p.textOffX = (int) Math.round(v), -500, 500, 1));
+            panelEntries.add(stepper("z80zhealthbar.editor.asteor.text_y",
+                    () -> p.textOffY, v -> p.textOffY = (int) Math.round(v), -500, 500, 1));
             panelEntries.add(stepper("z80zhealthbar.editor.asteor.x",
                     () -> p.x, v -> p.x = (int) Math.round(v), 0, 2000, 1));
             panelEntries.add(stepper("z80zhealthbar.editor.asteor.y",
@@ -698,6 +707,12 @@ public final class HudLayoutScreen extends Screen {
                     graphics.renderOutline(ir[0] - 1, ir[1] - 1, ir[2] + 2, ir[3] + 2,
                             iconSel ? 0x8040FF40 : 0x30FFFFFF);
                 }
+                int[] tr = BarLayouts.lastTextRect(key);
+                if (tr != null) {
+                    boolean textSel = key.equals(selectedAsteorBar);
+                    graphics.renderOutline(tr[0] - 1, tr[1] - 1, tr[2] + 2, tr[3] + 2,
+                            textSel ? 0x8040FF40 : 0x30FFFFFF);
+                }
             }
         }
 
@@ -824,9 +839,9 @@ public final class HudLayoutScreen extends Screen {
         if (overAnyWidget(mouseX, mouseY)) {
             return super.mouseClicked(mouseX, mouseY, button);
         }
-        // 3) 元素命中 → 开始拖拽（自定义 = 组件/文本/图标;长条 = 预览中的条/状态图标）
+        // 3) 元素命中 → 开始拖拽（自定义 = 组件/文本/图标;长条 = 预览中的条/状态图标/数值文本）
         if (hudStyle() == HudStyle.ASTEORBAR) {
-            // 图标命中优先（更小;拖拽 = 拆分独立摆放,写回 iconOff*）
+            // 图标/文本命中优先（更小;拖拽 = 拆分独立摆放）
             for (String key : BarLayouts.KEYS) {
                 int[] ir = BarLayouts.lastIconRect(key);
                 if (ir == null) continue;
@@ -840,6 +855,21 @@ public final class HudLayoutScreen extends Screen {
                     var p = BarLayouts.get(key);
                     iconStartOffX = p.iconOffX;
                     iconStartOffY = p.iconOffY;
+                    if (changed) rebuildWidgets();
+                    return true;
+                }
+                int[] tr = BarLayouts.lastTextRect(key);
+                if (tr == null) continue;
+                if (mouseX >= tr[0] - 1 && mouseX < tr[0] + tr[2] + 1
+                        && mouseY >= tr[1] - 1 && mouseY < tr[1] + tr[3] + 1) {
+                    boolean changed = !key.equals(selectedAsteorBar);
+                    selectedAsteorBar = key;
+                    draggingAsteorText = true;
+                    textGrabX = (int) mouseX;
+                    textGrabY = (int) mouseY;
+                    var p = BarLayouts.get(key);
+                    textStartOffX = p.textOffX;
+                    textStartOffY = p.textOffY;
                     if (changed) rebuildWidgets();
                     return true;
                 }
@@ -908,6 +938,13 @@ public final class HudLayoutScreen extends Screen {
                 p.iconOffY = Math.max(-500, Math.min(500, iconStartOffY + (int) mouseY - iconGrabY));
                 return true;
             }
+            if (draggingAsteorText) {
+                // 数值文本拆分拖拽：同图标语义
+                var p = BarLayouts.get(draggingAsteorBar);
+                p.textOffX = Math.max(-500, Math.min(500, textStartOffX + (int) mouseX - textGrabX));
+                p.textOffY = Math.max(-500, Math.min(500, textStartOffY + (int) mouseY - textGrabY));
+                return true;
+            }
             // 长条自由摆放：首次拖拽即脱离预设布局（free=true）,位置钳制在屏幕内
             int[] r = BarLayouts.lastRect(draggingAsteorBar);
             if (r != null) {
@@ -931,6 +968,7 @@ public final class HudLayoutScreen extends Screen {
         dragging = false;
         draggingAsteorBar = null;
         draggingAsteorIcon = false;
+        draggingAsteorText = false;
         panelDragging = false;
         return super.mouseReleased(mouseX, mouseY, button);
     }
