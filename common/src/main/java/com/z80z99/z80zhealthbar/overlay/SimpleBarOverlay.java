@@ -1,5 +1,6 @@
 package com.z80z99.z80zhealthbar.overlay;
 
+import com.z80z99.z80zhealthbar.config.ConfigManager;
 import net.minecraft.world.entity.player.Player;
 
 import java.util.LinkedHashMap;
@@ -81,6 +82,24 @@ public abstract class SimpleBarOverlay extends BaseOverlay {
 
     public void setDefinedPosition(OverlayPosition position) {
         this.definedPosition = position;
+    }
+
+    // ---- 数值不变自动隐藏（hideUnchangingBarAfterSeconds,此前为死配置现已接线） ----
+    private double trackedValue = Double.NaN;
+    private long valueSteadySince;
+
+    /** 数值持续不变超过配置秒数 → 跳过本条渲染（0 = 关闭;编辑器预览常显便于拖拽编辑） */
+    protected boolean hideUnchanged(double value) {
+        int secs = ConfigManager.getConfig().overlay.hideUnchangingBarAfterSeconds;
+        if (secs <= 0) return false;
+        if (com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active) return false;
+        long now = System.currentTimeMillis();
+        if (value != trackedValue) {
+            trackedValue = value;
+            valueSteadySince = now;
+            return false;
+        }
+        return now - valueSteadySince >= secs * 1000L;
     }
 
     public OverlayPosition getDefinedPosition() {

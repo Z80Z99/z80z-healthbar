@@ -29,13 +29,11 @@ public class OverlayConfig {
     public boolean displayHealthText = true;
     public boolean enableFoodBlink = true;
     public boolean displaySaturation = true;
-    public boolean displayExhaustion = true;
     public boolean displayFoodText = true;
     public boolean displayArmorToughness = true;
     public int cornerBarLength = 100;
     public int cornerHorizontalPadding = 5;
     public int cornerVerticalPadding = 5;
-    public boolean forceRenderAtCorner = false;
     public boolean mountHealthOnLeftSide = false;
 
     /** 长条样式逐条自由摆放（HUD 布局编辑器拖拽写回）：free=true 的条脱离预设布局

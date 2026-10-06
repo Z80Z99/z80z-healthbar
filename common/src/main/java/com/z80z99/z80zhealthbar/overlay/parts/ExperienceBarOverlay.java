@@ -19,6 +19,7 @@ public class ExperienceBarOverlay extends SimpleBarOverlay {
 
         int expLevel = HudPreviewState.active ? HudPreviewState.xpLevel : player.experienceLevel;
         float expProgress = HudPreviewState.active ? HudPreviewState.xpProgress : player.experienceProgress;
+        if (hideUnchanged(expLevel + expProgress)) return; // 数值长期不变时隐藏
 
         int fillColor = ColorHelper.parseColor(colors.experience);
         int boundColor = ColorHelper.parseColor(colors.experienceBound);
@@ -65,7 +66,7 @@ public class ExperienceBarOverlay extends SimpleBarOverlay {
                 sb.append(String.format("%.0f%%", expProgress * 100));
             }
             int textX = left + barWidth / 2;
-            int textY = top + barH / 2 - 4;
+            int textY = top + barH / 2 - 4 + ConfigManager.getConfig().overlay.overlayBarTextOffsetY;
             OverlayManager.addStringRender(sb.toString(), textX, textY, 0xFFFFFFFF);
         }
         BarLayouts.record("experience", left, top, barWidth, barH);

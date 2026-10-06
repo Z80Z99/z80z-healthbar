@@ -41,6 +41,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         float health = HudPreviewState.active ? HudPreviewState.health : player.getHealth();
         float maxHealth = HudPreviewState.active ? HudPreviewState.maxHealth : player.getMaxHealth();
         float absorption = HudPreviewState.active ? HudPreviewState.absorption : player.getAbsorptionAmount();
+        if (hideUnchanged(health)) return; // 数值长期不变时隐藏（hideUnchangingBarAfterSeconds）
 
         // 确定生命值颜色
         int healthColor = ColorHelper.parseColor(colors.healthNormal);
@@ -184,7 +185,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             // 整数不显示小数（20 而非 20.0）；非整保留一位
             String text = trimNum((float) (dxCfg.enabled && dxCfg.numRoll ? displayHealth : health));
             if (absorption > 0) text += " + " + trimNum(absorption);
-            int textY = top + barH / 2 - 4;
+            int textY = top + barH / 2 - 4 + cfg.overlayBarTextOffsetY;
             if (rightSide) {
                 // 条左外右对齐,再往左避开条左侧状态心形图标（left-11）——此前 left-5 数字盖住图标
                 OverlayManager.addStringRender(text, left - 15, textY, 0xFFFFFFFF, OverlayManager.ALIGN_RIGHT);

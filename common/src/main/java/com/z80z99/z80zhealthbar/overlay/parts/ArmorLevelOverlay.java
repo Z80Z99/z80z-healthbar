@@ -23,6 +23,7 @@ public class ArmorLevelOverlay extends SimpleBarOverlay {
 
         int armor = HudPreviewState.active ? HudPreviewState.armor : player.getArmorValue();
         if (armor <= 0) return;
+        if (hideUnchanged(armor)) return; // 数值长期不变时隐藏（hideUnchangingBarAfterSeconds）
 
         int toughness = (int) player.getAttributeValue(Attributes.ARMOR_TOUGHNESS);
 
@@ -72,7 +73,7 @@ public class ArmorLevelOverlay extends SimpleBarOverlay {
         if (cfg.displayArmorToughness && toughness > 0) {
             text.append(" (").append(toughness).append(")");
         }
-        int textY = top + barH / 2 - 4;
+        int textY = top + barH / 2 - 4 + ConfigManager.getConfig().overlay.overlayBarTextOffsetY;
         if (pos == OverlayPosition.RIGHT) {
             OverlayManager.addStringRender(text.toString(), left - 15, textY, 0xFFFFFFFF,
                     OverlayManager.ALIGN_RIGHT);

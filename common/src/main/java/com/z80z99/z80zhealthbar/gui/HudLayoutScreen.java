@@ -290,9 +290,10 @@ public final class HudLayoutScreen extends Screen {
                 });
     }
 
-    /** 长条（AsteorBar）样式的全部布局参数（此前多数未暴露在界面） */
+    /** 长条样式的全部参数（设置页玩家 HUD 的散项全部整合至此）：布局 / 显示开关 / 动态与闪烁 / 数值上限 */
     private void buildAsteorEntries() {
         var o = ConfigManager.getConfig().overlay;
+        // ---- 布局参数 ----
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.asteorbar", null, null));
         // 标签统一用 .label 键——不带后缀的键内容含 "%s"（Forge 配置界面格式化用）,直接渲染会残留 "%s";
         // 缺 .label 的键此前显示原始键名（实测"配置项翻译呢"）
@@ -314,8 +315,6 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.overlayTextScale.label",
                 () -> o.overlayTextScale, v -> o.overlayTextScale = v, 0.25, 4.0, 0.05,
                 v -> Math.round(v * 100) + "%"));
-        panelEntries.add(toggle("z80zhealthbar.option.overlay.forceRenderAtCorner.label",
-                () -> o.forceRenderAtCorner, v -> o.forceRenderAtCorner = v));
         panelEntries.add(toggle("z80zhealthbar.option.overlay.mountHealthOnLeftSide.label",
                 () -> o.mountHealthOnLeftSide, v -> o.mountHealthOnLeftSide = v));
         // 自由摆放：预览中直接拖拽任意条即可脱离布局预设;选中后在此精确微调
@@ -357,6 +356,56 @@ public final class HudLayoutScreen extends Screen {
                     selectedAsteorBar = null;
                     rebuildWidgets();
                 }));
+        // ---- 显示开关 ----
+        panelEntries.add(new PEntry("z80zhealthbar.editor.section.asteor_display", null, null));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.displayHealthText",
+                () -> o.displayHealthText, v -> o.displayHealthText = v));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.displayFoodText",
+                () -> o.displayFoodText, v -> o.displayFoodText = v));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.displaySaturation",
+                () -> o.displaySaturation, v -> o.displaySaturation = v));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.displayExperienceLevel",
+                () -> o.displayExperienceLevel, v -> o.displayExperienceLevel = v));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.displayExperienceProgress",
+                () -> o.displayExperienceProgress, v -> o.displayExperienceProgress = v));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.displayArmorToughness",
+                () -> o.displayArmorToughness, v -> o.displayArmorToughness = v));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.overwriteVanillaArmorBar",
+                () -> o.overwriteVanillaArmorBar, v -> o.overwriteVanillaArmorBar = v));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.overwriteVanillaExperienceBar",
+                () -> o.overwriteVanillaExperienceBar, v -> o.overwriteVanillaExperienceBar = v));
+        // ---- 动态与闪烁 ----
+        panelEntries.add(new PEntry("z80zhealthbar.editor.section.asteor_dynamic", null, null));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.enableHealthBlink",
+                () -> o.enableHealthBlink, v -> o.enableHealthBlink = v));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.enableFoodBlink",
+                () -> o.enableFoodBlink, v -> o.enableFoodBlink = v));
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.shakeHealthAndFoodWhileLow",
+                () -> o.shakeHealthAndFoodWhileLow, v -> o.shakeHealthAndFoodWhileLow = v));
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.lowHealthRate",
+                () -> o.lowHealthRate, v -> o.lowHealthRate = v, 0.05, 0.95, 0.01,
+                v -> Math.round(v * 100) + "%"));
+        panelEntries.add(cycler("z80zhealthbar.option.overlay.absorptionMode",
+                () -> Component.translatable("z80zhealthbar.overlay.absorptionMode."
+                        + Math.min(1, Math.max(0, o.absorptionMode))).getString(),
+                () -> o.absorptionMode = (o.absorptionMode + 1) % 2));
+        panelEntries.add(stepper("z80zhealthbar.option.overlay.hideUnchangingBarAfterSeconds",
+                () -> o.hideUnchangingBarAfterSeconds, v -> o.hideUnchangingBarAfterSeconds = (int) Math.round(v),
+                0, 600, 5));
+        // ---- 数值上限（0 = 跟随实际值;长条/自定义两样式共用） ----
+        panelEntries.add(new PEntry("z80zhealthbar.editor.section.asteor_caps", null, null));
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullHealthValue",
+                () -> o.fullHealthValue, v -> o.fullHealthValue = (int) Math.round(v), 0, 100000, 1,
+                v -> v <= 0 ? "—" : String.valueOf((int) Math.round(v))));
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullFoodLevelValue",
+                () -> o.fullFoodLevelValue, v -> o.fullFoodLevelValue = (int) Math.round(v), 0, 40, 1,
+                v -> v <= 0 ? "—" : String.valueOf((int) Math.round(v))));
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullArmorValue",
+                () -> o.fullArmorValue, v -> o.fullArmorValue = (int) Math.round(v), 0, 100, 1,
+                v -> v <= 0 ? "—" : String.valueOf((int) Math.round(v))));
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.fullSaturationValue",
+                () -> o.fullSaturationValue, v -> o.fullSaturationValue = v, 0, 40, 0.5,
+                v -> v <= 0 ? "—" : String.format(java.util.Locale.ROOT, "%.1f", v)));
     }
 
     /** 自定义样式的参数分组（模式 / 组件 / 条形 / 文本 / 图标） */

@@ -735,32 +735,8 @@ public final class ModSettingsScreen extends Screen {
                 ModSettingsScreen::hudStyle, v -> o.hudStyle = v.name()));
 
         rows.add(new SectionRow("z80zhealthbar.settings.section.hud_asteorbar"));
-        // 布局样式/条长/文本缩放等布局参数统一在 HUD 布局编辑器中调整（避免跨界面重复）
+        // 布局/显示开关/动态/数值上限等全部长条参数已整合进 HUD 布局编辑器（切换"编辑样式"到长条）
         rows.add(new TextRow("z80zhealthbar.hud.layout_note"));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.displayHealthText", o.displayHealthText, v -> o.displayHealthText = v));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.displayFoodText", o.displayFoodText, v -> o.displayFoodText = v));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.displaySaturation", o.displaySaturation, v -> o.displaySaturation = v));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.displayExhaustion", o.displayExhaustion, v -> o.displayExhaustion = v));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.displayExperienceLevel", o.displayExperienceLevel, v -> o.displayExperienceLevel = v));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.displayExperienceProgress", o.displayExperienceProgress, v -> o.displayExperienceProgress = v));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.displayArmorToughness", o.displayArmorToughness, v -> o.displayArmorToughness = v));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.overwriteVanillaArmorBar", o.overwriteVanillaArmorBar, v -> o.overwriteVanillaArmorBar = v));
-        // 原版经验条覆盖开关（此前仅有护甲的，缺此项形成不对称）
-        rows.add(toggleRow("z80zhealthbar.option.overlay.overwriteVanillaExperienceBar", o.overwriteVanillaExperienceBar,
-                v -> o.overwriteVanillaExperienceBar = v));
-
-        rows.add(new SectionRow("z80zhealthbar.settings.section.hud_animations"));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.enableHealthBlink", o.enableHealthBlink, v -> o.enableHealthBlink = v));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.enableFoodBlink", o.enableFoodBlink, v -> o.enableFoodBlink = v));
-        rows.add(toggleRow("z80zhealthbar.option.overlay.shakeHealthAndFoodWhileLow", o.shakeHealthAndFoodWhileLow, v -> o.shakeHealthAndFoodWhileLow = v));
-        rows.add(sliderRow("z80zhealthbar.option.overlay.lowHealthRate", 5, 95, (int) (o.lowHealthRate * 100),
-                v -> o.lowHealthRate = v / 100.0, v -> v + "%"));
-        // 吸收值模式:0=同行附加(唯一实现),1/2 预留;滑条值显示语义文案而非裸数字
-        rows.add(sliderRow("z80zhealthbar.option.overlay.absorptionMode", 0, 2, o.absorptionMode,
-                v -> o.absorptionMode = v,
-                v -> Component.translatable("z80zhealthbar.overlay.absorptionMode." + v).getString()));
-        rows.add(sliderRow("z80zhealthbar.option.overlay.hideUnchangingBarAfterSeconds", 0, 60, o.hideUnchangingBarAfterSeconds,
-                v -> o.hideUnchangingBarAfterSeconds = v, v -> v == 0 ? "—" : v + "s"));
 
         rows.add(new SectionRow("z80zhealthbar.settings.section.hud_custom"));
         // 编辑器入口已上移至主页"快捷操作"（全局落地入口，避免双按钮）

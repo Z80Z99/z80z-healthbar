@@ -23,6 +23,7 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
 
         int foodLevel = HudPreviewState.active ? HudPreviewState.food : player.getFoodData().getFoodLevel();
         float saturation = HudPreviewState.active ? 0f : player.getFoodData().getSaturationLevel();
+        if (hideUnchanged(foodLevel)) return; // 数值长期不变时隐藏（hideUnchangingBarAfterSeconds）
 
         int fillColor = ColorHelper.parseColor(colors.foodNormal);
         int boundColor = ColorHelper.parseColor(colors.foodBound);
@@ -101,7 +102,7 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
         // 文本（条右外侧；RIGHT 布局改画在条左外并右对齐,再往左避开条左侧图标——
         // 此前 x=left-5 与 left-11 处的图标重叠,数字盖住图标）
         if (cfg.displayFoodText) {
-            int textY = top + barH / 2 - 4;
+            int textY = top + barH / 2 - 4 + cfg.overlayBarTextOffsetY;
             String text = foodLevel + "/" + (int) params.maxValue;
             if (pos == OverlayPosition.RIGHT) {
                 OverlayManager.addStringRender(text, left - 15, textY, 0xFFFFFFFF,

@@ -91,6 +91,7 @@ public final class ConfigValidator {
         c.fullHealthValue = clamp(c.fullHealthValue, 0, 100000);
         c.hideUnchangingBarAfterSeconds = clamp(c.hideUnchangingBarAfterSeconds, 0, 600);
         c.lowHealthRate = clamp(c.lowHealthRate, 0.05, 0.95);
+        c.absorptionMode = clamp(c.absorptionMode, 0, 1); // 旧值 2(BOUND 未实现)合并为 1(仅图标)
         c.cornerBarLength = clamp(c.cornerBarLength, 20, 400);
         c.cornerHorizontalPadding = clamp(c.cornerHorizontalPadding, 0, 50);
         c.cornerVerticalPadding = clamp(c.cornerVerticalPadding, 0, 50);
