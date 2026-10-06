@@ -71,4 +71,23 @@ class HudFxTest {
         assertEquals(0f, z[0]);
         assertEquals(0f, z[1]);
     }
+
+    @Test
+    void easeOutBackEndpointsAndOvershoot() {
+        assertEquals(0f, HudFx.easeOutBack(0f), 1e-4);
+        assertEquals(1f, HudFx.easeOutBack(1f), 1e-4);
+        float peak = 0f;
+        for (float t = 0f; t <= 1f; t += 0.01f) peak = Math.max(peak, HudFx.easeOutBack(t));
+        assertTrue(peak > 1.02f && peak < 1.15f, "expected overshoot, peak=" + peak);
+    }
+
+    @Test
+    void popInStartsSmallSettlesFull() {
+        float[] s0 = HudFx.popIn(0);
+        assertTrue(s0[0] < 0.65f);
+        assertEquals(-6f, s0[1], 1e-4);
+        float[] s1 = HudFx.popIn(500);
+        assertEquals(1f, s1[0], 1e-4);
+        assertEquals(0f, s1[1], 1e-4);
+    }
 }

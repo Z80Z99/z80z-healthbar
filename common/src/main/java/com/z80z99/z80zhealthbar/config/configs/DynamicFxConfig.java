@@ -31,4 +31,10 @@ public class DynamicFxConfig {
     public boolean healGlow = true;
     /** 受击抖动：受伤瞬间条本体垂直抖动,幅度随受击闪白衰减收敛 */
     public boolean hitShake = true;
+    /** 实体条弹入：血条首次出现时缩放弹入 + 从上方落入（220ms,替代纯透明度淡入的呆板出场） */
+    public boolean spawnPop = true;
+    /** 实体条治疗上浮：回血脉冲期血条整体上浮并随治疗衰减回落 */
+    public boolean healLift = true;
+    /** 实体条死亡收缩：死亡动画期血条向挂点收缩至 70% 并下沉,与死亡渐隐叠加 */
+    public boolean deathShrink = true;
 }

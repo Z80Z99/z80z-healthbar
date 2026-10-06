@@ -86,4 +86,25 @@ public final class HudFx {
     private static float clamp01(float v) {
         return v < 0f ? 0f : Math.min(1f, v);
     }
+
+    /** easeOutBack（弹性过冲缓动）：t=0→0,t=1→1,中途超过 1（峰值约 1.10）后回落——弹入动画用 */
+    public static float easeOutBack(float t) {
+        float x = clamp01(t);
+        final float c1 = 1.70158f;
+        final float c3 = x - 1f;
+        return 1f + (c1 + 1f) * c3 * c3 * c3 + c1 * c3 * c3;
+    }
+
+    /**
+     * 弹入动画参数（实体血条首次出现）。
+     *
+     * @param elapsed 出现后经过时间
+     * @return {scale, yOff}：scale 从 0.6 弹到 1（带过冲）,yOff 从 -6px 落到 0
+     */
+    public static float[] popIn(long elapsed) {
+        float t = clamp01(elapsed / 220f);
+        float scale = 0.6f + 0.4f * easeOutBack(t);
+        float yOff = -6f * (1f - t);
+        return new float[]{scale, yOff};
+    }
 }

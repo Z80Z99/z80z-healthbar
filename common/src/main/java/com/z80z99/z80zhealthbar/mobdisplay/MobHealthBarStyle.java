@@ -59,6 +59,7 @@ public final class MobHealthBarStyle {
         // 原版名牌矩阵约定：(-s, -s, s)；实测该空间等效 +x 屏幕向右、+y 屏幕向下
         // （与 style 3 文字偏移的实测方向一致）。用正缩放会让 Font 文本整体旋转 180°。
         poseStack.scale(-s, -s, s);
+        MobDisplayRenderer.DisplayAnimation.applyScreenFx(poseStack, snap); // 整条动画（像素空间）
         // 原版名牌约定下 scale<1 时条会下沉入模型，做与原 MOD 相同的高度补偿
         if (cfg.scaleBar < 1.0) {
             poseStack.translate(0, 1.5 * (1.0 - cfg.scaleBar) / 0.025, 0);

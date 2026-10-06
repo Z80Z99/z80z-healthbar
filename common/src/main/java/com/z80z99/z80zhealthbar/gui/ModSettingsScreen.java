@@ -594,6 +594,8 @@ public final class ModSettingsScreen extends Screen {
                         v -> c.plaqueStyle.textOffsetY = v, String::valueOf));
                 rows.add(toggleRow("z80zhealthbar.option.plaqueStyle.originalRender", c.plaqueStyle.originalRender,
                         v -> c.plaqueStyle.originalRender = v));
+                // 牌匾此前无动态效果节——整条位移类动画（弹入/抖动/上浮/死亡收缩）对牌匾有效
+                buildFxRows();
             }
             case ASTEORBAR -> {
                 rows.add(new SectionRow("z80zhealthbar.settings.section.style_c"));
@@ -671,6 +673,10 @@ public final class ModSettingsScreen extends Screen {
         rows.add(toggleRow("z80zhealthbar.option.barfx.sheen", fx.sheen, v -> fx.sheen = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.healGlow", fx.healGlow, v -> fx.healGlow = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.hitShake", fx.hitShake, v -> fx.hitShake = v));
+        // 实体条整条动画（三种样式共用,位移类对牌匾同样有效）
+        rows.add(toggleRow("z80zhealthbar.option.barfx.spawnPop", fx.spawnPop, v -> fx.spawnPop = v));
+        rows.add(toggleRow("z80zhealthbar.option.barfx.healLift", fx.healLift, v -> fx.healLift = v));
+        rows.add(toggleRow("z80zhealthbar.option.barfx.deathShrink", fx.deathShrink, v -> fx.deathShrink = v));
         rows.add(new TextRow("z80zhealthbar.option.barfx.note"));
     }
 

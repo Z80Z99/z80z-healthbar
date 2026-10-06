@@ -225,6 +225,7 @@ public final class MobDisplayRenderer {
         poseStack.translate(0, 0, Math.max(0.002f, Mth.sqrt((float) snap.distanceSqr) * 0.002f));
         float worldScale = (float) barCfg.barScale * 0.025f;
         poseStack.scale(-worldScale, -worldScale, worldScale); // 原版名牌约定（-,-,+）：文字正立
+        DisplayAnimation.applyScreenFx(poseStack, snap); // 整条动画（像素空间）
 
         int barX = -barWidth / 2;
         int barY = -barH; // 条底对齐挂点，向下绘制
@@ -261,6 +262,7 @@ public final class MobDisplayRenderer {
         poseStack.translate(0, snap.entityHeight + (float) cfg.barStyle.barOffsetY, 0);
         poseStack.mulPose(Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation());
         poseStack.scale(-scale, -scale, scale); // 原版名牌约定
+        DisplayAnimation.applyScreenFx(poseStack, snap); // 附加行组跟随主条整条动画
         int rowX = -totalW / 2;
         int rowY = 2; // 主条下方
         int i = 0;
@@ -300,6 +302,7 @@ public final class MobDisplayRenderer {
             scale *= 1.0f + ratio;
         }
         poseStack.scale(-scale, -scale, scale);
+        DisplayAnimation.applyScreenFx(poseStack, snap); // 整条动画（弹入/抖动/上浮/死亡收缩,像素空间）
         drawPlaqueRows(snap, poseStack, buffer, packedLight, alpha, font, plaqueScale);
         poseStack.popPose();
     }
@@ -618,7 +621,7 @@ public final class MobDisplayRenderer {
         }
     }
 
-    /** 淡入 + 死亡淡出 */
+    /** 淡入 + 死亡淡出 + 整条位移动画（弹入/受击抖动/治疗上浮/死亡收缩——三种样式共用） */
     static final class DisplayAnimation {
         static float alphaFor(int entityId, EntityStatusSnapshot snap, long gameTime) {
             var cfg = ConfigManager.getConfig().visibility;
@@ -632,6 +635,49 @@ public final class MobDisplayRenderer {
                 alpha *= 1f - snap.deathProgress;
             }
             return alpha;
+        }
+
+        /** 弹入首次出现时间（ms）;容量超限整表重建（与 FIRST_SEEN 同生命周期语义） */
+        private static final Map<Integer, Long> SPAWN_AT = new HashMap<>();
+
+        /**
+         * 整条位移动画：在 billboard（mulPose 相机朝向）之后、镜像缩放之前调用。
+         * 依次应用 弹入缩放/落入 → 受击抖动 y → 治疗上浮 y → 死亡收缩 scale+y（单位 = 像素样式单位）。
+         */
+        static void applyScreenFx(com.mojang.blaze3d.vertex.PoseStack pose, EntityStatusSnapshot snap) {
+            var fx = ConfigManager.getConfig().dynamicFx;
+            if (!fx.enabled) return;
+            long now = System.currentTimeMillis();
+
+            if (fx.spawnPop) {
+                if (SPAWN_AT.size() > 1024) SPAWN_AT.clear();
+                long spawnAt = SPAWN_AT.computeIfAbsent(snap.entityId, k -> now);
+                float[] pop = com.z80z99.z80zhealthbar.overlay.HudFx.popIn(now - spawnAt);
+                if (pop[0] != 1f || pop[1] != 0f) {
+                    pose.translate(0, pop[1], 0);
+                    pose.scale(pop[0], pop[0], 1f);
+                }
+            }
+
+            // 受击抖动/治疗上浮：同帧二次 tick BarFx（dt≈0,状态与样式内首帧一致,renderTexts 同款先例）
+            if (fx.hitShake || fx.healLift) {
+                var st = BarFx.tick(snap.entityId, snap.plainHealthRatio(),
+                        snap.hurtTime > 0, now);
+                if (fx.hitShake) {
+                    int dy = com.z80z99.z80zhealthbar.overlay.HudFx.shakeOffset(now, st.flash());
+                    if (dy != 0) pose.translate(0, dy, 0);
+                }
+                if (fx.healLift && st.heal() > 0.01f) {
+                    pose.translate(0, -1.5f * st.heal(), 0);
+                }
+            }
+
+            if (fx.deathShrink && snap.dying) {
+                float dp = Mth.clamp(snap.deathProgress, 0f, 1f);
+                float s = 1f - 0.3f * dp;
+                pose.translate(0, 4f * dp, 0);
+                pose.scale(s, s, 1f);
+            }
         }
     }
 }
