@@ -73,7 +73,8 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
                 isHungry ? ICON_FOOD_HUNGRY_U : ICON_FOOD_U, ICON_FOOD_V);
 
         int innerW = HudBarPainter.innerWidth(barWidth);
-        int fillW = (int) Math.max(0, Math.min(innerW, params.value / params.maxValue * innerW));
+        // Math.round 而非 (int) 截断——BarFx 类平滑值稳态略小于 1.0 时截断会裁掉 1px 填充
+        int fillW = (int) Math.round(Math.max(0, Math.min(innerW, params.value / params.maxValue * innerW)));
 
         drawBarCard(graphics, left, top, barWidth, barH);
 
@@ -84,7 +85,7 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
         // 饱和度覆盖（金色叠加在食物条之上，原版逻辑）
         if (cfg.displaySaturation && saturation > 0) {
             float satRatio = saturation / (float)(cfg.fullSaturationValue > 0 ? cfg.fullSaturationValue : 20);
-            int satW = (int) (Math.max(0f, Math.min(1f, satRatio)) * innerW);
+            int satW = (int) Math.round(Math.max(0f, Math.min(1f, satRatio)) * innerW);
             HudBarPainter.drawSegment(graphics, left, top, barWidth, barH, 0, satW,
                     ColorHelper.parseColor(colors.saturation));
         }

@@ -130,11 +130,13 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
                     HudPreviewState.fxKeyAbs(player.getId()), absRaw, false, System.currentTimeMillis());
             float absDisp = dxCfg.enabled && dxCfg.smooth
                     ? Math.max(0f, Math.min(1f, absFx.display())) : absRaw;
-            int healthW = (int) Math.max(0, Math.min(innerW, params.value / total * innerW));
+            // 宽度一律 Math.round——(int) 截断叠 BarFx 渐近收敛（display 稳态 ≈0.99995）
+            // 会把满值裁掉 1px,条右端永远留一条细缝（实测"血条填不满"）
+            int healthW = (int) Math.round(Math.max(0, Math.min(innerW, params.value / total * innerW)));
             // 金段终点按 (平滑生命+平滑吸收)/total 一次取整——红/金两段各自取整会累计丢
             // 1~2px,满血+吸收（总量正好撑满条）时条尾出现细缝（实测"没有填满条"）
-            int absEnd = (int) Math.max(healthW, Math.min(innerW,
-                    Math.round((params.value + absDisp * maxValue) / total * innerW)));
+            int absEnd = (int) Math.max(healthW, Math.round(Math.min(innerW,
+                    (params.value + absDisp * maxValue) / total * innerW)));
             drawBarCard(graphics, left, top, barWidth, barH);
             // 伤害残影（与样式3同源）：掉血后在 [当前填充, 掉血前血量] 区域画渐隐白
             drawGhostSegment(graphics, left, top, barWidth, barH, healthW, fxSt, 0, compress);
@@ -162,7 +164,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         } else {
             params.blink = blinkBorder;
             drawGhostSegment(graphics, left, top, barWidth, barH,
-                    (int) (params.value / params.maxValue * HudBarPainter.innerWidth(barWidth)),
+                    (int) Math.round(params.value / params.maxValue * HudBarPainter.innerWidth(barWidth)),
                     fxSt, params.verticalShift, 1f);
             renderBar(graphics, left, top, barWidth, barH, params);
         }
@@ -219,7 +221,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
     private void renderBar(GuiGraphics g, int x, int y, int w, int h, Parameters p) {
         drawBarCard(g, x, y, w, h);
         int innerW = HudBarPainter.innerWidth(w);
-        int fillWidth = (int) Math.max(0, Math.min(innerW, p.value / p.maxValue * innerW));
+        int fillWidth = (int) Math.round(Math.max(0, Math.min(innerW, p.value / p.maxValue * innerW)));
         HudBarPainter.drawFillWidth(g, x, y, w, h, fillWidth, p.fillColor, p.verticalShift);
 
         if (p.blink) {

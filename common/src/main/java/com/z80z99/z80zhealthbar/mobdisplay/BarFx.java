@@ -63,6 +63,9 @@ public final class BarFx {
         fx.lastSeen = now;
 
         fx.display += (target - fx.display) * (1f - (float) Math.exp(-dt / SMOOTH_MS));
+        // 收敛吸附：指数平滑渐近逼近,稳态永远略小于目标（如 0.99995）——
+        // 截断取整会把满值裁掉 1px（条填不满）。差值小于半像素量级时直接吸附到目标。
+        if (Math.abs(target - fx.display) < 0.0005f) fx.display = target;
 
         // 残影区域维护：掉血 → 上缘抬到掉血前位置并重开渐隐;治疗 → 区域清空
         float prevTarget = fx.lastTarget;
