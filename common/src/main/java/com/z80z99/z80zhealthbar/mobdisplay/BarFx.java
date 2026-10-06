@@ -89,8 +89,11 @@ public final class BarFx {
 
         if (hurt) fx.flash = 1f;
         else fx.flash = Math.max(0f, fx.flash - dt / FLASH_MS);
-        // 治疗脉冲：血量上限明显提高时触发（受伤由 hurtTime 驱动，不走这里）
-        if (target > fx.lastTarget + 0.01f) fx.heal = 1f;
+        // 治疗脉冲：target 相对上一帧上升即触发（受伤由 hurtTime 驱动，不走这里）。
+        // 修复：此前与 fx.lastTarget 比较——但它在第 79 行已被覆盖为当前 target,
+        // 恒为 target > target 永假,heal 从未置 1（治疗泛光/数字变绿从未生效的根因）;
+        // 阈值 0.0005 使缓慢自然恢复（每帧 +0.0025）也能触发持续泛光
+        if (target > prevTarget + 5e-4f) fx.heal = 1f;
         else fx.heal = Math.max(0f, fx.heal - dt / FLASH_MS);
 
         if (FX.size() > 512) sweep(now);

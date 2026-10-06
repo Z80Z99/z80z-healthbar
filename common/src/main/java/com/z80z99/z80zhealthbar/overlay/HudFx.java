@@ -13,8 +13,8 @@ package com.z80z99.z80zhealthbar.overlay;
  */
 public final class HudFx {
 
-    /** 低血呼吸周期（ms）：300rad/步 → 约 1.9s 一个完整呼吸 */
-    public static final double PULSE_PERIOD_MS = 300.0;
+    /** 低血呼吸周期（ms/rad）：190 → 约 1.2s 一个完整呼吸（更快更醒目） */
+    public static final double PULSE_PERIOD_MS = 190.0;
     /** 扫光完整周期（ms） */
     public static final long SHEEN_PERIOD_MS = 2600;
     /** 抖动序列（与 SimpleBarOverlay.SHIFT 同款 0/1 伪随机,独立副本避免跨类耦合） */

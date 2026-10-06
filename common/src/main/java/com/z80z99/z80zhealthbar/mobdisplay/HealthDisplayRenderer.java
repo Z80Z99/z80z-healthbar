@@ -76,7 +76,7 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         if (fx.enabled) {
             if (fx.lowHpPulse && ratio <= 0.3f) {
                 fillColor = ColorHelper.lerp(fillColor, 0xFFFFFFFF,
-                        com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.35f);
+                        com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.45f);
             }
             if (fx.healGlow) {
                 fillColor = ColorHelper.lerp(fillColor, 0xFF50E080, st.heal() * 0.45f);

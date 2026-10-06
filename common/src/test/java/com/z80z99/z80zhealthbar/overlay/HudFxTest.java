@@ -13,7 +13,7 @@ class HudFxTest {
             assertTrue(p >= 0f && p <= 1f, "pulse out of range: " + p);
         }
         assertEquals(0.5f, HudFx.pulse(0), 1e-6);
-        assertTrue(HudFx.pulse((long) (Math.PI / 2 * 300)) > 0.9f); // 四分之一周期后接近峰值
+        assertTrue(HudFx.pulse((long) (Math.PI / 2 * 190)) > 0.9f); // 四分之一周期后接近峰值
     }
 
     @Test

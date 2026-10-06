@@ -310,7 +310,7 @@ public final class CustomHudRenderer {
         if (dxFxCfg.enabled) {
             if (dxFxCfg.lowHpPulse && lowHp) {
                 dynColor = ColorHelper.lerp(dynColor, 0xFFFFFFFF,
-                        HudFx.pulse(nowMs) * 0.35f);
+                        HudFx.pulse(nowMs) * 0.45f);
             }
             if (dxFxCfg.healGlow) {
                 dynColor = ColorHelper.lerp(dynColor, 0xFF50E080, fxSt.heal() * 0.45f);

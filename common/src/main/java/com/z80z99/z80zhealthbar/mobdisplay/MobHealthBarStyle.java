@@ -121,7 +121,7 @@ public final class MobHealthBarStyle {
         if (fxCfg.enabled) {
             if (fxCfg.lowHpPulse && snap.plainHealthRatio() <= 0.3f) {
                 baseFill = ColorHelper.lerp(baseFill, 0xFFFFFFFF,
-                        com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.35f);
+                        com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.45f);
             }
             if (fxCfg.healGlow) {
                 baseFill = ColorHelper.lerp(baseFill, 0xFF50E080, f.heal * 0.45f);
@@ -204,7 +204,7 @@ public final class MobHealthBarStyle {
             if (fxCfg2.enabled) {
                 if (fxCfg2.lowHpPulse && snap.plainHealthRatio() <= 0.3f) {
                     baseColor = ColorHelper.lerp(baseColor, 0xFFFFFFFF,
-                            com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.35f);
+                            com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.45f);
                 }
                 if (fxCfg2.healGlow) {
                     baseColor = ColorHelper.lerp(baseColor, 0xFF50E080, f.heal * 0.45f);

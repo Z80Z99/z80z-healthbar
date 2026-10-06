@@ -86,7 +86,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         if (dxCfg.enabled) {
             if (dxCfg.lowHpPulse && lowHealth) {
                 dynFillColor = ColorHelper.lerp(dynFillColor, 0xFFFFFFFF,
-                        com.z80z99.z80zhealthbar.overlay.HudFx.pulse(nowMs) * 0.35f);
+                        com.z80z99.z80zhealthbar.overlay.HudFx.pulse(nowMs) * 0.45f);
             }
             if (dxCfg.healGlow) {
                 dynFillColor = ColorHelper.lerp(dynFillColor, 0xFF50E080, fxSt.heal() * 0.45f);
