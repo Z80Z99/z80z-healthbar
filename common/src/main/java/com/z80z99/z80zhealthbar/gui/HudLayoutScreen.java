@@ -294,28 +294,29 @@ public final class HudLayoutScreen extends Screen {
     private void buildAsteorEntries() {
         var o = ConfigManager.getConfig().overlay;
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.asteorbar", null, null));
-        // 布局样式 0=关闭；显示 OFF 便于理解
-        panelEntries.add(stepper1Fmt("z80zhealthbar.option.hud.layoutStyle",
+        // 标签统一用 .label 键——不带后缀的键内容含 "%s"（Forge 配置界面格式化用）,直接渲染会残留 "%s";
+        // 缺 .label 的键此前显示原始键名（实测"配置项翻译呢"）
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.hud.layoutStyle.label",
                 () -> o.overlayLayoutStyle, v -> o.overlayLayoutStyle = (int) Math.round(v), 0, 8, 1,
                 v -> v <= 0 ? "OFF" : String.valueOf((int) Math.round(v))));
-        panelEntries.add(stepper("z80zhealthbar.option.overlay.cornerBarLength",
+        panelEntries.add(stepper("z80zhealthbar.option.overlay.cornerBarLength.label",
                 () -> o.cornerBarLength, v -> o.cornerBarLength = (int) Math.round(v), 20, 400, 4));
-        panelEntries.add(stepper("z80zhealthbar.option.overlay.overlayBarInnerHeight",
+        panelEntries.add(stepper("z80zhealthbar.option.overlay.overlayBarInnerHeight.label",
                 () -> o.overlayBarInnerHeight, v -> o.overlayBarInnerHeight = (int) Math.round(v), 1, 12, 1));
-        panelEntries.add(stepper("z80zhealthbar.option.overlay.overlayBarVerticalMargin",
+        panelEntries.add(stepper("z80zhealthbar.option.overlay.overlayBarVerticalMargin.label",
                 () -> o.overlayBarVerticalMargin, v -> o.overlayBarVerticalMargin = (int) Math.round(v), 0, 16, 1));
-        panelEntries.add(stepper("z80zhealthbar.option.overlay.cornerHorizontalPadding",
+        panelEntries.add(stepper("z80zhealthbar.option.overlay.cornerHorizontalPadding.label",
                 () -> o.cornerHorizontalPadding, v -> o.cornerHorizontalPadding = (int) Math.round(v), 0, 50, 1));
-        panelEntries.add(stepper("z80zhealthbar.option.overlay.cornerVerticalPadding",
+        panelEntries.add(stepper("z80zhealthbar.option.overlay.cornerVerticalPadding.label",
                 () -> o.cornerVerticalPadding, v -> o.cornerVerticalPadding = (int) Math.round(v), 0, 50, 1));
-        panelEntries.add(stepper("z80zhealthbar.option.overlay.overlayBarTextOffsetY",
+        panelEntries.add(stepper("z80zhealthbar.option.overlay.overlayBarTextOffsetY.label",
                 () -> o.overlayBarTextOffsetY, v -> o.overlayBarTextOffsetY = (int) Math.round(v), -50, 50, 1));
-        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.overlayTextScale",
+        panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.overlayTextScale.label",
                 () -> o.overlayTextScale, v -> o.overlayTextScale = v, 0.25, 4.0, 0.05,
                 v -> Math.round(v * 100) + "%"));
-        panelEntries.add(toggle("z80zhealthbar.option.overlay.forceRenderAtCorner",
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.forceRenderAtCorner.label",
                 () -> o.forceRenderAtCorner, v -> o.forceRenderAtCorner = v));
-        panelEntries.add(toggle("z80zhealthbar.option.overlay.mountHealthOnLeftSide",
+        panelEntries.add(toggle("z80zhealthbar.option.overlay.mountHealthOnLeftSide.label",
                 () -> o.mountHealthOnLeftSide, v -> o.mountHealthOnLeftSide = v));
         // 自由摆放：预览中直接拖拽任意条即可脱离布局预设;选中后在此精确微调
         panelEntries.add(new PEntry(null, "z80zhealthbar.editor.asteor.note", null));
