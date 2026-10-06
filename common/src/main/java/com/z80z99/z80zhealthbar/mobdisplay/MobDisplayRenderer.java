@@ -673,9 +673,11 @@ public final class MobDisplayRenderer {
             }
 
             if (fx.deathShrink && snap.dying) {
-                float dp = Mth.clamp(snap.deathProgress, 0f, 1f);
-                float s = 1f - 0.3f * dp;
-                pose.translate(0, 4f * dp, 0);
+                // 收缩用 sqrt 前置曲线 + 幅度加大：死亡渐隐（alpha=1-dp）同步进行,线性小幅度收缩
+                // 会被渐隐完全掩盖（实测"死亡收缩没见到"）——dp=0.25 时即完成一半收缩,可见
+                float dp = Mth.sqrt(Mth.clamp(snap.deathProgress, 0f, 1f));
+                float s = 1f - 0.4f * dp;
+                pose.translate(0, 6f * dp, 0);
                 pose.scale(s, s, 1f);
             }
         }
