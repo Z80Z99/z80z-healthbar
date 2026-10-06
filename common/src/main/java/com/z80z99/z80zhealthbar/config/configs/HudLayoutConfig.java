@@ -25,6 +25,8 @@ public class HudLayoutConfig {
     /** 单组件布局 */
     public static class ComponentLayout {
         public String mode = ComponentMode.BAR.name();
+        /** 组件类型（空 = 从键推断：键名取 '#' 与 '.' 前段）。多实例键如 "health#2" 靠此分发渲染。 */
+        public String type = "";
         public String anchor = HudAnchor.BOTTOM_CENTER.name();
         /** 拖拽偏移（px，GUI 缩放坐标） */
         public int offsetX = 0;
@@ -37,6 +39,13 @@ public class HudLayoutConfig {
         public int barWidth = 120;
         /** 是否显示数值文本 */
         public boolean showText = true;
+        /** 是否显示条本体（BAR 模式卡片+填充;关闭后只剩图标/文本部件 = 自由组合） */
+        public boolean showBar = true;
+        /** 数值文本模板（空 = 各组件默认格式）。变量：{health} {max_health} {absorption} {food} {food_max}
+         *  {air} {air_max} {armor} {toughness} {level} {xp_percent} {mount_health} {mount_max} */
+        public String textFormat = "";
+        /** 是否显示状态图标（BAR 模式） */
+        public boolean showIcon = true;
         /** 数值文本水平对齐（BAR 模式；默认居中） */
         public String textAlign = TextAlign.CENTER.name();
         /** 数值文本微调偏移（px，正值向右/向下） */
@@ -111,10 +120,11 @@ public class HudLayoutConfig {
 
         public ComponentLayout copy() {
             ComponentLayout c = new ComponentLayout();
-            c.mode = mode; c.anchor = anchor;
+            c.mode = mode; c.type = type; c.anchor = anchor;
             c.offsetX = offsetX; c.offsetY = offsetY;
             c.scale = scale; c.spacing = spacing;
-            c.barWidth = barWidth; c.showText = showText;
+            c.barWidth = barWidth; c.showText = showText; c.showBar = showBar; c.showIcon = showIcon;
+            c.textFormat = textFormat;
             c.textAlign = textAlign; c.textOffsetX = textOffsetX; c.textOffsetY = textOffsetY;
             c.barHeight = barHeight; c.iconSide = iconSide;
             c.textAnchor = textAnchor; c.textScale = textScale;
@@ -147,9 +157,27 @@ public class HudLayoutConfig {
         return presetComponents("MODERN");
     }
 
-    /** 应用预设布局（替换全部组件布局；编辑器"应用预设"按钮调用） */
+    /** 应用预设布局（替换标准组件;保留用户自建的多实例/原子组件键,即键含 '#' 或带原子后缀） */
     public void applyPreset(String preset) {
-        components = presetComponents(preset);
+        Map<String, ComponentLayout> fresh = presetComponents(preset);
+        Map<String, ComponentLayout> merged = new LinkedHashMap<>(fresh);
+        for (Map.Entry<String, ComponentLayout> e : components.entrySet()) {
+            if (e.getKey().contains("#") || ADDABLE_TYPES.indexOf(baseKeyOf(e.getKey())) >= 7
+                    || e.getKey().startsWith("text")) {
+                merged.put(e.getKey(), e.getValue()); // 自建实例与原子组件不被预设清掉
+            }
+        }
+        components = merged;
+    }
+
+    /** 键的类型段（剥 '#' 实例序号与 '.' 子元素后缀） */
+    public static String baseKeyOf(String key) {
+        String k = key == null ? "" : key;
+        int hash = k.indexOf('#');
+        if (hash > 0) k = k.substring(0, hash);
+        int dot = k.indexOf('.');
+        if (dot > 0) k = k.substring(0, dot);
+        return k;
     }
 
     /**
@@ -245,11 +273,68 @@ public class HudLayoutConfig {
         return c;
     }
 
+    /** 组件类型解析：显式 type 优先,否则取键名 '#' 前段（多实例）,再取 '.' 前段（子元素） */
+    public static String typeOf(String key, ComponentLayout c) {
+        if (c != null && c.type != null && !c.type.isBlank()) return c.type;
+        String k = key == null ? "" : key;
+        int hash = k.indexOf('#');
+        if (hash > 0) k = k.substring(0, hash);
+        int dot = k.indexOf('.');
+        if (dot > 0) k = k.substring(0, dot);
+        return k;
+    }
+
+    /** 可添加的原子组件类型（编辑器"添加组件"清单;纯文本/纯图标/自由文本） */
+    public static final List<String> ADDABLE_TYPES = List.of(
+            HEALTH, FOOD, AIR, ARMOR, MOUNT, EXPERIENCE, COMPAT,
+            "health_text", "food_text", "air_text", "armor_text", "mount_text", "xp_text",
+            "health_icon", "food_icon", "air_icon", "armor_icon", "mount_icon",
+            "text");
+
+    /** 生成某类型的新实例键（type 或 type#N,取空闲的最小 N;N=1 时省略后缀） */
+    public String addInstance(String type) {
+        for (int n = 1; n <= 64; n++) {
+            String key = n == 1 ? type : type + "#" + n;
+            if (!components.containsKey(key)) {
+                ComponentLayout c = new ComponentLayout();
+                c.type = type; // 显式写 type:渲染分发不依赖键名解析
+                components.put(key, c);
+                return key;
+            }
+        }
+        return null;
+    }
+
+    /** 复制实例（键含 '#' 或裸类型键均可,新键 = 同类型下一空闲序号） */
+    public String duplicateInstance(String key) {
+        ComponentLayout src = components.get(key);
+        if (src == null) return null;
+        String type = typeOf(key, src);
+        for (int n = 1; n <= 64; n++) {
+            String nk = n == 1 ? type : type + "#" + n;
+            if (!components.containsKey(nk)) {
+                components.put(nk, src.copy());
+                return nk;
+            }
+        }
+        return null;
+    }
+
+    /** 删除实例（连同其 .text/.icon 子元素键）;返回是否删除 */
+    public boolean removeInstance(String key) {
+        boolean removed = components.remove(key) != null;
+        components.remove(key + ".text");
+        components.remove(key + ".icon");
+        return removed;
+    }
+
     public void resetToDefaults() {
         components = defaultComponents();
     }
 
     public void resetComponent(String key) {
-        components.put(key, defaultComponents().get(key));
+        ComponentLayout def = defaultComponents().get(key);
+        // 多实例/未知键无预设默认——回退保留当前布局而非插入 null（防 map 出现 null 值）
+        components.put(key, def != null ? def : new ComponentLayout());
     }
 }

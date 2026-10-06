@@ -67,10 +67,11 @@ public final class CustomHudRenderer {
             graphics.pose().pushPose();
             graphics.pose().translate(box.x(), box.y(), 0);
             if (isText) {
-                // 分离文本元素：独立定位（缩放 = 组件缩放 × 文本缩放）
+                // 分离文本元素：独立定位（缩放 = 组件缩放 × 文本缩放;模板优先于默认文本）
                 float s = (float) (c.scale * c.textScale);
                 graphics.pose().scale(s, s, 1f);
-                String t = valueText(base, player);
+                String t = c.textFormat != null && !c.textFormat.isBlank()
+                        ? formatText(c.textFormat, player) : valueText(base, player);
                 if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
             } else if (isIcon) {
                 // 分离图标元素：独立定位（缩放 = 组件缩放 × 图标缩放）
@@ -81,7 +82,23 @@ public final class CustomHudRenderer {
             } else {
                 float scale = (float) c.scale;
                 graphics.pose().scale(scale, scale, 1f);
-                switch (key) {
+                // 类型分发（typeOf：显式 type > 键名 '#' 前段）——同一类型可有多实例（health#2）,
+                // 并支持原子组件（纯文本/纯图标/自由文本）,全部可自由增删组合
+                String type = HudLayoutConfig.typeOf(key, c);
+                if (type.endsWith("_text")) {
+                    // 纯文本组件：只渲染对应数值文本（模板优先）
+                    String t = c.textFormat != null && !c.textFormat.isBlank()
+                            ? formatText(c.textFormat, player) : valueText(type, player);
+                    if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
+                } else if (type.endsWith("_icon")) {
+                    // 纯图标组件：只渲染状态图标
+                    int[] uv = iconUV(type, player);
+                    if (uv != null) GuiHelper.drawTexturedRect(ICONS, graphics, 0, 0, uv[0], uv[1], 9, 9);
+                } else if (type.equals("text")) {
+                    // 自由文本组件：内容 = 模板串（可引用任意玩家数据变量,组件间互相调用）
+                    String t = formatText(c.textFormat, player);
+                    if (t != null && !t.isEmpty()) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
+                } else switch (type) {
                     case HudLayoutConfig.HEALTH -> renderHealth(graphics, mc, player, c);
                     case HudLayoutConfig.FOOD -> renderFood(graphics, mc, player, c);
                     case HudLayoutConfig.AIR -> renderAir(graphics, mc, player, c);
@@ -105,24 +122,49 @@ public final class CustomHudRenderer {
         Minecraft mc = Minecraft.getInstance();
         for (String key : layout.components.keySet()) {
             ComponentLayout c = layout.get(key);
+            String type = HudLayoutConfig.typeOf(key, c);
+            if (type.endsWith("_icon")) {
+                sizes.put(key, new int[]{9, 9}); // 纯图标组件
+                continue;
+            }
+            if (type.endsWith("_text") || type.equals("text")) {
+                // 纯文本/自由文本组件：尺寸 = 实际文本宽
+                String t = type.equals("text") ? formatText(c.textFormat, player)
+                        : (c.textFormat != null && !c.textFormat.isBlank()
+                                ? formatText(c.textFormat, player) : valueText(type, player));
+                sizes.put(key, new int[]{Math.max(8, t == null ? 8 : mc.font.width(t)), 10});
+                continue;
+            }
             sizes.put(key, HudLayoutSolver.measure(c));
             if (player == null || c.modeParsed() != HudLayoutConfig.ComponentMode.BAR) continue;
-            String t = valueText(key, player);
+            String t = c.textFormat != null && !c.textFormat.isBlank()
+                    ? formatText(c.textFormat, player) : valueText(key, player);
             if (c.showText && c.textAnchorParsed() != null && t != null) {
                 sizes.put(key + ".text", new int[]{mc.font.width(t), 8});
             }
-            if (c.iconAnchorParsed() != null && iconUV(key, player) != null) {
+            if (c.showIcon && c.iconAnchorParsed() != null && iconUV(key, player) != null) {
                 sizes.put(key + ".icon", new int[]{9, 9});
             }
         }
         return sizes;
     }
 
-    /** 组件对应当前数值文本（null = 当前不显示）；分离文本元素与条内文本共用同一来源 */
+    /** 原子组件键 → 基础数据类型（health_text/health_icon → health;xp_text → experience） */
+    private static String dataSource(String key) {
+        String k = HudLayoutConfig.baseKeyOf(key);
+        if (k.endsWith("_text")) k = k.substring(0, k.length() - 5);
+        else if (k.endsWith("_icon")) k = k.substring(0, k.length() - 5);
+        if (k.equals("xp")) k = HudLayoutConfig.EXPERIENCE;
+        return k;
+    }
+
+    /** 组件对应当前数值文本（null = 当前不显示）；分离文本元素与条内文本共用同一来源。
+     *  模板（c.textFormat）由调用方判断——本方法只提供各组件的默认文本,不触碰配置。 */
     public static String valueText(String key, Player p) {
         var cfg = ConfigManager.getConfig();
         boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
-        return switch (key) {
+        String type = dataSource(key);
+        return switch (type) {
             case HudLayoutConfig.HEALTH -> fmt(pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.health : p.getHealth())
                     + "/" + fmt(Math.max(1, pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxHealth : p.getMaxHealth()));
             case HudLayoutConfig.FOOD -> {
@@ -153,9 +195,48 @@ public final class CustomHudRenderer {
         };
     }
 
+    /** 文本模板变量替换（组件互相调用：任何文本组件可引用任意玩家数据）。
+     *  变量：{health} {max_health} {absorption} {food} {food_max} {air} {air_max}
+     *  {armor} {toughness} {level} {xp_percent} {mount_health} {mount_max} */
+    public static String formatText(String template, Player p) {
+        if (template == null || template.isBlank()) return "";
+        boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
+        float hp = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.health : p.getHealth();
+        float maxHp = Math.max(1, pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxHealth : p.getMaxHealth());
+        float abs = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.absorption : p.getAbsorptionAmount();
+        int food = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.food : p.getFoodData().getFoodLevel();
+        int foodMax = Math.max(1, ConfigManager.getConfig().overlay.fullFoodLevelValue > 0
+                ? ConfigManager.getConfig().overlay.fullFoodLevelValue : 20);
+        int air = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.air : p.getAirSupply();
+        int maxAir = Math.max(1, pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxAir : p.getMaxAirSupply());
+        int armor = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.armor : p.getArmorValue();
+        int level = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.xpLevel : p.experienceLevel;
+        float prog = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.xpProgress : p.experienceProgress;
+        float mHp = 0, mMax = 0;
+        if (!pv && p.getVehicle() instanceof LivingEntity mount) {
+            mHp = mount.getHealth();
+            mMax = Math.max(1, mount.getMaxHealth());
+        }
+        return template
+                .replace("{health}", fmt(hp))
+                .replace("{max_health}", fmt(maxHp))
+                .replace("{absorption}", fmt(abs))
+                .replace("{food}", String.valueOf(food))
+                .replace("{food_max}", String.valueOf(foodMax))
+                .replace("{air}", String.valueOf(air))
+                .replace("{air_max}", String.valueOf(maxAir))
+                .replace("{armor}", String.valueOf(armor))
+                .replace("{toughness}", String.valueOf((int) p.getAttributeValue(
+                        net.minecraft.world.entity.ai.attributes.Attributes.ARMOR_TOUGHNESS)))
+                .replace("{level}", String.valueOf(level))
+                .replace("{xp_percent}", String.valueOf(Math.round(prog * 100)))
+                .replace("{mount_health}", fmt(mHp))
+                .replace("{mount_max}", fmt(mMax));
+    }
+
     /** 组件对应图标 UV（null = 无图标/当前不可用） */
     private static int[] iconUV(String key, Player p) {
-        return switch (key) {
+        return switch (dataSource(key)) {
             case HudLayoutConfig.HEALTH -> new int[]{healthIconU(p), 0};
             case HudLayoutConfig.FOOD -> new int[]{52, 27};
             case HudLayoutConfig.AIR -> p.getAirSupply() >= Math.max(1, p.getMaxAirSupply())
@@ -202,7 +283,7 @@ public final class CustomHudRenderer {
         }
 
         int w = c.barWidth, h = barH(c);
-        drawCard(g, 0, 0, w, h);
+        if (c.showBar) drawCard(g, 0, 0, w, h);
         // 动态效果（与长条管线同源 BarFx）：填充平滑（90ms 无延迟）+ 伤害残影（区域+420ms 渐隐）。
         // 此前自定义生命组件两样都没有——用户 HUD 为自定义样式时残影完全不可见。
         var dxFxCfg = ConfigManager.getConfig().dynamicFx;
@@ -224,47 +305,52 @@ public final class CustomHudRenderer {
         float absDisp = dxFxCfg.enabled && dxFxCfg.smooth ? Mth.clamp(absFx.display(), 0f, 1f) : absRaw;
         int innerW = HudBarPainter.innerWidth(w);
         int healthW = Math.round(dispR * compress * innerW);
-        // 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）
-        if (dxFxCfg.enabled && dxFxCfg.ghost) {
-            float ghostA = Mth.clamp(fxSt.ghostAlpha(), 0f, 1f);
-            int preHitW = Math.min(innerW, Math.round(Mth.clamp(fxSt.preHit(), 0f, 1f) * compress * innerW));
-            if (preHitW > healthW && ghostA > 0f) {
-                HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, preHitW,
-                        ColorHelper.modifyAlpha(ColorHelper.parseColor(dxFxCfg.ghostColor),
-                                (int) (ghostA * 255)));
-            }
-        }
-        HudBarPainter.drawFillWidth(g, 0, 0, w, h, healthW, color);
-        if (absorption > 0) {
-            // 金段终点按 (平滑生命+平滑吸收)/total 一次取整——两段各自取整会累计丢 1~2px,
-            // 满血+吸收（总量正好撑满条）时条尾出现细缝（实测"没有填满条"）
-            int absEnd = Math.min(innerW, Math.max(healthW,
-                    Math.round((dispR * max + absDisp * max) / total * innerW)));
-            HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, absEnd,
-                    ColorHelper.parseColor(colors.absorption));
-            // 吸收残影：[金段终点, 消耗前终点] 白色渐隐（锚定当前填充右侧,随填充一起收缩）
+        if (c.showBar) {
+            // 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）
             if (dxFxCfg.enabled && dxFxCfg.ghost) {
-                float gA = Mth.clamp(absFx.ghostAlpha(), 0f, 1f);
-                float pre = Mth.clamp(absFx.preHit(), 0f, 1f);
-                if (gA > 0f && pre > absDisp) {
-                    int ghostW = Math.round((pre - absDisp) * max / total * innerW);
-                    int ghostEnd = Math.min(innerW, absEnd + ghostW);
-                    if (ghostEnd > absEnd) {
-                        HudBarPainter.drawSegment(g, 0, 0, w, h, absEnd, ghostEnd,
-                                ColorHelper.modifyAlpha(ColorHelper.parseColor(dxFxCfg.ghostColor),
-                                        (int) (gA * 255)));
+                float ghostA = Mth.clamp(fxSt.ghostAlpha(), 0f, 1f);
+                int preHitW = Math.min(innerW, Math.round(Mth.clamp(fxSt.preHit(), 0f, 1f) * compress * innerW));
+                if (preHitW > healthW && ghostA > 0f) {
+                    HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, preHitW,
+                            ColorHelper.modifyAlpha(ColorHelper.parseColor(dxFxCfg.ghostColor),
+                                    (int) (ghostA * 255)));
+                }
+            }
+            HudBarPainter.drawFillWidth(g, 0, 0, w, h, healthW, color);
+            if (absorption > 0) {
+                // 金段终点按 (平滑生命+平滑吸收)/total 一次取整——两段各自取整会累计丢 1~2px,
+                // 满血+吸收（总量正好撑满条）时条尾出现细缝（实测"没有填满条"）
+                int absEnd = Math.min(innerW, Math.max(healthW,
+                        Math.round((dispR * max + absDisp * max) / total * innerW)));
+                HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, absEnd,
+                        ColorHelper.parseColor(colors.absorption));
+                // 吸收残影：[金段终点, 消耗前终点] 白色渐隐（锚定当前填充右侧,随填充一起收缩）
+                if (dxFxCfg.enabled && dxFxCfg.ghost) {
+                    float gA = Mth.clamp(absFx.ghostAlpha(), 0f, 1f);
+                    float pre = Mth.clamp(absFx.preHit(), 0f, 1f);
+                    if (gA > 0f && pre > absDisp) {
+                        int ghostW = Math.round((pre - absDisp) * max / total * innerW);
+                        int ghostEnd = Math.min(innerW, absEnd + ghostW);
+                        if (ghostEnd > absEnd) {
+                            HudBarPainter.drawSegment(g, 0, 0, w, h, absEnd, ghostEnd,
+                                    ColorHelper.modifyAlpha(ColorHelper.parseColor(dxFxCfg.ghostColor),
+                                            (int) (gA * 255)));
+                        }
                     }
                 }
             }
         }
-        if (c.iconAnchorParsed() == null) {
+        if (c.showIcon && c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, healthIconU(p), 0);
         }
         if (c.showText && c.textAnchorParsed() == null) {
             // 数字滚动（与实体血条同语义,dynamicFx.numRoll）：数字跟随平滑填充一起滚,
             // 否则掉血瞬间数字即时跳变而条还在缓动——两者不一致（用户实测）
+            // 模板优先：textFormat 非空时按模板渲染（组件互相调用）
             float shownHealth = dxFxCfg.enabled && dxFxCfg.numRoll ? dispR * max : health;
-            drawText(g, mc.font, fmt(shownHealth) + "/" + fmt(max), w, h, c);
+            String txt = c.textFormat != null && !c.textFormat.isBlank()
+                    ? formatText(c.textFormat, p) : fmt(shownHealth) + "/" + fmt(max);
+            drawText(g, mc.font, txt, w, h, c);
         }
     }
 
@@ -292,17 +378,21 @@ public final class CustomHudRenderer {
         }
 
         int w = c.barWidth, h = barH(c);
-        drawCard(g, 0, 0, w, h);
-        int color = p.hasEffect(MobEffects.HUNGER)
-                ? ColorHelper.parseColor(colors.foodHunger)
-                : ColorHelper.parseColor(colors.foodNormal);
-        HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                Mth.clamp(food / (float) max, 0, 1), color);
-        if (c.iconAnchorParsed() == null) {
+        if (c.showBar) {
+            drawCard(g, 0, 0, w, h);
+            int color = p.hasEffect(MobEffects.HUNGER)
+                    ? ColorHelper.parseColor(colors.foodHunger)
+                    : ColorHelper.parseColor(colors.foodNormal);
+            HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                    Mth.clamp(food / (float) max, 0, 1), color);
+        }
+        if (c.showIcon && c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 52, 27);
         }
         if (c.showText && c.textAnchorParsed() == null) {
-            drawText(g, mc.font, food + "/" + max, w, h, c);
+            String txt = c.textFormat != null && !c.textFormat.isBlank()
+                    ? formatText(c.textFormat, p) : food + "/" + max;
+            drawText(g, mc.font, txt, w, h, c);
         }
     }
 
@@ -320,14 +410,18 @@ public final class CustomHudRenderer {
         }
 
         int w = c.barWidth, h = barH(c);
-        drawCard(g, 0, 0, w, h);
-        HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                Mth.clamp(air / (float) maxAir, 0, 1), ColorHelper.parseColor(colors.air));
-        if (c.iconAnchorParsed() == null) {
+        if (c.showBar) {
+            drawCard(g, 0, 0, w, h);
+            HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                    Mth.clamp(air / (float) maxAir, 0, 1), ColorHelper.parseColor(colors.air));
+        }
+        if (c.showIcon && c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 16, 18);
         }
         if (c.showText && c.textAnchorParsed() == null) {
-            drawText(g, mc.font, String.valueOf(air), w, h, c);
+            String txt = c.textFormat != null && !c.textFormat.isBlank()
+                    ? formatText(c.textFormat, p) : String.valueOf(air);
+            drawText(g, mc.font, txt, w, h, c);
         }
     }
 
@@ -352,11 +446,15 @@ public final class CustomHudRenderer {
         }
 
         int w = c.barWidth, h = barH(c);
-        drawCard(g, 0, 0, w, h);
-        HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                Mth.clamp(progress, 0, 1), ColorHelper.parseColor(colors.experience));
+        if (c.showBar) {
+            drawCard(g, 0, 0, w, h);
+            HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                    Mth.clamp(progress, 0, 1), ColorHelper.parseColor(colors.experience));
+        }
         if (c.showText && c.textAnchorParsed() == null) {
-            String text = level > 0 ? ("Lv." + level) : String.valueOf(Math.round(progress * 100)) + "%";
+            String def = level > 0 ? ("Lv." + level) : String.valueOf(Math.round(progress * 100)) + "%";
+            String text = c.textFormat != null && !c.textFormat.isBlank()
+                    ? formatText(c.textFormat, p) : def;
             drawText(g, mc.font, text, w, h, c);
         }
     }
@@ -378,14 +476,18 @@ public final class CustomHudRenderer {
         int max = ConfigManager.getConfig().overlay.fullArmorValue;
         if (max <= 0) max = 20; // 0 = 跟随原版上限
         int w = c.barWidth, h = barH(c);
-        drawCard(g, 0, 0, w, h);
-        HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                Mth.clamp(armor / (float) max, 0, 1), ColorHelper.parseColor(colors.armor));
-        if (c.iconAnchorParsed() == null) {
+        if (c.showBar) {
+            drawCard(g, 0, 0, w, h);
+            HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                    Mth.clamp(armor / (float) max, 0, 1), ColorHelper.parseColor(colors.armor));
+        }
+        if (c.showIcon && c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 34, 9);
         }
         if (c.showText && c.textAnchorParsed() == null) {
-            drawText(g, mc.font, armor + "/" + max, w, h, c);
+            String txt = c.textFormat != null && !c.textFormat.isBlank()
+                    ? formatText(c.textFormat, p) : armor + "/" + max;
+            drawText(g, mc.font, txt, w, h, c);
         }
     }
 
@@ -396,14 +498,18 @@ public final class CustomHudRenderer {
         float max = Math.max(1, mount.getMaxHealth());
 
         int w = c.barWidth, h = barH(c);
-        drawCard(g, 0, 0, w, h);
-        HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                Mth.clamp(health / max, 0, 1), ColorHelper.parseColor(colors.mountHealth));
-        if (c.iconAnchorParsed() == null) {
+        if (c.showBar) {
+            drawCard(g, 0, 0, w, h);
+            HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                    Mth.clamp(health / max, 0, 1), ColorHelper.parseColor(colors.mountHealth));
+        }
+        if (c.showIcon && c.iconAnchorParsed() == null) {
             drawIcon(g, iconX(c, w), 0, h, 52, 0);
         }
         if (c.showText && c.textAnchorParsed() == null) {
-            drawText(g, mc.font, fmt(health) + "/" + fmt(max), w, h, c);
+            String txt = c.textFormat != null && !c.textFormat.isBlank()
+                    ? formatText(c.textFormat, p) : fmt(health) + "/" + fmt(max);
+            drawText(g, mc.font, txt, w, h, c);
         }
     }
 

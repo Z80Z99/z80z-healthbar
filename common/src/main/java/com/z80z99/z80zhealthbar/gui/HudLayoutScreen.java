@@ -11,7 +11,7 @@ import com.z80z99.z80zhealthbar.overlay.HudRenderer;
 import com.z80z99.z80zhealthbar.overlay.HudStyle;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.components.CycleButton;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
@@ -44,11 +44,6 @@ import java.util.function.Supplier;
  */
 public final class HudLayoutScreen extends Screen {
 
-    private static final List<String> COMPONENT_ORDER = List.of(
-            HudLayoutConfig.HEALTH, HudLayoutConfig.FOOD, HudLayoutConfig.AIR,
-            HudLayoutConfig.EXPERIENCE, HudLayoutConfig.ARMOR, HudLayoutConfig.MOUNT,
-            HudLayoutConfig.COMPAT);
-
     // ---- 悬浮面板布局常量（GUI 坐标） ----
     private static final int PANEL_W = 178;
     private static final int TITLE_H = 14;
@@ -67,6 +62,8 @@ public final class HudLayoutScreen extends Screen {
 
     /** 长条样式：预览中选中的条 + 拖拽状态（BarLayouts.KEYS 之一） */
     private String selectedAsteorBar;
+    /** 自定义样式："添加组件"动作当前选择的类型（点击即添加该类型实例并轮换） */
+    private String addType = HudLayoutConfig.HEALTH;
     private String draggingAsteorBar;
     private int barGrabDX, barGrabDY;
     /** 状态图标拆分拖拽：图标与条可分离摆放（写回 iconOff*） */
@@ -399,12 +396,32 @@ public final class HudLayoutScreen extends Screen {
     /** 自定义样式的参数分组（预设 / 模式 / 组件 / 条形 / 文本 / 图标 / 动作） */
     private void buildCustomEntries() {
         ComponentLayout c = sel();
-        // 预设布局（原屏幕左上按钮移入面板,一步应用:点击 = 应用当前显示的整套设计并轮换）
+        // 组件标题：类型中文名 + 实例号（多实例辨识）
+        panelEntries.add(new PEntry(null, "z80zhealthbar.editor.selected_component", () -> {
+            String base = HudLayoutConfig.baseKeyOf(baseKey(selected));
+            String disp = Component.translatable("z80zhealthbar.hud.component." + base).getString();
+            int hash = selected.indexOf('#');
+            return hash > 0 ? disp + " #" + selected.substring(hash + 1) : disp;
+        }));
+        // 预设布局（原屏幕左上按钮移入面板,一步应用:点击 = 应用当前显示的整套设计并轮换;
+        // 自建实例与原子组件不会被预设清掉）
         panelEntries.add(cycler("z80zhealthbar.editor.preset.apply",
                 () -> Component.translatable("z80zhealthbar.editor.preset." + presetSel).getString(),
                 () -> {
                     layout().applyPreset(presetSel);
                     presetSel = nextPreset(presetSel);
+                    rebuildWidgets();
+                }));
+        // 添加组件（原屏幕底栏移入面板,一步添加:点击 = 新建所选类型的实例并选中,类型自动轮换）
+        panelEntries.add(cycler("z80zhealthbar.editor.add_component",
+                () -> Component.translatable("z80zhealthbar.hud.component." + addType).getString(),
+                () -> {
+                    String k = layout().addInstance(addType);
+                    if (k != null) {
+                        selected = k;
+                        addType = HudLayoutConfig.ADDABLE_TYPES.get(
+                                (HudLayoutConfig.ADDABLE_TYPES.indexOf(addType) + 1) % HudLayoutConfig.ADDABLE_TYPES.size());
+                    }
                     rebuildWidgets();
                 }));
         // 组件显示形式:长条/图标/关闭(自设置页迁入,作用于当前选中组件)
@@ -460,6 +477,10 @@ public final class HudLayoutScreen extends Screen {
                     c.showText = v;
                     rebuildWidgets();
                 }));
+        // 文本模板（互相调用）：留空 = 各组件默认格式;可引用 {health} {max_health} {armor} 等变量
+        panelEntries.add(textInput("z80zhealthbar.editor.text_format",
+                () -> c.textFormat == null ? "" : c.textFormat,
+                v -> c.textFormat = v));
         if (c.showText) {
             panelEntries.add(cycler("z80zhealthbar.editor.text_align",
                     () -> Component.translatable("z80zhealthbar.editor.align."
@@ -508,6 +529,23 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(stepper1("z80zhealthbar.editor.icon_scale",
                 () -> c.iconScale, v -> c.iconScale = v, 0.25, 3.0, 0.1));
         // ---- 动作（原右上按钮移入面板） ----
+        // ---- 动作（复制/删除当前组件;原右上按钮全部移入面板） ----
+        panelEntries.add(cycler("z80zhealthbar.editor.duplicate_component",
+                () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                () -> {
+                    String nk = layout().duplicateInstance(baseKey(selected));
+                    if (nk != null) {
+                        selected = nk;
+                        rebuildWidgets();
+                    }
+                }));
+        panelEntries.add(cycler("z80zhealthbar.editor.delete_component",
+                () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                () -> {
+                    layout().removeInstance(baseKey(selected));
+                    selected = HudLayoutConfig.HEALTH;
+                    rebuildWidgets();
+                }));
         panelEntries.add(cycler("z80zhealthbar.editor.reset_component",
                 () -> Component.translatable("z80zhealthbar.editor.done").getString(),
                 () -> layout().resetComponent(baseKey(selected))));
@@ -600,6 +638,19 @@ public final class HudLayoutScreen extends Screen {
                 () -> set.accept(!get.get()));
     }
 
+    /** 文本输入行：标签 + EditBox（实时写回;文本模板等字符串配置用） */
+    private PEntry textInput(String labelKey, Supplier<String> get, Consumer<String> set) {
+        PEntry e = new PEntry(null, labelKey, null);
+        int w = 92;
+        EditBox box = new EditBox(font, 0, 0, w, 14, Component.translatable(labelKey));
+        box.setMaxLength(160);
+        box.setValue(get.get());
+        box.setResponder(set);
+        addRenderableWidget(box);
+        e.widgets.add(new PW(box, PANEL_W - 4 - w));
+        return e;
+    }
+
     /** 按面板原点更新全部控件位置，并计算面板高度（内容超高时启用滚动,行按滚动物画出裁剪） */
     private void layoutPanel() {
         // 1) 内容坐标（不含滚动）——同时得出内容总高
@@ -690,7 +741,8 @@ public final class HudLayoutScreen extends Screen {
                             : e.getKey().endsWith(".icon")
                             ? Component.translatable("z80zhealthbar.editor.suffix_icon").getString() : "";
                     graphics.drawCenteredString(font,
-                            Component.translatable("z80zhealthbar.hud.component." + baseKey(e.getKey())).getString() + suffix,
+                            Component.translatable("z80zhealthbar.hud.component."
+                                    + HudLayoutConfig.baseKeyOf(baseKey(e.getKey()))).getString() + suffix,
                             box.x() + box.width() / 2, box.y() - 10, 0xFF40FF40);
                 }
             }
@@ -996,6 +1048,10 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // 文本输入框聚焦时方向键/快捷键归输入框（否则会被组件微调逻辑抢走）
+        if (getFocused() instanceof EditBox eb && eb.isFocused()) {
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
         if (!editingCustom()) return super.keyPressed(keyCode, scanCode, modifiers);
         int step = Screen.hasShiftDown() ? 10 : 1;
         switch (keyCode) {
