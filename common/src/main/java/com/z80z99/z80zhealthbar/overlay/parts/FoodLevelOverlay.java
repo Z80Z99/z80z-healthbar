@@ -95,14 +95,16 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
             drawBound(graphics, left, top, left + barWidth, top + barH, boundColor);
         }
 
-        // 文本（条右外侧；RIGHT 布局改画在条左外并右对齐，避免超出屏幕）
+        // 文本（条右外侧；RIGHT 布局改画在条左外并右对齐,再往左避开条左侧图标——
+        // 此前 x=left-5 与 left-11 处的图标重叠,数字盖住图标）
         if (cfg.displayFoodText) {
             int textY = top + barH / 2 - 4;
+            String text = foodLevel + "/" + (int) params.maxValue;
             if (pos == OverlayPosition.RIGHT) {
-                OverlayManager.addStringRender(String.valueOf(foodLevel), left - 5, textY, 0xFFFFFFFF,
+                OverlayManager.addStringRender(text, left - 15, textY, 0xFFFFFFFF,
                         OverlayManager.ALIGN_RIGHT);
             } else {
-                OverlayManager.addStringRender(String.valueOf(foodLevel), left + barWidth + 5, textY, 0xFFFFFFFF,
+                OverlayManager.addStringRender(text, left + barWidth + 5, textY, 0xFFFFFFFF,
                         OverlayManager.ALIGN_LEFT);
             }
         }

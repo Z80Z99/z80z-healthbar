@@ -183,7 +183,8 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             if (absorption > 0) text += " + " + trimNum(absorption);
             int textY = top + barH / 2 - 4;
             if (rightSide) {
-                OverlayManager.addStringRender(text, left - 5, textY, 0xFFFFFFFF, OverlayManager.ALIGN_RIGHT);
+                // 条左外右对齐,再往左避开条左侧状态心形图标（left-11）——此前 left-5 数字盖住图标
+                OverlayManager.addStringRender(text, left - 15, textY, 0xFFFFFFFF, OverlayManager.ALIGN_RIGHT);
             } else {
                 int textX = left + barWidth + 5;
                 OverlayManager.addStringRender(text, textX, textY, 0xFFFFFFFF, OverlayManager.ALIGN_LEFT);

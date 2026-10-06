@@ -62,14 +62,16 @@ public class ArmorLevelOverlay extends SimpleBarOverlay {
         HudBarPainter.drawRatioFill(graphics, left, top, barWidth, barH,
                 (float) (params.value / params.maxValue), params.fillColor);
 
-        // 文本：护甲值，开启韧性显示且韧性>0 时追加 (韧性)；RIGHT 布局改条左外右对齐
-        StringBuilder text = new StringBuilder(String.valueOf(armor));
+        // 文本：护甲值/满值（与生命/饱食度条 "x/max" 格式一致）,开启韧性显示且韧性>0 时
+        // 追加 (韧性)；RIGHT 布局改条左外右对齐,再往左避开条左侧图标——此前 x=left-5
+        // 与 left-11 处的盾牌图标重叠,数字把图标盖住只看到"5"悬在条边（实测"护甲条奇怪"）
+        StringBuilder text = new StringBuilder(armor + "/" + (int) params.maxValue);
         if (cfg.displayArmorToughness && toughness > 0) {
             text.append(" (").append(toughness).append(")");
         }
         int textY = top + barH / 2 - 4;
         if (pos == OverlayPosition.RIGHT) {
-            OverlayManager.addStringRender(text.toString(), left - 5, textY, 0xFFFFFFFF,
+            OverlayManager.addStringRender(text.toString(), left - 15, textY, 0xFFFFFFFF,
                     OverlayManager.ALIGN_RIGHT);
         } else {
             OverlayManager.addStringRender(text.toString(), left + barWidth + 5, textY, 0xFFFFFFFF,
