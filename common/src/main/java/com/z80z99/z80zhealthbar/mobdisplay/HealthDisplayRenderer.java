@@ -56,6 +56,10 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         float alphaMul = alpha * (barCfg.barAlpha / 255f);
 
         float ratio = snap.plainHealthRatio();
+        // 死亡碎裂记录：条矩形 + 填充色（renderBarsGlobal 统一消费;lift = 条中心世界抬升）
+        ShatterFx.record(snap.entityId, x + barWidth / 2f, y + barH / 2f,
+                barWidth + boundW * 2f, barH, fillColor(snap, ratio), worldScale,
+                (float) (snap.entityHeight + barCfg.barOffsetY) - barH * worldScale / 2f);
         // 动态效果：平滑填充 / 伤害残影 / 受伤闪白（dynamicFx 关闭时全部退化为直读比例）
         var fx = cfg.dynamicFx;
         var st = BarFx.tick(snap.entityId, ratio, snap.hurtTime > 0, System.currentTimeMillis());

@@ -110,6 +110,11 @@ public final class MobHealthBarStyle {
         Matrix4f m = poseStack.last().pose();
         int a = (int) (alpha * 255);
         int slot = ColorHelper.modifyAlpha(0xFF1D1D22, a);
+        // 死亡碎裂记录（样式1像素空间;心排/牌匾变体不记录 → 死亡自动回退渐隐路径）
+        ShatterFx.record(snap.entityId, x + w / 2f, y + h / 2f, w, h,
+                fillColor(snap, Math.max(0, Math.min(3, cfg.colorVariant))),
+                (float) cfg.scaleBar * 0.025f,
+                (float) (snap.entityHeight + cfg.heightOffset) - (y + h / 2f) * (float) cfg.scaleBar * 0.025f);
         int border = ColorHelper.modifyAlpha(0xFF6E6E78, a);
         // 动态效果（平滑/残影/闪白）
         var f = barFx(snap);
@@ -166,6 +171,11 @@ public final class MobHealthBarStyle {
         Matrix4f matrix = poseStack.last().pose();
         int variant = Math.max(0, Math.min(3, cfg.colorVariant));
         int x = -FRAME_W / 2, y = 0;
+        // 死亡碎裂记录（帧条变体）
+        ShatterFx.record(snap.entityId, x + FRAME_W / 2f, y + FRAME_H / 2f, FRAME_W, FRAME_H,
+                fillColor(snap, variant), (float) cfg.scaleBar * 0.025f,
+                (float) (snap.entityHeight + cfg.heightOffset)
+                        - (y + FRAME_H / 2f) * (float) cfg.scaleBar * 0.025f);
 
         // 外框：白色染色（内容不变），使不透明度可整体淡出
         VertexConsumer frame = buffer.getBuffer(ModRenderType.tintedIcon(TEXTURE));

@@ -138,11 +138,23 @@ public final class MobDisplayRenderer {
         list.sort((a, b) -> Double.compare(b.distSqr(), a.distSqr())); // 远→近
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f); // 复位残留染色
 
+        long now = System.currentTimeMillis();
+        // 碎裂顶点缓冲（首帧死亡即可能触发,无条件获取;空会话时无绘制开销）
+        var vcShatter = ShatterFx.begin(bs);
+        PoseStack orphanBase = new PoseStack();
+        orphanBase.mulPoseMatrix(viewMatrix);
+
         for (PendingBar st : list) {
             PoseStack pose = new PoseStack();
             pose.mulPoseMatrix(viewMatrix);
             pose.translate((float) (st.x() - camPos.x), (float) (st.y() - camPos.y),
                     (float) (st.z() - camPos.z)); // 实体脚部世界锚点,样式方法内部按 entityHeight 抬升
+            // 死亡碎裂接管：dying + shatter + 有条矩形记录 → 原样式不画,碎片起飞
+            if (st.snap().dying && ShatterFx.hasBox(st.snap().entityId)
+                    && ShatterFx.render(st.snap().entityId, pose, vcShatter, now,
+                    st.x() - camPos.x, st.y() - camPos.y, st.z() - camPos.z, true)) {
+                continue;
+            }
             switch (st.style()) {
                 case MOBHEALTHBAR -> MobHealthBarStyle.render(st.snap(), pose, bs, 0xF000F0, st.alpha());
                 case MOBPLAQUES -> renderPlaques(st.snap(), st.entity(), pose, bs, 0, 0xF000F0, st.alpha(), font);
@@ -153,6 +165,8 @@ public final class MobDisplayRenderer {
                 default -> { }
             }
         }
+        // 遗留碎片：实体已离开渲染管线的碎裂会话继续飞散直至寿命耗尽
+        ShatterFx.renderOrphans(orphanBase, vcShatter, now);
         bs.endBatch();
     }
 
@@ -613,6 +627,7 @@ public final class MobDisplayRenderer {
         }
         OCCLUSION_CACHE.keySet().retainAll(FRAME_RENDERED.keySet());
         OCCLUSION_STAMP.keySet().retainAll(FRAME_RENDERED.keySet());
+        ShatterFx.purgeStale(FRAME_RENDERED.keySet());
         if (FIRST_SEEN.size() > 512) {
             Iterator<Map.Entry<Integer, Long>> it2 = FIRST_SEEN.entrySet().iterator();
             while (it2.hasNext()) {

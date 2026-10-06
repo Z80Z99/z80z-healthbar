@@ -37,4 +37,6 @@ public class DynamicFxConfig {
     public boolean healLift = true;
     /** 实体条死亡收缩：死亡动画期血条向挂点收缩至 70% 并下沉,与死亡渐隐叠加 */
     public boolean deathShrink = true;
+    /** 实体条死亡碎裂：死亡瞬间血条像玻璃一样碎成碎片飞散（开启时优先于渐隐/收缩,样式1 条形与样式3 支持;心排/牌匾回退渐隐） */
+    public boolean shatter = true;
 }

@@ -397,6 +397,8 @@
   "z80zhealthbar.option.barfx.healLift.tooltip": "The bar lifts briefly while the mob regenerates.",
   "z80zhealthbar.option.barfx.deathShrink": "Mob bar death shrink",
   "z80zhealthbar.option.barfx.deathShrink.tooltip": "The bar shrinks toward its anchor and sinks on death.",
+  "z80zhealthbar.option.barfx.shatter": "Death glass shatter",
+  "z80zhealthbar.option.barfx.shatter.tooltip": "The bar shatters into flying shards on death (bar styles; hearts/plaques fall back to fading).",
   "z80zhealthbar.option.barfx.note": "Applies to bar shapes (style 1 framed/classic, style 3 bar) and their value text; heart rows are discrete icons and unaffected. Watch the live preview on the right.",
   "z80zhealthbar.option.barfx.numRoll": "Rolling numbers",
   "z80zhealthbar.option.barfx.numRoll.tooltip": "The health value rolls smoothly to its new value (ARPG counter style) instead of jumping.",

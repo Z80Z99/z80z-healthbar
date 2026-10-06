@@ -677,6 +677,7 @@ public final class ModSettingsScreen extends Screen {
         rows.add(toggleRow("z80zhealthbar.option.barfx.spawnPop", fx.spawnPop, v -> fx.spawnPop = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.healLift", fx.healLift, v -> fx.healLift = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.deathShrink", fx.deathShrink, v -> fx.deathShrink = v));
+        rows.add(toggleRow("z80zhealthbar.option.barfx.shatter", fx.shatter, v -> fx.shatter = v));
         rows.add(new TextRow("z80zhealthbar.option.barfx.note"));
     }
 
