@@ -340,9 +340,12 @@ public final class HudLayoutScreen extends Screen {
                 panelPage = PanelPage.EDIT;
                 rebuildWidgets();
             }));
-            // 子组件是否拆分由主组件锚点字段判定（拆分数据存在主组件字段,map 无独立键）
-            boolean textDetached = mc != null && mc.showText && mc.textAnchorParsed() != null;
-            boolean iconDetached = mc != null && mc.showIcon && mc.iconAnchorParsed() != null;
+            // 子组件是否拆分由主组件锚点字段判定（拆分数据存在主组件字段,map 无独立键）;
+            // 已分组的父组件其子件收纳在组页,列表不再重复显示
+            boolean textDetached = mc != null && mc.showText && mc.textAnchorParsed() != null
+                    && (mc.group == null || mc.group.isBlank());
+            boolean iconDetached = mc != null && mc.showIcon && mc.iconAnchorParsed() != null
+                    && (mc.group == null || mc.group.isBlank());
             if (textDetached) {
                 String subDisp = Component.translatable("z80zhealthbar.hud.component."
                         + HudLayoutConfig.baseKeyOf(key)).getString()
@@ -423,6 +426,21 @@ public final class HudLayoutScreen extends Screen {
         }
     }
 
+    /** 拆分即组合：拆分子件（文本/图标锚点脱离"跟随"）时,父组件自动并入以其类型命名的组合;
+     *  已在组合中的不重复建组。子件通过父件的组合收纳进组页统一管理。 */
+    private void autoGroupOnDetach(ComponentLayout c) {
+        boolean detached = (c.textAnchorParsed() != null) || (c.iconAnchorParsed() != null);
+        if (detached && (c.group == null || c.group.isBlank())) {
+            String base = HudLayoutConfig.baseKeyOf(baseKey(selected));
+            String name0 = Component.translatable("z80zhealthbar.hud.component." + base).getString();
+            ComponentLayout self = c;
+            // 避免与其它既有组重名导致意外并组:重名时追加序号
+            boolean exists = ConfigManager.getConfig().hudLayout.components.values().stream()
+                    .anyMatch(cc -> cc != null && cc != self && name0.equals(cc.group));
+            c.group = exists ? name0 + " 2" : name0;
+        }
+    }
+
     /** 分组 · 成员页：组内组件清单（点击编辑成员）+ 解散分组 */
     private void buildGroupPage() {
         panelEntries.add(backRow());
@@ -439,6 +457,25 @@ public final class HudLayoutScreen extends Screen {
                 panelPage = PanelPage.EDIT;
                 rebuildWidgets();
             }));
+            // 组合收纳拆分子件：文本/图标作为组合成员列出（配置在父件字段,无独立键）
+            if (cc.showText && cc.textAnchorParsed() != null) {
+                String td = dn + " · " + Component.translatable("z80zhealthbar.editor.sub_text").getString();
+                String tk = key;
+                panelEntries.add(listRow(() -> "   " + td, "z80zhealthbar.editor.adjust", () -> {
+                    selected = tk + ".text";
+                    panelPage = PanelPage.SUB_TEXT;
+                    rebuildWidgets();
+                }));
+            }
+            if (cc.showIcon && cc.iconAnchorParsed() != null) {
+                String id2 = dn + " · " + Component.translatable("z80zhealthbar.editor.sub_icon").getString();
+                String ik = key;
+                panelEntries.add(listRow(() -> "   " + id2, "z80zhealthbar.editor.adjust", () -> {
+                    selected = ik + ".icon";
+                    panelPage = PanelPage.SUB_ICON;
+                    rebuildWidgets();
+                }));
+            }
         }
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
         panelEntries.add(cycler("z80zhealthbar.editor.ungroup",
@@ -478,6 +515,7 @@ public final class HudLayoutScreen extends Screen {
                     c.textAnchor = nextAnchor(c.textAnchor);
                     c.textOffsetX = 0;
                     c.textOffsetY = 0;
+                    autoGroupOnDetach(c); // 拆分即组合:父组件与拆分子件自动成组
                     rebuildWidgets();
                 }));
         panelEntries.add(stepper1("z80zhealthbar.editor.text_scale",
@@ -504,6 +542,7 @@ public final class HudLayoutScreen extends Screen {
                     c.iconAnchor = nextAnchor(c.iconAnchor);
                     c.iconOffsetX = 0;
                     c.iconOffsetY = 0;
+                    autoGroupOnDetach(c); // 拆分即组合:父组件与拆分子件自动成组
                     rebuildWidgets();
                 }));
         panelEntries.add(stepper("z80zhealthbar.editor.icon_x",
