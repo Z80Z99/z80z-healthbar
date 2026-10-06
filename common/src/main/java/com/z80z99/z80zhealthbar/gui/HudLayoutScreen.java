@@ -652,9 +652,16 @@ public final class HudLayoutScreen extends Screen {
         HudStyle st = hudStyle();
         layoutPanel(); // 每帧推进面板平滑滚动（内容超高时）
 
-        // 1) 预览 = 实际渲染路径
+        // 1) 预览 = 实际渲染路径（自定义也用模拟战斗数据驱动——真实玩家数据在创造模式下
+        //    全为 0/空,经验等级数字等组件会"看似不渲染"）
         if (st == HudStyle.CUSTOM) {
-            CustomHudRenderer.render(graphics, partialTick);
+            com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.update(System.currentTimeMillis());
+            com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = true;
+            try {
+                CustomHudRenderer.render(graphics, partialTick);
+            } finally {
+                com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active = false;
+            }
         } else if (st == HudStyle.ASTEORBAR) {
             renderAsteorPreview(graphics, partialTick);
         }

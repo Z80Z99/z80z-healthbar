@@ -338,15 +338,16 @@ public final class CustomHudRenderer {
         float progress = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.xpProgress : p.experienceProgress;
         int level = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.xpLevel : p.experienceLevel;
 
-        // 图标形式：经验条无原版图标行——显示独立等级数字（无卡片无填充,此前与长条渲染完全相同,
-        // 显示形式切换对经验条无效）
+        // 图标形式：经验条无原版图标行——图标本体 = 原版风格等级数字（绿色带阴影,原版即把
+        // 等级数字悬浮于经验条上方）。不受 showText 控制（那只管长条形式的条内文本）,
+        // 否则关掉文本后图标形式会彻底空白（实测"不显示?"）
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
-            if (c.showText) {
-                String text = level > 0 ? ("Lv." + level)
-                        : String.valueOf(Math.round(progress * 100)) + "%";
-                g.drawCenteredString(mc.font, text, c.barWidth / 2, (barH(c) - 8) / 2,
-                        ColorHelper.parseColor(colors.experience));
-            }
+            String text = level > 0 ? ("Lv." + level)
+                    : String.valueOf(Math.round(progress * 100)) + "%";
+            // 居中于组件测量框（ICON 模式 = {54,9},与 HudLayoutSolver.measure 同源,编辑器框内对齐）
+            int[] ms = com.z80z99.z80zhealthbar.layout.HudLayoutSolver.measure(c);
+            g.drawCenteredString(mc.font, text, ms[0] / 2, Math.max(0, (ms[1] - 8) / 2),
+                    ColorHelper.parseColor(colors.experience));
             return;
         }
 
