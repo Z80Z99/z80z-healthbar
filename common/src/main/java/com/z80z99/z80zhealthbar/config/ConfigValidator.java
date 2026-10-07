@@ -83,6 +83,7 @@ public final class ConfigValidator {
             for (var p : c.barFreePos.values()) {
                 p.x = clamp(p.x, 0, 10000);
                 p.y = clamp(p.y, 0, 10000);
+                p.saturationMode = clamp(p.saturationMode, 0, 4); // 同组件级:防循环行从越界值起跳
             }
         }
         c.fullFoodLevelValue = clamp(c.fullFoodLevelValue, 0, 40);
@@ -176,6 +177,9 @@ public final class ConfigValidator {
             c.components = HudLayoutConfig.defaultComponents();
             return;
         }
+        // 子元素键（*.text / *.icon）——拆分数据存在主组件字段,map 中不存在合法的独立键。
+        // 历史版本编辑器的读取路径经 get() 误插入过这类键 → 渲染成重复文本/图标,加载时清除
+        c.components.keySet().removeIf(k -> k != null && (k.endsWith(".text") || k.endsWith(".icon")));
         for (HudLayoutConfig.ComponentLayout cl : c.components.values()) {
             if (cl == null) continue;
             cl.scale = clamp(cl.scale, 0.5, 2.0);
@@ -184,13 +188,21 @@ public final class ConfigValidator {
             cl.offsetX = clamp(cl.offsetX, -1000, 1000);
             cl.offsetY = clamp(cl.offsetY, -1000, 1000);
             cl.barHeight = clamp(cl.barHeight, 5, 16);
-            cl.textOffsetX = clamp(cl.textOffsetX, -50, 50);
-            cl.textOffsetY = clamp(cl.textOffsetY, -50, 50);
+            // 与编辑器可达范围一致（拖拽 ±1000 / 步进 ±999 / 图标 ±500）——此前收紧到 ±50,
+            // 拆分子件放到 50px 外保存后,下次加载被静默拉回
+            cl.textOffsetX = clamp(cl.textOffsetX, -1000, 1000);
+            cl.textOffsetY = clamp(cl.textOffsetY, -1000, 1000);
             // 旧配置缺少新字段时 Gson 留下 0（不跑字段初始化器）→ 归位默认 1.0
             cl.textScale = cl.textScale <= 0 ? 1.0 : clamp(cl.textScale, 0.25, 3.0);
             cl.iconScale = cl.iconScale <= 0 ? 1.0 : clamp(cl.iconScale, 0.25, 3.0);
-            cl.iconOffsetX = clamp(cl.iconOffsetX, -200, 200);
-            cl.iconOffsetY = clamp(cl.iconOffsetY, -200, 200);
+            cl.iconOffsetX = clamp(cl.iconOffsetX, -500, 500);
+            cl.iconOffsetY = clamp(cl.iconOffsetY, -500, 500);
+            cl.opacity = clamp(cl.opacity, 0, 100);
+            cl.idleFadeSecs = clamp(cl.idleFadeSecs, 0, 600);
+            cl.rotation = clamp(cl.rotation, -180, 180);
+            // 饱和度显示方式（0=覆盖 1=右追加 2=顶部细条 3=底部细条 4=关闭）：不钳制时
+            // 编辑器的循环行从越界值起跳（存 7 显示"关闭",点一下跳到"底部细条"）
+            cl.saturationMode = clamp(cl.saturationMode, 0, 4);
         }
     }
 

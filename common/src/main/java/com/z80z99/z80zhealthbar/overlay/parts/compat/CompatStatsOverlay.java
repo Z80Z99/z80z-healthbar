@@ -50,10 +50,12 @@ public class CompatStatsOverlay extends SimpleBarOverlay {
         }
 
         // compat 组件编辑项（参考其它组件形式）：显示数值文本开关 + 行文本模板（{name} {value} {max}）
+        // 只读探查：长条管线读自定义布局里的 compat 行配置;组件不存在时用默认（显示文本）,
+        // 不得经 get() 插回配置（删除的长条 compat 组会被复活）
         var compatC = com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().hudLayout
-                .get(com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.COMPAT);
-        boolean showText = compatC.showText;
-        String rowFmt = compatC.textFormat == null ? "" : compatC.textFormat;
+                .peek(com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.COMPAT);
+        boolean showText = compatC == null || compatC.showText;
+        String rowFmt = compatC == null || compatC.textFormat == null ? "" : compatC.textFormat;
 
         for (CompatAdapters.Stat stat : stats) {
             drawBarCard(graphics, left, top, barWidth, barH);
@@ -65,11 +67,13 @@ public class CompatStatsOverlay extends SimpleBarOverlay {
             if (showText) {
                 String text;
                 if (!rowFmt.isBlank()) {
+                    // {value}=当前值 {max}=上限（纯值,不带 "/上限" 后缀）——此前二者都走
+                    // format(v,max),"饱和度: {value}/{max}" 会渲染成 "12.5/20/20.0/20"
                     text = rowFmt
                             .replace("{name}", net.minecraft.network.chat.Component.translatable(
                                     stat.langKey()).getString())
-                            .replace("{value}", format(stat.value(), stat.max()))
-                            .replace("{max}", stat.max() == null ? "—" : format(stat.max(), stat.max()));
+                            .replace("{value}", valueOnly(stat.value()))
+                            .replace("{max}", stat.max() == null ? "—" : maxOnly(stat.max()));
                 } else {
                     text = net.minecraft.network.chat.Component.translatable(
                             stat.langKey()).getString() + ": " + format(stat.value(), stat.max());
@@ -92,8 +96,18 @@ public class CompatStatsOverlay extends SimpleBarOverlay {
     }
 
     private static String format(float v, Float max) {
-        String vs = v >= 100 ? String.valueOf(Math.round(v)) : String.format(java.util.Locale.ROOT, "%.1f", v);
+        String vs = valueOnly(v);
         if (max == null) return vs;
-        return vs + "/" + (max >= 100 ? String.valueOf(Math.round(max)) : String.format(java.util.Locale.ROOT, "%.0f", max));
+        return vs + "/" + maxOnly(max);
+    }
+
+    /** 当前值文本（无 "/上限" 后缀;模板 {value} 与默认拼接共用） */
+    private static String valueOnly(float v) {
+        return v >= 100 ? String.valueOf(Math.round(v)) : String.format(java.util.Locale.ROOT, "%.1f", v);
+    }
+
+    /** 上限文本：整数化——与自定义管线的 Math.round(max) 输出一致（两条管线同模板同结果） */
+    private static String maxOnly(float m) {
+        return m >= 100 ? String.valueOf(Math.round(m)) : String.format(java.util.Locale.ROOT, "%.0f", m);
     }
 }

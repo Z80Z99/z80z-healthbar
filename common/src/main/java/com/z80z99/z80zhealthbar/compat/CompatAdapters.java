@@ -79,7 +79,9 @@ public final class CompatAdapters {
 
     // ================= AppleSkin =================
 
-    /** 饱和度/消耗值来自本 MOD 服务端同步（无 AppleSkin 时同样可用；AppleSkin 提供食物预览语义） */
+    /** 饱和度/消耗值读取原版 FoodData 字段（本 MOD 服务端同步后为真值）,但整行仍随
+     *  AppleSkin 的安装/hook 开关显隐——不装 AppleSkin 时用 saturation_bar / saturation_text
+     *  组件显示同一数据（无模组依赖） */
     public static final class AppleSkinAdapter implements CompatibilityAdapter {
         @Override public String id() { return "appleskin"; }
         @Override public boolean isAvailable() { return PlatformService.get().isModLoaded("appleskin"); }

@@ -283,6 +283,12 @@ public class HudLayoutConfig {
         return m;
     }
 
+    /** 只读探查：缺失返回 null 且不写入。读取路径（类型解析/显示名）必须用它——
+     *  经 {@link #get} 会把子元素键（health.text）或已删除的键插入配置,渲染出重复元素 */
+    public ComponentLayout peek(String key) {
+        return components.get(key);
+    }
+
     /** 取组件布局（缺失/损坏时回退默认并写回） */
     public ComponentLayout get(String key) {
         ComponentLayout c = components.get(key);
@@ -351,9 +357,11 @@ public class HudLayoutConfig {
         return removed;
     }
 
-    /** 深拷贝（编辑器进入时快照,显式保存机制用） */
+    /** 深拷贝（编辑器进入时快照,显式保存机制用）。从空表起逐项拷贝——预置默认组件会把
+     *  已删除的组件在"放弃"时复活,并改写同锚点堆叠顺序（实测返回的食品/坐骑条"复活"） */
     public HudLayoutConfig copy() {
         HudLayoutConfig c = new HudLayoutConfig();
+        c.components = new LinkedHashMap<>();
         c.panelX = panelX;
         c.panelY = panelY;
         for (Map.Entry<String, ComponentLayout> e : components.entrySet()) {

@@ -91,8 +91,10 @@ public final class HudRenderer {
 
         if (style == HudStyle.CUSTOM) {
             var layout = ConfigManager.getConfig().hudLayout;
-            var mode = layout.get(id.layoutKey).modeParsed();
-            return mode != HudLayoutConfig.ComponentMode.OFF;
+            // 只读探查：组件不存在（用户在编辑器删除）= 不绘制 → 不屏蔽原版。
+            // 经 get() 会在渲染帧里把它插回配置——删除的组件"复活"且原版 HUD 被误屏蔽
+            var cl = layout.peek(id.layoutKey);
+            return cl != null && cl.modeParsed() != HudLayoutConfig.ComponentMode.OFF;
         }
 
         // ASTEORBAR：布局 0 = 本模式绘制关闭 → 不屏蔽原版

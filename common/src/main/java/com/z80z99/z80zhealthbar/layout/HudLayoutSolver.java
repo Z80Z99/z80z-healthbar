@@ -142,6 +142,12 @@ public final class HudLayoutSolver {
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
             return new int[]{54, 9}; // 6 个 9px 图标位（渲染时按实际数量收缩）
         }
+        return measureBar(c);
+    }
+
+    /** 条形度量（忽略 ICON 档）：只有卡片+文本形态的组件用——compat 行 / 饱和度条在渲染端
+     *  没有图标形态,ICON 档下若按图标尺寸度量,编辑器选择框会比实际绘制的内容小一圈 */
+    public static int[] measureBar(HudLayoutConfig.ComponentLayout c) {
         // 卡片高度 = 可配置条高（默认 9）+ 2px 度量余量（旧默认 7+4=11 保持不变）
         int barH = Math.max(5, Math.min(16, c.barHeight > 0 ? c.barHeight : 9));
         return new int[]{c.barWidth, barH + 2};

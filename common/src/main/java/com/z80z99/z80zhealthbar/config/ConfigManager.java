@@ -98,6 +98,29 @@ public final class ConfigManager {
         config.visibility.parseAll();
     }
 
+    /** 全量配置 JSON 快照（编辑器"显式保存"机制：进入时拍,放弃 = 还原到此刻的全量状态）。
+     *  用 JSON 而非局部对象拷贝——编辑器同时修改 hudLayout 与 overlay 两段,
+     *  只快照其一会让"放弃"变成半回滚（实测长条页参数被静默保留）。 */
+    public static String snapshotJson() {
+        return GSON.toJson(getConfig());
+    }
+
+    /** 从快照 JSON 还原（替换实例 + 校验 + 可见性解析;JSON 非法时保持原配置不动） */
+    public static void restoreJson(String json) {
+        if (json == null) return;
+        Z80ZHealthBarConfig restored;
+        try {
+            restored = GSON.fromJson(json, Z80ZHealthBarConfig.class);
+        } catch (JsonSyntaxException e) {
+            Z80ZHealthBar.LOGGER.error("Failed to restore config snapshot", e);
+            return;
+        }
+        if (restored == null) return;
+        config = restored;
+        ConfigValidator.validate(config);
+        config.visibility.parseAll();
+    }
+
     public static void saveConfig() {
         Path configPath = getConfigFilePath();
         try {

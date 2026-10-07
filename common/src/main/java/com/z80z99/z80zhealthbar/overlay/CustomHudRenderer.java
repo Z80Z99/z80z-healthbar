@@ -72,11 +72,11 @@ public final class CustomHudRenderer {
 
             graphics.pose().pushPose();
             graphics.pose().translate(box.x(), box.y(), 0);
-            // 旋转角度（绕组件中心;0 = 不旋转）
+            // 旋转角度（绕组件中心;0 = 不旋转;rotationDegrees 收"度",此前误传弧度 → 180° 实际只转 3.14°）
             if (c.rotation != 0) {
                 float cx = box.width() / 2f, cy = box.height() / 2f;
                 graphics.pose().translate(cx, cy, 0);
-                graphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float) Math.toRadians(c.rotation)));
+                graphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float) c.rotation));
                 graphics.pose().translate(-cx, -cy, 0);
             }
             try {
@@ -116,11 +116,6 @@ public final class CustomHudRenderer {
                         // 兼容状态单行组件（compat_saturation/exhaustion/thirst/stamina）:
                         // 从兼容组拆出的独立行,可单独摆放/配置（实测"上下不能分开成两个组件"）
                         renderCompat(graphics, player, c, type.substring("compat_".length()));
-                    } else if (type.endsWith("_text")) {
-                        // 信息类文本组件（coords/fps/biome/time/saturation_text）：通用文本渲染
-                        String t = c.textFormat != null && !c.textFormat.isBlank()
-                                ? formatText(c.textFormat, player) : valueText(type, player);
-                        if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
                     } else switch (type) {
                         case HudLayoutConfig.HEALTH -> renderHealth(graphics, mc, player, c);
                         case HudLayoutConfig.FOOD -> renderFood(graphics, mc, player, c);
@@ -169,7 +164,9 @@ public final class CustomHudRenderer {
     private static float idleFadeAlpha(String key, String base, Player player, ComponentLayout c) {
         if (c.idleFadeSecs <= 0) return 1f;
         String cur = componentText(base, player);
-        if (cur == null) cur = "";
+        // 无可比较数值的组件（compat 多行动态行等）不参与淡出——否则一律被判为"无变化",
+        // 计时永不重置,组件恒停在 5% 轮廓（实测 compat 组件永远半透明）
+        if (cur == null) return 1f;
         String last = IDLE_LAST.put(key, cur);
         long now = System.currentTimeMillis();
         if (!cur.equals(last)) {
@@ -203,7 +200,17 @@ public final class CustomHudRenderer {
                 sizes.put(key, new int[]{Math.max(8, t == null ? 8 : mc.font.width(t)), 10});
                 continue;
             }
-            sizes.put(key, HudLayoutSolver.measure(c));
+            if (type.equals(HudLayoutConfig.COMPAT) || type.startsWith("compat_") || type.equals("saturation_bar")) {
+                // 兼容行/饱和度条只有卡片+文本形态（ICON 档无对应渲染）→ 一律按条形度量;
+                // 兼容组还要按行数算高度,否则求解器只留一行:第 2 行起画到框外/屏幕外并压住下方组件
+                int rows = 1;
+                if (type.equals(HudLayoutConfig.COMPAT) && player != null) {
+                    rows = Math.max(1, com.z80z99.z80zhealthbar.compat.CompatAdapters.collect(player).size());
+                }
+                sizes.put(key, compatGroupSize(c, rows));
+            } else {
+                sizes.put(key, HudLayoutSolver.measure(c));
+            }
             if (player == null || c.modeParsed() != HudLayoutConfig.ComponentMode.BAR) continue;
             String t = componentText(key, player);
             if (c.showText && c.textAnchorParsed() != null && t != null) {
@@ -214,6 +221,15 @@ public final class CustomHudRenderer {
             }
         }
         return sizes;
+    }
+
+    /** 兼容组/饱和度条度量：行高与单行条形度量同源,多行时加上 spacing 行距（与 renderCompat 绘制一致） */
+    private static int[] compatGroupSize(ComponentLayout c, int rows) {
+        int[] bar = HudLayoutSolver.measureBar(c);
+        if (rows <= 1) return bar;
+        int h = bar[1] - 2; // 单行度量含 2px 余量,取回纯行高
+        int gap = Math.max(0, c.spacing);
+        return new int[]{bar[0], rows * h + (rows - 1) * gap + 2};
     }
 
     /** 原子组件键 → 基础数据类型（health_text/health_icon → health;xp_text → experience） */
@@ -260,7 +276,9 @@ public final class CustomHudRenderer {
                     ? fmt(mount.getHealth()) + "/" + fmt(Math.max(1, mount.getMaxHealth())) : null;
             // 信息类数据源（可转化组件扩展）
             case "saturation" -> {
-                float sat = pv ? 12.5f : p.getFoodData().getSaturationLevel();
+                // 预览读 mock（与饱食度条金段同源）——此前预览硬编码 12.5,与同屏金段（5→0）矛盾
+                float sat = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.saturation
+                        : p.getFoodData().getSaturationLevel();
                 yield sat > 0 ? fmt(sat) : null;
             }
             case "coords" -> {
@@ -526,7 +544,10 @@ public final class CustomHudRenderer {
                 foodRaw, false, nowMs);
         float foodDisp = dxCfg.enabled && dxCfg.smooth
                 ? Mth.clamp(foodFx.display(), 0f, 1f) : foodRaw;
-        float satRaw = Mth.clamp(sat / 20f, 0f, 1f);
+        // 饱和度比例基准与其它路径统一（长条/饱和度条/saturation_bar 均用 fullSaturationValue）
+        float satMax = (float) Math.max(1, ConfigManager.getConfig().overlay.fullSaturationValue > 0
+                ? ConfigManager.getConfig().overlay.fullSaturationValue : 20);
+        float satRaw = Mth.clamp(sat / satMax, 0f, 1f);
         var satFx = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
                 com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.fxKeySat(p.getId()),
                 satRaw, false, nowMs);
@@ -550,7 +571,7 @@ public final class CustomHudRenderer {
                 // 棕段=饱食/total、金段接其后——"把缓冲层放在后面"的可选样式
                 float total = Math.max(max, food + sat);
                 foodW = Math.round(Mth.clamp(foodDisp * max / total, 0f, 1f) * innerW);
-                int satEnd = Math.round(Mth.clamp((foodDisp * max + satDisp * 20f) / total, 0f, 1f) * innerW);
+                int satEnd = Math.round(Mth.clamp((foodDisp * max + satDisp * satMax) / total, 0f, 1f) * innerW);
                 HudBarPainter.drawFillWidth(g, 0, 0, w, h, foodW, color);
                 HudBarPainter.drawSegment(g, 0, 0, w, h, foodW, Math.min(innerW, satEnd), goldColor);
             } else {
@@ -604,7 +625,9 @@ public final class CustomHudRenderer {
     private static void renderSaturationBar(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
         var colors = ConfigManager.getConfig().colors;
         boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
-        float sat = pv ? 12.5f : p.getFoodData().getSaturationLevel();
+        // 预览与饱食度条金段同源（此前预览硬编码 12.5：同一帧两个饱和度显示互相矛盾）
+        float sat = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.saturation
+                : p.getFoodData().getSaturationLevel();
         if (sat <= 0) return; // 无饱和度不渲染（与原版语义一致）
 
         float max = (float) Math.max(1, ConfigManager.getConfig().overlay.fullSaturationValue > 0
@@ -773,10 +796,13 @@ public final class CustomHudRenderer {
         int rowGap = Math.max(0, c.spacing);
         int y = 0;
         for (var stat : stats) {
-            drawCard(g, 0, y, w, h);
-            if (stat.max() != null && stat.max() > 0) {
-                HudBarPainter.drawRatioFill(g, 0, y, w, h,
-                        (float) Math.max(0d, Math.min(1d, stat.value() / stat.max())), stat.color());
+            // showBar 关闭 = 只留文本部件（与其它组件一致的"自由组合"语义）
+            if (c.showBar) {
+                drawCard(g, 0, y, w, h);
+                if (stat.max() != null && stat.max() > 0) {
+                    HudBarPainter.drawRatioFill(g, 0, y, w, h,
+                            (float) Math.max(0d, Math.min(1d, stat.value() / stat.max())), stat.color());
+                }
             }
             if (c.showText) {
                 String vs = stat.value() >= 100 ? String.valueOf(Math.round(stat.value()))
@@ -808,10 +834,11 @@ public final class CustomHudRenderer {
             return;
         }
         int tw = font.width(text);
+        int tws = Math.round(tw * s); // 对齐基准用缩放后宽度——否则放大时右对齐/居中会溢出卡片
         int tx = switch (c.textAlignParsed()) {
             case LEFT -> 4;
-            case RIGHT -> barW - tw - 4;
-            default -> (barW - tw) / 2;
+            case RIGHT -> barW - tws - 4;
+            default -> (barW - tws) / 2;
         };
         tx += c.textOffsetX;
         int ty = yBase + (barH - 8) / 2 + c.textOffsetY;

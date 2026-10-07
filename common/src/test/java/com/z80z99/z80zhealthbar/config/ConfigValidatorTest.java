@@ -170,4 +170,86 @@ class ConfigValidatorTest {
         assertEquals(50, cfg.barStyle.segmentHp);
         assertFalse(cfg.barStyle.segmentWholeOnly);
     }
+
+    @Test
+    void hudLayoutSubElementKeysPruned() {
+        // 子元素键（*.text/*.icon）不是合法的布局条目——旧编辑器读取路径误插入过,
+        // 渲染端会按独立元素画出重复文本/图标 → 加载时清除,真实组件不受影响
+        Z80ZHealthBarConfig cfg = new Z80ZHealthBarConfig();
+        cfg.hudLayout.components.put("health.text", new HudLayoutConfig.ComponentLayout());
+        cfg.hudLayout.components.put("health.icon", new HudLayoutConfig.ComponentLayout());
+        cfg.hudLayout.components.put("food#2.text", new HudLayoutConfig.ComponentLayout());
+        // 类型键本身带 _text 后缀的原子组件必须保留（health_text ≠ health.text）
+        cfg.hudLayout.components.put("health_text", new HudLayoutConfig.ComponentLayout());
+        ConfigValidator.validate(cfg);
+        assertFalse(cfg.hudLayout.components.containsKey("health.text"));
+        assertFalse(cfg.hudLayout.components.containsKey("health.icon"));
+        assertFalse(cfg.hudLayout.components.containsKey("food#2.text"));
+        assertTrue(cfg.hudLayout.components.containsKey("health_text"));
+        assertTrue(cfg.hudLayout.components.containsKey(HudLayoutConfig.HEALTH));
+    }
+
+    @Test
+    void hudLayoutDetachedOffsetsKeepEditorRange() {
+        // 拆分子件的偏移可达 ±1000（拖拽）/±500（图标）——校验不得把它们拉回 ±50,
+        // 否则"放到 50px 外"的文本下次加载被静默搬回
+        Z80ZHealthBarConfig cfg = new Z80ZHealthBarConfig();
+        var c = cfg.hudLayout.get(HudLayoutConfig.HEALTH);
+        c.textOffsetX = 800;
+        c.textOffsetY = -999;
+        c.iconOffsetX = 400;
+        c.iconOffsetY = -480;
+        ConfigValidator.validate(cfg);
+        assertEquals(800, c.textOffsetX);
+        assertEquals(-999, c.textOffsetY);
+        assertEquals(400, c.iconOffsetX);
+        assertEquals(-480, c.iconOffsetY);
+        // 越界仍钳到编辑器上限
+        c.textOffsetX = 5000;
+        c.iconOffsetY = -5000;
+        ConfigValidator.validate(cfg);
+        assertEquals(1000, c.textOffsetX);
+        assertEquals(-500, c.iconOffsetY);
+    }
+
+    @Test
+    void saturationModeClampedForBothScopes() {
+        // 越界值会让编辑器的循环行从错误档位起跳（存 7 显示"关闭",点一下跳到"底部细条"）
+        Z80ZHealthBarConfig cfg = new Z80ZHealthBarConfig();
+        cfg.hudLayout.get(HudLayoutConfig.FOOD).saturationMode = 7;
+        var bar = new com.z80z99.z80zhealthbar.config.configs.OverlayConfig.BarFreePos();
+        bar.saturationMode = 9;
+        cfg.overlay.barFreePos.put("food", bar);
+        ConfigValidator.validate(cfg);
+        assertEquals(4, cfg.hudLayout.get(HudLayoutConfig.FOOD).saturationMode);
+        assertEquals(4, cfg.overlay.barFreePos.get("food").saturationMode);
+    }
+
+    @Test
+    void hudLayoutCopyIsFaithfulAndDoesNotResurrectDefaults() {
+        // 快照/放弃依赖 copy()：预置默认组件会把用户删除的组件在"放弃"时复活,并改写堆叠顺序
+        HudLayoutConfig live = new HudLayoutConfig();
+        live.components.remove(HudLayoutConfig.FOOD);
+        live.components.remove(HudLayoutConfig.MOUNT);
+        live.components.get(HudLayoutConfig.HEALTH).barWidth = 222;
+        live.panelX = 40;
+        HudLayoutConfig snap = live.copy();
+        assertEquals(live.components.keySet(), snap.components.keySet());
+        assertFalse(snap.components.containsKey(HudLayoutConfig.FOOD));
+        assertEquals(222, snap.components.get(HudLayoutConfig.HEALTH).barWidth);
+        assertEquals(40, snap.panelX);
+        // 深拷贝：改快照不影响源,反之亦然
+        snap.components.get(HudLayoutConfig.HEALTH).barWidth = 111;
+        assertEquals(222, live.components.get(HudLayoutConfig.HEALTH).barWidth);
+    }
+
+    @Test
+    void hudLayoutPeekDoesNotInsert() {
+        // 读取路径用 peek：不得把探查的键写进配置（此前 get() 会把 health.text 插进 map）
+        HudLayoutConfig cfg = new HudLayoutConfig();
+        int before = cfg.components.size();
+        assertNull(cfg.peek("health.text"));
+        assertNull(cfg.peek("does_not_exist"));
+        assertEquals(before, cfg.components.size());
+    }
 }

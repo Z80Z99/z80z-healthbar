@@ -54,6 +54,8 @@ public final class HudLayoutScreen extends Screen {
     private static final int BTN_H = 14;
     private static final int STEP_W = 22;
     private static final int CYCLE_W = 84;
+    /** 行内控件区左缘（(?) 说明标记不得越过此处,否则会盖住控件并抢走点击） */
+    private static final int CONTROL_LEFT = 76;
 
     private final Screen parent;
     private String selected = HudLayoutConfig.HEALTH;
@@ -193,8 +195,9 @@ public final class HudLayoutScreen extends Screen {
     }
 
     // ---- 显式保存机制（10）：进入编辑器快照,改动标脏,保存/放弃/未保存退出确认 ----
-    /** 进入编辑器时的布局快照（放弃 = 回滚到此） */
-    private com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig savedSnapshot;
+    /** 进入编辑器时的**全量配置 JSON** 快照（放弃 = 还原到此）。覆盖 hudLayout 与 overlay 两段——
+     *  编辑器同时修改两者,只快照布局会让"放弃"半回滚（长条页参数被静默保留） */
+    private String savedSnapshot;
     private boolean dirty;
     /** 退出确认页显示中（保存/放弃 二选一） */
     private boolean pendingUnsaved;
@@ -209,11 +212,12 @@ public final class HudLayoutScreen extends Screen {
         pendingUnsaved = false;
     }
 
-    /** 放弃改动：回滚到进入编辑器时的快照 */
+    /** 放弃改动：全量还原到进入编辑器时的快照（实例被替换 → 面板位置需按新配置复位） */
     private void discardChanges() {
-        if (savedSnapshot != null) {
-            ConfigManager.getConfig().hudLayout = savedSnapshot;
-        }
+        ConfigManager.restoreJson(savedSnapshot);
+        HudLayoutConfig l = layout();
+        panelX = l.panelX < 0 ? width - PANEL_W - 6 : l.panelX;
+        panelY = l.panelY < 0 ? 84 : l.panelY;
         dirty = false;
         pendingUnsaved = false;
     }
@@ -288,7 +292,7 @@ public final class HudLayoutScreen extends Screen {
     protected void init() {
         // 显式保存机制：首次 init 拍快照（rebuild 触发的重复 init 不覆盖）
         if (savedSnapshot == null) {
-            savedSnapshot = layout().copy();
+            savedSnapshot = ConfigManager.snapshotJson();
         }
         buildPanelEntries();
         // 面板默认右上（曾拖动过则用记录值）
@@ -362,7 +366,9 @@ public final class HudLayoutScreen extends Screen {
 
     /** 选中键是否为原子组件（纯文本/纯图标/自由文本——编辑页即其子组件参数页） */
     private boolean isAtomicSelected() {
-        String t = HudLayoutConfig.typeOf(selected, layout().get(selected));
+        // 只读探查:selected 可能是子元素键（health.text）,经 get() 会把该键插入配置 →
+        // 渲染端按独立元素画出重复文本/图标,并被保存进文件（实测幽灵组件）
+        String t = HudLayoutConfig.typeOf(selected, layout().peek(selected));
         // saturation_bar 走完整编辑页（有条形/文本部件）;信息类文本与原子文本/图标走子组件页
         return (t.endsWith("_text") || t.endsWith("_icon") || t.equals("text"))
                 && !t.equals("saturation_bar");
@@ -370,7 +376,7 @@ public final class HudLayoutScreen extends Screen {
 
     /** 组件显示名：自定义名称优先,否则类型中文名 + 实例号（多实例辨识） */
     private String displayNameOf(String key) {
-        ComponentLayout cc = layout().get(key);
+        ComponentLayout cc = layout().peek(key);
         if (cc != null && cc.displayName != null && !cc.displayName.isBlank()) {
             return cc.displayName;
         }
@@ -823,7 +829,7 @@ public final class HudLayoutScreen extends Screen {
                 () -> o.overlayBarTextOffsetY, v -> o.overlayBarTextOffsetY = (int) Math.round(v), -50, 50, 1));
         panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.overlayTextScale.label",
                 () -> o.overlayTextScale, v -> o.overlayTextScale = v, 0.25, 4.0, 0.05,
-                v -> Math.round(v * 100) + "%"));
+                v -> Math.round(v * 100) + "%", v -> v / 100.0));
         panelEntries.add(toggle("z80zhealthbar.option.overlay.mountHealthOnLeftSide.label",
                 () -> o.mountHealthOnLeftSide, v -> o.mountHealthOnLeftSide = v));
         // 自由摆放提示：预览中直接拖拽任意条/图标/数值文本即可调整;单条的组件级参数点列表进入其编辑页
@@ -856,7 +862,7 @@ public final class HudLayoutScreen extends Screen {
                 () -> o.shakeHealthAndFoodWhileLow, v -> o.shakeHealthAndFoodWhileLow = v));
         panelEntries.add(stepper1Fmt("z80zhealthbar.option.overlay.lowHealthRate.label",
                 () -> o.lowHealthRate, v -> o.lowHealthRate = v, 0.05, 0.95, 0.01,
-                v -> Math.round(v * 100) + "%"));
+                v -> Math.round(v * 100) + "%", v -> v / 100.0));
         panelEntries.add(cycler("z80zhealthbar.option.overlay.absorptionMode.label",
                 () -> Component.translatable("z80zhealthbar.overlay.absorptionMode."
                         + Math.min(1, Math.max(0, o.absorptionMode))).getString(),
@@ -1036,6 +1042,10 @@ public final class HudLayoutScreen extends Screen {
                 panelEntries.add(stepper1("z80zhealthbar.editor.text_scale",
                         () -> c.textScale, v -> c.textScale = v, 0.25, 3.0, 0.1));
             }
+            // 动作（复制/删除/重置/分组）：此前 compat 分支提前 return,添加的 compat_* 组件
+            // 在编辑器内无法删除/复制（实测"加上去就撤不掉",只能手改 JSON）
+            addComponentActions(selected);
+            panelEntries.add(groupToggleRow(c));
             panelEntries.add(backRow());
             return;
         }
@@ -1063,11 +1073,18 @@ public final class HudLayoutScreen extends Screen {
                     }));
         }
         // ---- 动作（复制/删除/重置/分组;全局动作在列表页） ----
+        addComponentActions(baseKey(selected));
+        panelEntries.add(groupToggleRow(c));
+        panelEntries.add(backRow());
+    }
+
+    /** 组件动作行（复制/删除/重置）：自定义编辑页与 compat 编辑页共用 */
+    private void addComponentActions(String key) {
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
         panelEntries.add(cycler("z80zhealthbar.editor.duplicate_component",
                 () -> Component.translatable("z80zhealthbar.editor.done").getString(),
                 () -> {
-                    String nk = layout().duplicateInstance(baseKey(selected));
+                    String nk = layout().duplicateInstance(key);
                     if (nk != null) {
                         selected = nk;
                         rebuildWidgets();
@@ -1076,16 +1093,19 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(cycler("z80zhealthbar.editor.delete_component",
                 () -> Component.translatable("z80zhealthbar.editor.done").getString(),
                 () -> {
-                    layout().removeInstance(baseKey(selected));
+                    layout().removeInstance(key);
                     selected = HudLayoutConfig.HEALTH;
                     panelPage = PanelPage.LIST;
                     rebuildWidgets();
                 }));
         panelEntries.add(cycler("z80zhealthbar.editor.reset_component",
                 () -> Component.translatable("z80zhealthbar.editor.done").getString(),
-                () -> layout().resetComponent(baseKey(selected))));
-        // 分组：未分组 → 并入当前选中组件所属组或新建"组1";已分组 → 移出
-        panelEntries.add(cycler("z80zhealthbar.editor.toggle_group",
+                () -> layout().resetComponent(key)));
+    }
+
+    /** 分组开关行：未分组 → 并入既有组/新建"组1";已分组 → 移出 */
+    private PEntry groupToggleRow(ComponentLayout c) {
+        return cycler("z80zhealthbar.editor.toggle_group",
                 () -> (c.group == null || c.group.isBlank())
                         ? Component.translatable("z80zhealthbar.editor.join_group").getString()
                         : Component.translatable("z80zhealthbar.editor.leave_group").getString(),
@@ -1101,8 +1121,7 @@ public final class HudLayoutScreen extends Screen {
                     }
                     panelPage = PanelPage.LIST;
                     rebuildWidgets();
-                }));
-        panelEntries.add(backRow());
+                });
     }
 
     /** HudAnchor 循环下一项（面板 cycler 用；底栏 CycleButton 移除后的替代） */
@@ -1148,36 +1167,53 @@ public final class HudLayoutScreen extends Screen {
     /** 数值参数行（自定义显示格式，如 OFF / 百分比）。值区域为可编辑文本框（输入回车/失焦写回,± 步进保留） */
     private PEntry stepper1Fmt(String labelKey, DoubleSupplier get, DoubleConsumer set,
                                double min, double max, double step, DoubleFunction<String> fmt) {
+        return stepper1Fmt(labelKey, get, set, min, max, step, fmt, v -> v);
+    }
+
+    /**
+     * 数值参数行（自定义显示格式 + 显示→存储解析）。
+     *
+     * @param parse 文本数值（已去 %）→ 存储值。百分比行的显示为"105%",存储为 1.05——
+     *              此前两者同义,± 一次即把 105 当 105 写回并被钳到上限（实测"点一下蹦到最大"）
+     */
+    private PEntry stepper1Fmt(String labelKey, DoubleSupplier get, DoubleConsumer set,
+                               double min, double max, double step, DoubleFunction<String> fmt,
+                               DoubleFunction<Double> parse) {
         PEntry e = new PEntry(null, labelKey, null);
         int minusX = PANEL_W - 4 - STEP_W * 2 - 2;
         int plusX = PANEL_W - 4 - STEP_W;
         // 文本框放数值区（标签右侧到 − 按钮前）——此前从标签处 x=6 起,深色框直接盖住行标签
-        int boxX = 76;
+        int boxX = CONTROL_LEFT;
         int boxW = Math.max(28, minusX - 4 - boxX);
         EditBox box = new EditBox(font, 0, 0, boxW, BTN_H, Component.translatable(labelKey));
         box.setMaxLength(24);
-        box.setValue(fmt.apply(get.getAsDouble()));
-        // 过滤:数字/负号/小数点/百分号任意组合——此前正则漏 * 只匹配单字符,输第二个字符即被拒绝
-        box.setFilter(s -> s.matches("[\\-0-9.%]*"));
+        // 过滤器需放行"当前显示串":OFF/— 等占位文本必须能被程序化回显——
+        // EditBox.setValue 过滤失败即整体忽略,步进后数值区会停在旧值（实测 ± 不回显）
+        String[] displayNow = {fmt.apply(get.getAsDouble())};
+        box.setFilter(s -> s.matches("[\\-0-9.%]*") || s.equals(displayNow[0]));
+        box.setValue(displayNow[0]);
         box.setResponder(s -> {
             if (s.isEmpty()) return; // 清空/中间态不落盘
             try {
-                double v = s.endsWith("%") ? Double.parseDouble(s.substring(0, s.length() - 1))
-                        : Double.parseDouble(s);
+                double v = parse.apply(s.endsWith("%") ? Double.parseDouble(s.substring(0, s.length() - 1))
+                        : Double.parseDouble(s));
                 set.accept(Math.max(min, Math.min(max, v)));
+                if (box.isFocused()) markDirty(); // 键入即标脏;± 点击由控件路径标脏
             } catch (NumberFormatException ignored) {
-                // 非法输入（"-"/"." 等中间态）不落盘,保留原值
+                // 非法输入（"-"/"."/占位串 等）不落盘,保留原值
             }
         });
         addRenderableWidget(box);
         e.widgets.add(new PW(box, boxX));
         FlatButton minus = new FlatButton(STEP_W, BTN_H, () -> Component.literal("\u2212"), () -> {
             set.accept(Math.max(min, roundStep(get.getAsDouble() - step, step)));
-            box.setValue(fmt.apply(get.getAsDouble()));
+            displayNow[0] = fmt.apply(get.getAsDouble());
+            box.setValue(displayNow[0]);
         });
         FlatButton plus = new FlatButton(STEP_W, BTN_H, () -> Component.literal("+"), () -> {
             set.accept(Math.min(max, roundStep(get.getAsDouble() + step, step)));
-            box.setValue(fmt.apply(get.getAsDouble()));
+            displayNow[0] = fmt.apply(get.getAsDouble());
+            box.setValue(displayNow[0]);
         });
         addRenderableWidget(minus);
         addRenderableWidget(plus);
@@ -1216,7 +1252,10 @@ public final class HudLayoutScreen extends Screen {
         EditBox box = new EditBox(font, 0, 0, w, 14, Component.translatable(labelKey));
         box.setMaxLength(160);
         box.setValue(get.get());
-        box.setResponder(set);
+        box.setResponder(v -> {
+            set.accept(v);
+            if (box.isFocused()) markDirty(); // 键入即标脏（构建期的程序化 setValue 不标）
+        });
         addRenderableWidget(box);
         e.widgets.add(new PW(box, PANEL_W - 4 - w));
         return e;
@@ -1463,12 +1502,24 @@ public final class HudLayoutScreen extends Screen {
             if (y < panelY + TITLE_H + 2 || y + ROW_H > panelY + panelH - 1) continue;
             String lbl = e.labelDyn != null ? e.labelDyn.get()
                     : (e.labelKey != null ? Component.translatable(e.labelKey).getString() : "");
-            g.drawString(font, lbl, panelX + 6, y + (ROW_H - 8) / 2, 0xFFD0D8E0);
-            // (?) 说明标记：有译文的参数行才画;点击切换显示说明浮框
+            // (?) 说明标记：有译文的参数行才画;点击切换显示说明浮框。
+            // 标记必须落在控件区左缘之前（英文长标签会自动改放标签左侧）,否则会盖住循环/步进
+            // 按钮并抢走它的点击（helpHits 先于控件分发）
             String tk = e.labelDyn == null ? tooltipKeyFor(e.labelKey) : null;
+            int labelX = panelX + 6;
+            int qx = -1;
             if (tk != null) {
-                int qx = panelX + 6 + font.width(lbl) + 3;
-                boolean hover = mouseX >= qx - 1 && mouseX <= qx + 8 && mouseY >= y && mouseY <= y + ROW_H;
+                int after = labelX + font.width(lbl) + 3;
+                if (after + 11 <= panelX + CONTROL_LEFT) {
+                    qx = after;
+                } else {
+                    qx = labelX;          // 空间不足 → 标记前置,标签右移让位
+                    labelX += 12;
+                }
+            }
+            g.drawString(font, lbl, labelX, y + (ROW_H - 8) / 2, 0xFFD0D8E0);
+            if (tk != null) {
+                boolean hover = mouseX >= qx - 1 && mouseX <= qx + 9 && mouseY >= y && mouseY <= y + ROW_H;
                 boolean active = tk.equals(helpKey);
                 g.drawString(font, "?", qx, y + (ROW_H - 8) / 2,
                         active ? 0xFF7FD4FF : hover ? 0xFFA8D8FF : 0x7090A8C0);
@@ -1477,6 +1528,12 @@ public final class HudLayoutScreen extends Screen {
             if (e.value != null && e.valueRight > 0) {
                 String v = e.value.get();
                 g.drawString(font, v, panelX + e.valueRight - font.width(v),
+                        y + (ROW_H - 8) / 2, 0xFFA8E0FF);
+            } else if (e.value != null && e.widgets.isEmpty()) {
+                // 无控件的值行（如"当前组件/分组"标题行）：值右对齐到面板右缘——
+                // 此前只支持 valueRight>0 的行,这些行的值从不显示（只有静态标签）
+                String v = e.value.get();
+                g.drawString(font, v, panelX + PANEL_W - 8 - font.width(v),
                         y + (ROW_H - 8) / 2, 0xFFA8E0FF);
             }
         }
@@ -1541,9 +1598,9 @@ public final class HudLayoutScreen extends Screen {
                 if (ir == null) continue;
                 if (mouseX >= ir[0] - 1 && mouseX < ir[0] + ir[2] + 1
                         && mouseY >= ir[1] - 1 && mouseY < ir[1] + ir[3] + 1) {
-                    boolean changed = !key.equals(selectedAsteorBar);
                     selectedAsteorBar = key;
-                    draggingAsteorIcon = true;
+                    draggingAsteorBar = key; // 拖拽闸门是 draggingAsteorBar——此前只置 Icon 标志,
+                    draggingAsteorIcon = true; // mouseDragged 永远不进入该分支（实测"拖不动"）
                     iconGrabX = (int) mouseX;
                     iconGrabY = (int) mouseY;
                     var p = BarLayouts.get(key);
@@ -1557,8 +1614,8 @@ public final class HudLayoutScreen extends Screen {
                 if (tr == null) continue;
                 if (mouseX >= tr[0] - 1 && mouseX < tr[0] + tr[2] + 1
                         && mouseY >= tr[1] - 1 && mouseY < tr[1] + tr[3] + 1) {
-                    boolean changed = !key.equals(selectedAsteorBar);
                     selectedAsteorBar = key;
+                    draggingAsteorBar = key;
                     draggingAsteorText = true;
                     textGrabX = (int) mouseX;
                     textGrabY = (int) mouseY;
@@ -1635,6 +1692,7 @@ public final class HudLayoutScreen extends Screen {
             return true;
         }
         if (draggingAsteorBar != null) {
+            markDirty(); // 长条侧的自由摆放/子件拆分同样是内容改动,须进入未保存确认流程
             if (draggingAsteorIcon) {
                 // 状态图标拆分拖拽：偏移 = 拖拽起点偏移 + 鼠标位移（钳制与面板步进同域）
                 var p = BarLayouts.get(draggingAsteorBar);
@@ -1712,21 +1770,26 @@ public final class HudLayoutScreen extends Screen {
         }
         if (!editingCustom()) return super.keyPressed(keyCode, scanCode, modifiers);
         int step = Screen.hasShiftDown() ? 10 : 1;
-        markDirty();
+        // 标脏只在真正微调时——此前置于 switch 之前,任何按键（含 Esc/Tab/字母）都标脏,
+        // 导致"没改任何东西按 Esc 也弹未保存确认页"
         switch (keyCode) {
             case org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT -> {
+                markDirty();
                 applyDrag(selected, dragStartX(selected) - step, dragStartY(selected));
                 return true;
             }
             case org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT -> {
+                markDirty();
                 applyDrag(selected, dragStartX(selected) + step, dragStartY(selected));
                 return true;
             }
             case org.lwjgl.glfw.GLFW.GLFW_KEY_UP -> {
+                markDirty();
                 applyDrag(selected, dragStartX(selected), dragStartY(selected) - step);
                 return true;
             }
             case org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN -> {
+                markDirty();
                 applyDrag(selected, dragStartX(selected), dragStartY(selected) + step);
                 return true;
             }
@@ -1736,6 +1799,7 @@ public final class HudLayoutScreen extends Screen {
 
     private void nudgeScale(double delta) {
         sel().scale = Math.max(0.5, Math.min(2.0, sel().scale + delta));
+        markDirty();
     }
 
     @Override
@@ -1745,7 +1809,14 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (dirty && !pendingUnsaved) {
+        // 确认页上再按 Esc = 取消退出,回到编辑——此前会直接走"保存并退出",
+        // 想要"放弃"的用户反而把未保存改动写进了文件
+        if (pendingUnsaved) {
+            pendingUnsaved = false;
+            rebuildWidgets();
+            return;
+        }
+        if (dirty) {
             pendingUnsaved = true; // 下一次渲染为确认页
             rebuildWidgets();
             return;
