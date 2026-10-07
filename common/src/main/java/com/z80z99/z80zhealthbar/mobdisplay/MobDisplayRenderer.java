@@ -47,12 +47,26 @@ public final class MobDisplayRenderer {
 
     private MobDisplayRenderer() {}
 
+    // ================= 诊断（仅 F3 打开时写日志,限频） =================
+    // 目的：用户报告"看得到实体却看不到血条"时,一眼看出是"没收集"还是"收集了没画"。
+    // 只在 F3 调试界面打开时输出,日常游玩不产生日志。
+    private static long DIAG_NEXT_MS;
+
+    private static void diag(String msg) {
+        long now = System.currentTimeMillis();
+        if (now < DIAG_NEXT_MS) return;
+        DIAG_NEXT_MS = now + 300; // 每 0.3 秒最多一行,避免刷屏
+        com.z80z99.z80zhealthbar.Z80ZHealthBar.LOGGER.info("[diag] {}", msg);
+    }
+
     public static void render(LivingEntity entity, PoseStack poseStack,
                               MultiBufferSource buffer, float partialTick, int packedLight) {
         var cfg = ConfigManager.getConfig();
         EntityHealthStyle style = cfg.entityStyleParsed();
         boolean barEnabled = style != EntityHealthStyle.OFF && cfg.barStyle.enableHealthBar;
         boolean popupEnabled = cfg.damagePopup.enabled;
+        boolean diagOn = Minecraft.getInstance().options.renderDebug;
+        String why = null;
         if (!barEnabled && !popupEnabled) return;
 
         Minecraft mc = Minecraft.getInstance();
@@ -60,8 +74,15 @@ public final class MobDisplayRenderer {
         if (player == null || mc.level == null) return;
 
         double distSqr = entity.distanceToSqr(player);
-        if (barEnabled && !MobVisibilityChecker.shouldRender(entity, distSqr)) barEnabled = false;
-        if (!barEnabled && !popupEnabled) return;
+        int visReason = MobVisibilityChecker.check(entity, player, distSqr);
+        if (barEnabled && visReason != 0) {
+            barEnabled = false;
+            why = "checker=" + MobVisibilityChecker.reasonName(visReason);
+        }
+        if (!barEnabled && !popupEnabled) {
+            if (diagOn) diag(entity.getType() + "#" + entity.getId() + " dist=" + fmt1(Math.sqrt(distSqr)) + " " + why);
+            return;
+        }
 
         long gameTime = mc.level.getGameTime();
         if (gameTime != lastFrameTime) {
@@ -74,6 +95,7 @@ public final class MobDisplayRenderer {
             if (maxConcurrent > 0 && !FRAME_RENDERED.containsKey(entity.getId())
                     && FRAME_RENDERED.size() >= maxConcurrent) {
                 barEnabled = false;
+                why = "maxConcurrent=" + maxConcurrent;
             }
         }
 
@@ -94,8 +116,13 @@ public final class MobDisplayRenderer {
         // 完全躲在墙后(<25%)则整条隐藏。采样每 250ms 刷新一次并缓存
         if (barEnabled && !occlusionGate(mc, entity)) {
             barEnabled = false;
+            why = "occl=" + fmt2(lastVisibleRatio(entity.getId())) + " (<" + OCCLUSION_MIN_RATIO + ")";
         }
-        if (!barEnabled) return;
+        if (!barEnabled) {
+            if (diagOn) diag(entity.getType() + "#" + entity.getId() + " dist=" + fmt1(Math.sqrt(distSqr))
+                    + " " + why + " eyeWater=" + snap.eyeInWater);
+            return;
+        }
 
         float alpha = DisplayAnimation.alphaFor(entity.getId(), snap, gameTime);
         FRAME_RENDERED.put(entity.getId(), (int) gameTime);
@@ -104,6 +131,18 @@ public final class MobDisplayRenderer {
         // 血条作为屏幕覆盖层不再被天上的云或雨幕遮挡(与跳字同一层级)
         PENDING_BARS.put(entity.getId(), new PendingBar(style, entity, snap,
                 rx, ry, rz, distSqr, alpha));
+        if (diagOn) diag(entity.getType() + "#" + entity.getId() + " dist=" + fmt1(Math.sqrt(distSqr))
+                + " QUEUED style=" + style + " alpha=" + fmt2(alpha) + " occl="
+                + fmt2(lastVisibleRatio(entity.getId())) + " eyeWater=" + snap.eyeInWater
+                + " h=" + fmt1(snap.entityHeight));
+    }
+
+    private static String fmt1(double v) {
+        return String.format(java.util.Locale.ROOT, "%.1f", v);
+    }
+
+    private static String fmt2(double v) {
+        return String.format(java.util.Locale.ROOT, "%.2f", v);
     }
 
     // ================= 血条绘制通道 =================
@@ -137,6 +176,15 @@ public final class MobDisplayRenderer {
         List<PendingBar> list = new ArrayList<>(PENDING_BARS.values());
         PENDING_BARS.clear();
         list.sort((a, b) -> Double.compare(b.distSqr(), a.distSqr())); // 远→近
+        // 诊断（F3 打开时）:本帧实际待绘数量与 id —— 与收集端日志对照即可判定
+        // "没收集"（只有 checker/occl 行）还是"收集了这条没画进来"
+        if (mc.options.renderDebug) {
+            StringBuilder sb = new StringBuilder("draw " + list.size() + " bars: ");
+            for (int i = 0; i < list.size() && i < 6; i++) {
+                sb.append(list.get(i).snap().entityId).append(' ');
+            }
+            diag(sb.toString().trim());
+        }
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f); // 复位残留染色
 
         long now = System.currentTimeMillis();
