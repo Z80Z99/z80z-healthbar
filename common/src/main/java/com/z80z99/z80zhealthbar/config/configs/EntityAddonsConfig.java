@@ -13,4 +13,6 @@ public class EntityAddonsConfig {
     public boolean airRow = false;
     /** 附加行与主条间距（像素） */
     public int rowGap = 2;
+    /** 附加行大小倍率（1.0 = 原版名牌像素的一半——紧凑行基准;不随主条 scaleBar/barScale 缩放,独立调节） */
+    public double addonScale = 1.0;
 }

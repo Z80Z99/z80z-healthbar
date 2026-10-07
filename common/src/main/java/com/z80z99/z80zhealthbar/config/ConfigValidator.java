@@ -168,6 +168,8 @@ public final class ConfigValidator {
 
     private static void validateEntityAddons(EntityAddonsConfig c) {
         c.rowGap = clamp(c.rowGap, 0, 16);
+        // 旧配置缺失（≤0）→ 1.0（基准大小,同 scaleBar 的 Gson 补默认约定）
+        c.addonScale = c.addonScale <= 0 ? 1.0 : clamp(c.addonScale, 0.25, 4.0);
     }
 
     private static void validateHudLayout(HudLayoutConfig c) {

@@ -655,6 +655,8 @@ public final class ModSettingsScreen extends Screen {
         rows.add(toggleRow("z80zhealthbar.option.addons.airRow", c.entityAddons.airRow, v -> c.entityAddons.airRow = v));
         rows.add(sliderRow("z80zhealthbar.option.addons.rowGap", 0, 16, c.entityAddons.rowGap,
                 v -> c.entityAddons.rowGap = v, String::valueOf));
+        rows.add(sliderRow("z80zhealthbar.option.addons.scale", 50, 200, (int) (c.entityAddons.addonScale * 100),
+                v -> c.entityAddons.addonScale = v / 100.0, v -> v + "%"));
     }
 
     /** 动态效果（实体条样式 1/3 与玩家 HUD 血条通用）：平滑/残影/闪白/数字动效 + 第二层特效 */

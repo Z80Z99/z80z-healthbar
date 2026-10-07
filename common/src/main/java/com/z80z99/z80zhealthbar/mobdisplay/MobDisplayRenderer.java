@@ -459,16 +459,18 @@ public final class MobDisplayRenderer {
                                               int packedLight, float alpha, Font font) {
         List<IMobDisplayRenderer> rows = collectAddonRows(snap);
         if (rows.isEmpty()) return;
-        var barCfg = ConfigManager.getConfig().barStyle;
+        var cfgAll = ConfigManager.getConfig();
+        var barCfg = cfgAll.barStyle;
+        float rowScale = ADDON_ROW_SCALE * (float) cfgAll.entityAddons.addonScale;
         poseStack.pushPose();
         poseStack.translate(0, snap.entityHeight + (float) barCfg.barOffsetY, 0); // 世界空间锚点（条挂点）
         poseStack.mulPose(Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation());
-        poseStack.scale(-ADDON_ROW_SCALE, -ADDON_ROW_SCALE, ADDON_ROW_SCALE); // 原版名牌约定
+        poseStack.scale(-rowScale, -rowScale, rowScale); // 原版名牌约定
         DisplayAnimation.applyScreenFx(poseStack, snap); // 附加行组跟随主条整条动画
         // 像素偏移必须在镜像空间内（+x 屏幕右 / +y 屏幕下）——在世界空间做会变成上下颠倒/左右错位。
-        // 主条 1 像素 = 0.025*barScale 方块 = 2*barScale 个紧凑行像素
-        float pxScale = 2f * (float) barCfg.barScale;
-        int rowGap = ConfigManager.getConfig().entityAddons.rowGap; // 与主条（含数值行）的间距
+        // 主条 1 像素 = 0.025*barScale 方块 = (2*barScale/addonScale) 个紧凑行像素（行像素物理大小随 addonScale 变）
+        float pxScale = 2f * (float) barCfg.barScale / (float) cfgAll.entityAddons.addonScale;
+        int rowGap = cfgAll.entityAddons.rowGap; // 与主条（含数值行）的间距
         poseStack.translate(barCfg.barPixelOffsetX * pxScale, barCfg.barPixelOffsetY * pxScale + rowGap, 0);
         drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, 0);
         poseStack.popPose();
@@ -481,6 +483,7 @@ public final class MobDisplayRenderer {
         List<IMobDisplayRenderer> rows = collectAddonRows(snap);
         if (rows.isEmpty()) return;
         var cfg = ConfigManager.getConfig().styleA;
+        float rowScale = ADDON_ROW_SCALE * (float) ConfigManager.getConfig().entityAddons.addonScale;
         float hs = cfg.scaleBarHeight > 0 ? (float) cfg.scaleBarHeight : 1f;
         float barBottom = cfg.barType == 1 ? 0f : (cfg.barType == 2 ? 11f : MobHealthBarStyle.frameHeight()) * hs;
         float numScale = (float) (cfg.scaleNums * 0.7);
@@ -493,10 +496,11 @@ public final class MobDisplayRenderer {
         poseStack.pushPose();
         poseStack.translate(0, snap.entityHeight + cfg.heightOffset, 0); // 世界空间锚点（样式1 条挂点）
         poseStack.mulPose(Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation());
-        poseStack.scale(-ADDON_ROW_SCALE, -ADDON_ROW_SCALE, ADDON_ROW_SCALE); // 原版名牌约定
+        poseStack.scale(-rowScale, -rowScale, rowScale); // 原版名牌约定
         DisplayAnimation.applyScreenFx(poseStack, snap); // 附加行组跟随主条整条动画
-        // 样式1 像素 → 紧凑行像素（×2×scaleBar）,在镜像空间内施加（+x 屏幕右 / +y 屏幕下,与条偏移同向）
-        float pxScale = 2f * (float) cfg.scaleBar;
+        // 样式1 像素 → 紧凑行像素（×2×scaleBar÷addonScale——行像素物理大小随 addonScale 变）,
+        // 在镜像空间内施加（+x 屏幕右 / +y 屏幕下,与条偏移同向）
+        float pxScale = 2f * (float) cfg.scaleBar / (float) ConfigManager.getConfig().entityAddons.addonScale;
         // rowGap 与样式3 同单位（紧凑行像素）——在换算后再叠加,避免两样式间距不一致
         poseStack.translate(cfg.offsetX * pxScale,
                 (compPx + (float) cfg.offsetY + below) * pxScale + rowGap, 0);
@@ -565,7 +569,9 @@ public final class MobDisplayRenderer {
                                             Font font, float alpha, int packedLight, int yStartRowPx, float pxInBlocks) {
         List<IMobDisplayRenderer> rows = collectAddonRows(snap);
         if (rows.isEmpty()) return;
-        float f = pxInBlocks > 1e-6f ? ADDON_ROW_SCALE / pxInBlocks : 1f; // 紧凑行像素 → 调用方像素
+        // 紧凑行像素 → 调用方像素（行像素物理大小随 addonScale 变,与世界路径 scale 因子一致）
+        float rowScale = ADDON_ROW_SCALE * (float) ConfigManager.getConfig().entityAddons.addonScale;
+        float f = pxInBlocks > 1e-6f ? rowScale / pxInBlocks : 1f;
         if (Math.abs(f - 1f) < 1e-4f) {
             drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, yStartRowPx);
             return;
