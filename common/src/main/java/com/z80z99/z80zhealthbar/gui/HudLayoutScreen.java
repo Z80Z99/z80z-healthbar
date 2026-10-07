@@ -321,7 +321,9 @@ public final class HudLayoutScreen extends Screen {
     /** 选中键是否为原子组件（纯文本/纯图标/自由文本——编辑页即其子组件参数页） */
     private boolean isAtomicSelected() {
         String t = HudLayoutConfig.typeOf(selected, layout().get(selected));
-        return t.endsWith("_text") || t.endsWith("_icon") || t.equals("text");
+        // saturation_bar 走完整编辑页（有条形/文本部件）;信息类文本与原子文本/图标走子组件页
+        return (t.endsWith("_text") || t.endsWith("_icon") || t.equals("text"))
+                && !t.equals("saturation_bar");
     }
 
     /** 组件显示名：自定义名称优先,否则类型中文名 + 实例号（多实例辨识） */
@@ -485,12 +487,14 @@ public final class HudLayoutScreen extends Screen {
     private void buildAddPage() {
         panelEntries.add(backRow());
         panelEntries.add(new PEntry("z80zhealthbar.editor.pick_component", null, null));
-        // 分类分组（多级菜单:状态条 / 文本 / 图标）
+        // 分类分组（多级菜单:状态条 / 文本 / 图标 / 信息类）
         String[][] cats = {
-                {"z80zhealthbar.editor.cat_bars", "health", "food", "air", "armor", "mount", "experience", "compat"},
+                {"z80zhealthbar.editor.cat_bars", "health", "food", "air", "armor", "mount", "experience",
+                        "compat", "saturation_bar"},
                 {"z80zhealthbar.editor.cat_texts", "health_text", "food_text", "air_text", "armor_text",
-                        "mount_text", "xp_text", "text"},
+                        "mount_text", "xp_text", "saturation_text", "text"},
                 {"z80zhealthbar.editor.cat_icons", "health_icon", "food_icon", "air_icon", "armor_icon", "mount_icon"},
+                {"z80zhealthbar.editor.cat_info", "coords_text", "fps_text", "biome_text", "time_text"},
         };
         for (String[] cat : cats) {
             panelEntries.add(new PEntry(cat[0], null, null));

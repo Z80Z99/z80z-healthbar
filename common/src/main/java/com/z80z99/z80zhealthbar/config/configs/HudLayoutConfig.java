@@ -301,12 +301,14 @@ public class HudLayoutConfig {
         return k;
     }
 
-    /** 可添加的原子组件类型（编辑器"添加组件"清单;纯文本/纯图标/自由文本） */
+    /** 可添加的原子组件类型（编辑器"添加组件"清单;条/纯文本/纯图标/自由文本/信息类） */
     public static final List<String> ADDABLE_TYPES = List.of(
             HEALTH, FOOD, AIR, ARMOR, MOUNT, EXPERIENCE, COMPAT,
             "health_text", "food_text", "air_text", "armor_text", "mount_text", "xp_text",
             "health_icon", "food_icon", "air_icon", "armor_icon", "mount_icon",
-            "text");
+            "text",
+            "saturation_bar", "saturation_text",
+            "coords_text", "fps_text", "biome_text", "time_text");
 
     /** 生成某类型的新实例键（type 或 type#N,取空闲的最小 N;N=1 时省略后缀） */
     public String addInstance(String type) {

@@ -112,6 +112,13 @@ public final class CustomHudRenderer {
                         // 自由文本组件：内容 = 模板串（可引用任意玩家数据变量,组件间互相调用）
                         String t = formatText(c.textFormat, player);
                         if (t != null && !t.isEmpty()) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
+                    } else if (type.equals("saturation_bar")) {
+                        renderSaturationBar(graphics, mc, player, c);
+                    } else if (type.endsWith("_text")) {
+                        // 信息类文本组件（coords/fps/biome/time/saturation_text）：通用文本渲染
+                        String t = c.textFormat != null && !c.textFormat.isBlank()
+                                ? formatText(c.textFormat, player) : valueText(type, player);
+                        if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
                     } else switch (type) {
                         case HudLayoutConfig.HEALTH -> renderHealth(graphics, mc, player, c);
                         case HudLayoutConfig.FOOD -> renderFood(graphics, mc, player, c);
@@ -231,6 +238,39 @@ public final class CustomHudRenderer {
             }
             case HudLayoutConfig.MOUNT -> p.getVehicle() instanceof LivingEntity mount
                     ? fmt(mount.getHealth()) + "/" + fmt(Math.max(1, mount.getMaxHealth())) : null;
+            // 信息类数据源（可转化组件扩展）
+            case "saturation" -> {
+                float sat = pv ? 12.5f : p.getFoodData().getSaturationLevel();
+                yield sat > 0 ? fmt(sat) : null;
+            }
+            case "coords" -> {
+                var pos = p.blockPosition();
+                yield "X" + pos.getX() + " Y" + pos.getY() + " Z" + pos.getZ();
+            }
+            case "fps" -> String.valueOf(Minecraft.getInstance().getFps());
+            case "biome" -> {
+                var level = p.level();
+                var pos = p.blockPosition();
+                var biomeKey = level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.BIOME)
+                        .getKey(level.getBiome(pos).value());
+                String path = biomeKey.getPath();
+                // 群系名美化:plains → Plains（首字母大写,下划线转空格）
+                String[] parts = path.split("_");
+                StringBuilder sb = new StringBuilder();
+                for (String s : parts) {
+                    if (!s.isEmpty()) {
+                        if (!sb.isEmpty()) sb.append(' ');
+                        sb.append(Character.toUpperCase(s.charAt(0))).append(s.substring(1));
+                    }
+                }
+                yield sb.toString();
+            }
+            case "time" -> {
+                long dayTicks = pv ? 6000L : (p.level().getDayTime() % 24000L);
+                int hours = (int) ((dayTicks / 1000L + 6) % 24);
+                int minutes = (int) (dayTicks % 1000L * 60L / 1000L);
+                yield String.format("%02d:%02d", hours, minutes);
+            }
             default -> null; // compat 为多行动态行，不参与分离
         };
     }
@@ -271,7 +311,14 @@ public final class CustomHudRenderer {
                 .replace("{level}", String.valueOf(level))
                 .replace("{xp_percent}", String.valueOf(Math.round(prog * 100)))
                 .replace("{mount_health}", fmt(mHp))
-                .replace("{mount_max}", fmt(mMax));
+                .replace("{mount_max}", fmt(mMax))
+                // 信息类变量（可转化组件扩展）
+                .replace("{saturation}", fmt(pv ? 12.5f : p.getFoodData().getSaturationLevel()))
+                .replace("{x}", String.valueOf(p.blockPosition().getX()))
+                .replace("{y}", String.valueOf(p.blockPosition().getY()))
+                .replace("{z}", String.valueOf(p.blockPosition().getZ()))
+                .replace("{fps}", String.valueOf(Minecraft.getInstance().getFps()))
+                .replace("{xp_level}", String.valueOf(level));
     }
 
     /** 组件对应图标 UV（null = 无图标/当前不可用） */
@@ -455,6 +502,28 @@ public final class CustomHudRenderer {
         if (c.showText && c.textAnchorParsed() == null) {
             String txt = c.textFormat != null && !c.textFormat.isBlank()
                     ? formatText(c.textFormat, p) : food + "/" + max;
+            drawText(g, mc.font, txt, w, h, c);
+        }
+    }
+
+    /** 饱和度条（从兼容状态行独立成组件）：卡片 + 金色比例填充 + 可选数值文本 */
+    private static void renderSaturationBar(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
+        var colors = ConfigManager.getConfig().colors;
+        boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
+        float sat = pv ? 12.5f : p.getFoodData().getSaturationLevel();
+        if (sat <= 0) return; // 无饱和度不渲染（与原版语义一致）
+
+        float max = (float) Math.max(1, ConfigManager.getConfig().overlay.fullSaturationValue > 0
+                ? ConfigManager.getConfig().overlay.fullSaturationValue : 20);
+        int w = c.barWidth, h = barH(c);
+        if (c.showBar) {
+            drawCard(g, 0, 0, w, h);
+            HudBarPainter.drawRatioFill(g, 0, 0, w, h,
+                    Mth.clamp(sat / max, 0f, 1f), ColorHelper.parseColor(colors.saturation));
+        }
+        if (c.showText && c.textAnchorParsed() == null) {
+            String txt = c.textFormat != null && !c.textFormat.isBlank()
+                    ? formatText(c.textFormat, p) : fmt(sat);
             drawText(g, mc.font, txt, w, h, c);
         }
     }

@@ -43,11 +43,18 @@ class HudFxTest {
     @Test
     void shakeOffsetBoundedAndConverges() {
         for (long t = 0; t < 3000; t += 53) {
-            int off = HudFx.shakeOffset(t, 0.7f);
+            int off = HudFx.shakeStatic(t, 0.7f);
             assertTrue(off >= 0 && off <= 2);
+            int smooth = HudFx.shakeSmooth(t, 0.7f, 2f);
+            assertTrue(smooth >= -2 && smooth <= 2, "smooth shake within amplitude");
         }
-        assertEquals(0, HudFx.shakeOffset(1000, 0f));
-        assertEquals(0, HudFx.shakeOffset(1000, -1f));
+        assertEquals(0, HudFx.shakeStatic(1000, 0f));
+        assertEquals(0, HudFx.shakeSmooth(1000, -1f, 2f));
+        // 按方式分派:关=0;静态在序列取 1 的时刻输出;动态（正弦峰 π/2·40ms）必非零
+        assertEquals(0, HudFx.shakeByMode(0, 1000, 0.8f, 0.2f));
+        assertEquals(2, HudFx.shakeByMode(1, 50, 0.8f, 0.2f));
+        int dynPeak = HudFx.shakeByMode(3, (long) (Math.PI / 2 * 40), 1f, 0.3f);
+        assertTrue(dynPeak >= 1, "dynamic shake at sine peak should be visible, got " + dynPeak);
     }
 
     @Test
