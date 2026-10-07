@@ -321,7 +321,9 @@ public final class MobDisplayRenderer {
     /** 最近一次采样得到的可见比例（F3 诊断用;与 CACHE 同生命周期） */
     private static final Map<Integer, Float> OCCLUSION_RATIO = new HashMap<>();
     private static final Map<Integer, Long> OCCLUSION_STAMP = new HashMap<>();
-    private static final long OCCLUSION_INTERVAL_MS = 250L;
+    // 采样刷新间隔。250ms 时"视角刚被挡住的瞬间"血条会按旧缓存多显示最多 250ms（用户实测
+    // 反馈"被遮挡的一个瞬间还能看到"）;收到 100ms——残留窗口降到肉眼难察,采样成本仍可忽略
+    private static final long OCCLUSION_INTERVAL_MS = 100L;
     /**
      * 可见比例阈值。陆地：> 0 即显示（仅完全被挡住才隐藏——贴墙角时头可见就该有条）。
      * 水中：≥ 0.25（至少 2/8 采样可见）——血条走 GUI 通道无深度遮挡,水下放宽会
@@ -329,8 +331,10 @@ public final class MobDisplayRenderer {
      */
     private static final float OCCLUSION_MIN_RATIO = 0f;
     private static final float OCCLUSION_MIN_RATIO_WATER = 0.25f;
-    /** 近距早退平方距离(3 格内不可能被墙完全遮挡,免采样)。曾放宽到 6 格——导致贴脸隔墙也显示,收回 */
-    private static final double OCCLUSION_NEAR_EARLY_OUT = 9.0;
+    /** 近距早退平方距离（1 格内免采样——此距离下两者之间基本不可能有遮挡几何）。
+     *  曾为 3 格:贴脸隔一堵薄墙时(生物在 1.5-3 格)完全不采样、恒显示——用户实测
+     *  "视角被遮挡还能看到血条"的另一半原因;采样间隔已收到 100ms,早退同步收紧 */
+    private static final double OCCLUSION_NEAR_EARLY_OUT = 1.0;
 
     private static boolean occlusionGate(Minecraft mc, LivingEntity entity) {
         // 近距早退:贴脸实体直接放行(射线采样成本与其意义都不存在)
