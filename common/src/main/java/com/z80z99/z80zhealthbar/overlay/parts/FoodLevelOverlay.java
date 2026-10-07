@@ -22,7 +22,8 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
         if (player == null) return;
 
         int foodLevel = HudPreviewState.active ? HudPreviewState.food : player.getFoodData().getFoodLevel();
-        float saturation = HudPreviewState.active ? 0f : player.getFoodData().getSaturationLevel();
+        float saturation = HudPreviewState.active ? HudPreviewState.saturation : player.getFoodData().getSaturationLevel();
+        float exhaustion = HudPreviewState.active ? HudPreviewState.exhaustion : player.getFoodData().getExhaustionLevel();
         if (!BarLayouts.visible("food")) return; // 单条显示开关（编辑器组件级配置）
         if (hideUnchanged(foodLevel)) return; // 数值长期不变时隐藏（hideUnchangingBarAfterSeconds）
 
@@ -38,7 +39,6 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
         }
 
         Parameters params = new Parameters();
-        params.value = getFadeValue(foodLevel);
         params.maxValue = cfg.fullFoodLevelValue > 0 ? cfg.fullFoodLevelValue : 20;
         params.fillColor = fillColor;
         params.boundColor = boundColor;
@@ -83,8 +83,16 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
         }
 
         int innerW = HudBarPainter.innerWidth(barWidth);
+        // 动态效果：饱食度/饱和度各自 BarFx 平滑（饱和度像血条吸收段被消耗时平滑收缩）;
         // Math.round 而非 (int) 截断——BarFx 类平滑值稳态略小于 1.0 时截断会裁掉 1px 填充
-        int fillW = (int) Math.round(Math.max(0, Math.min(innerW, params.value / params.maxValue * innerW)));
+        var dxCfg = ConfigManager.getConfig().dynamicFx;
+        long nowMs = System.currentTimeMillis();
+        float foodDisp = dxCfg.enabled && dxCfg.smooth
+                ? Math.max(0f, Math.min(1f, com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
+                        HudPreviewState.fxKeyFood(player.getId()),
+                        Math.max(0f, Math.min(1f, foodLevel / (float) params.maxValue)), false, nowMs).display()))
+                : foodLevel / (float) params.maxValue;
+        int fillW = (int) Math.round(Math.max(0, Math.min(innerW, foodDisp * innerW)));
 
         drawBarCard(graphics, left, top, barWidth, barH);
 
@@ -92,12 +100,28 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
         HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, fillW,
                 params.fillColor, params.verticalShift);
 
-        // 饱和度覆盖（金色叠加在食物条之上，原版逻辑）
+        // 饱和度覆盖（金色叠加在食物条之上，原版逻辑;平滑收缩演示被消耗）
         if (cfg.displaySaturation && saturation > 0) {
-            float satRatio = saturation / (float)(cfg.fullSaturationValue > 0 ? cfg.fullSaturationValue : 20);
-            int satW = (int) Math.round(Math.max(0f, Math.min(1f, satRatio)) * innerW);
+            float satMax = (float)(cfg.fullSaturationValue > 0 ? cfg.fullSaturationValue : 20);
+            float satDisp = dxCfg.enabled && dxCfg.smooth
+                    ? Math.max(0f, Math.min(1f, com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
+                            HudPreviewState.fxKeySat(player.getId()),
+                            Math.max(0f, Math.min(1f, saturation / satMax)), false, nowMs).display()))
+                    : Math.max(0f, Math.min(1f, saturation / satMax));
+            int satW = (int) Math.round(satDisp * innerW);
             HudBarPainter.drawSegment(graphics, left, top, barWidth, barH, 0, satW,
                     ColorHelper.parseColor(colors.saturation));
+        }
+
+        // 消耗值预告：exhaustion→4 临近一次扣除（扣饱和度/饱食度）;>3 时条尾微光呼吸,
+        // 扣除瞬间微光消失——把"马上要掉饱和度/饱食度"可视化
+        if (dxCfg.enabled && exhaustion > 3f) {
+            float near = Math.max(0f, Math.min(1f, (exhaustion - 3f) / 1f));
+            float glow = (0.4f + 0.6f * com.z80z99.z80zhealthbar.overlay.HudFx.pulse(nowMs)) * near;
+            int glowA = (int) (glow * 90) << 24 | 0x00FFD080;
+            int tailW = Math.max(3, innerW / 12);
+            HudBarPainter.drawSegment(graphics, left, top, barWidth, barH,
+                    innerW - tailW, innerW, glowA);
         }
 
         if (blinkBorder) {
@@ -109,7 +133,11 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
         if (cfg.displayFoodText && BarLayouts.showText("food")) {
             int[] to = BarLayouts.textOffset("food");
             int textY = top + barH / 2 - 4 + cfg.overlayBarTextOffsetY + to[1];
-            String text = foodLevel + "/" + (int) params.maxValue;
+            var foodC = com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().hudLayout
+                    .get(com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.FOOD);
+            String text = foodC.textFormat != null && !foodC.textFormat.isBlank()
+                    ? com.z80z99.z80zhealthbar.overlay.CustomHudRenderer.formatText(foodC.textFormat, player)
+                    : foodLevel + "/" + (int) params.maxValue;
             if (pos == OverlayPosition.RIGHT) {
                 int tx = left - 15 + to[0];
                 OverlayManager.addStringRender(text, tx, textY, 0xFFFFFFFF,

@@ -335,7 +335,10 @@ public final class CustomHudRenderer {
                 .replace("{mount_health}", fmt(mHp))
                 .replace("{mount_max}", fmt(mMax))
                 // 信息类变量（可转化组件扩展）
-                .replace("{saturation}", fmt(pv ? 12.5f : p.getFoodData().getSaturationLevel()))
+                .replace("{saturation}", fmt(pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.saturation
+                        : p.getFoodData().getSaturationLevel()))
+                .replace("{exhaustion}", fmt(pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.exhaustion
+                        : p.getFoodData().getExhaustionLevel()))
                 .replace("{x}", String.valueOf(p.blockPosition().getX()))
                 .replace("{y}", String.valueOf(p.blockPosition().getY()))
                 .replace("{z}", String.valueOf(p.blockPosition().getZ()))
@@ -500,6 +503,10 @@ public final class CustomHudRenderer {
         int food = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.food : p.getFoodData().getFoodLevel();
         int max = ConfigManager.getConfig().overlay.fullFoodLevelValue;
         if (max <= 0) max = 20; // 0 = 跟随原版上限
+        float sat = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.saturation
+                : p.getFoodData().getSaturationLevel();
+        float exhaustion = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.exhaustion
+                : p.getFoodData().getExhaustionLevel();
 
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
             for (int i = 0; i < 10; i++) GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 16, 0 + 27, 9, 9);
@@ -509,21 +516,62 @@ public final class CustomHudRenderer {
             return;
         }
 
+        // 动态效果（与生命条同源 BarFx）：饱食度平滑 + 饱和度平滑（像血条吸收段被消耗）;
+        // 消耗值 = 临近扣除预告（>3 时条尾呼吸微光,扣除瞬间淡出,饱食/饱和度平滑回落）
+        var dxCfg = ConfigManager.getConfig().dynamicFx;
+        long nowMs = System.currentTimeMillis();
+        float foodRaw = Mth.clamp(food / (float) max, 0f, 1f);
+        var foodFx = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
+                com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.fxKeyFood(p.getId()),
+                foodRaw, false, nowMs);
+        float foodDisp = dxCfg.enabled && dxCfg.smooth
+                ? Mth.clamp(foodFx.display(), 0f, 1f) : foodRaw;
+        float satRaw = Mth.clamp(sat / 20f, 0f, 1f);
+        var satFx = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
+                com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.fxKeySat(p.getId()),
+                satRaw, false, nowMs);
+        float satDisp = dxCfg.enabled && dxCfg.smooth
+                ? Mth.clamp(satFx.display(), 0f, 1f) : satRaw;
+
         int w = c.barWidth, h = barH(c);
         if (c.showBar) {
             drawCard(g, 0, 0, w, h);
             int color = p.hasEffect(MobEffects.HUNGER)
                     ? ColorHelper.parseColor(colors.foodHunger)
                     : ColorHelper.parseColor(colors.foodNormal);
-            HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                    Mth.clamp(food / (float) max, 0, 1), color);
+            int innerW = HudBarPainter.innerWidth(w);
+            int foodW = Math.round(foodDisp * innerW);
+            HudBarPainter.drawFillWidth(g, 0, 0, w, h, foodW, color);
+            // 饱和度金段：叠在饱食度填充之后（生命条吸收段的语义——被消耗时随平滑收缩,
+            // 原版逻辑中动作消耗优先扣饱和度）
+            if (sat > 0.01f) {
+                int satW = Math.round(satDisp * innerW);
+                if (satW > 0) {
+                    HudBarPainter.drawSegment(g, 0, 0, w, h, 0, Math.min(innerW, satW),
+                            ColorHelper.parseColor(colors.saturation));
+                }
+            }
+            // 消耗值预告：exhaustion→4 临近一次扣除（扣饱和度/饱食度）;>3 时条尾微光呼吸,
+            // 扣除瞬间（消耗值回落）微光消失——把"马上要掉饱和度/饱食度"可视化
+            if (dxCfg.enabled && exhaustion > 3f) {
+                float near = Mth.clamp((exhaustion - 3f) / 1f, 0f, 1f);
+                float glow = (0.4f + 0.6f * HudFx.pulse(nowMs)) * near;
+                int glowA = (int) (glow * 90) << 24 | 0x00FFD080;
+                int tailW = Math.max(3, innerW / 12);
+                HudBarPainter.drawSegment(g, 0, 0, w, h, innerW - tailW, innerW, glowA);
+            }
         }
         if (c.showIcon && c.iconAnchorParsed() == null) {
             drawComponentIcon(g, c, iconX(c, w), 0, h, 52, 27);
         }
         if (c.showText && c.textAnchorParsed() == null) {
-            String txt = c.textFormat != null && !c.textFormat.isBlank()
-                    ? formatText(c.textFormat, p) : food + "/" + max;
+            // 模板变量：{food} 饱食度 {saturation} 饱和度 {exhaustion} 消耗值（默认 饱食/上限）
+            String txt;
+            if (c.textFormat != null && !c.textFormat.isBlank()) {
+                txt = formatText(c.textFormat, p);
+            } else {
+                txt = food + "/" + max;
+            }
             drawText(g, mc.font, txt, w, h, c);
         }
     }
