@@ -52,7 +52,7 @@ public final class MobDisplayRenderer {
     // 只在 F3 调试界面打开时输出,日常游玩不产生日志。
     private static long DIAG_NEXT_MS;
 
-    private static void diag(String msg) {
+    public static void diag(String msg) {
         long now = System.currentTimeMillis();
         if (now < DIAG_NEXT_MS) return;
         DIAG_NEXT_MS = now + 300; // 每 0.3 秒最多一行,避免刷屏
@@ -141,6 +141,10 @@ public final class MobDisplayRenderer {
         return String.format(java.util.Locale.ROOT, "%.1f", v);
     }
 
+    private static String fmt3(double v) {
+        return String.format(java.util.Locale.ROOT, "%.3f", v);
+    }
+
     private static String fmt2(double v) {
         return String.format(java.util.Locale.ROOT, "%.2f", v);
     }
@@ -176,18 +180,37 @@ public final class MobDisplayRenderer {
         List<PendingBar> list = new ArrayList<>(PENDING_BARS.values());
         PENDING_BARS.clear();
         list.sort((a, b) -> Double.compare(b.distSqr(), a.distSqr())); // 远→近
-        // 诊断（F3 打开时）:本帧实际待绘数量与 id —— 与收集端日志对照即可判定
-        // "没收集"（只有 checker/occl 行）还是"收集了这条没画进来"
-        if (mc.options.renderDebug) {
-            StringBuilder sb = new StringBuilder("draw " + list.size() + " bars: ");
-            for (int i = 0; i < list.size() && i < 6; i++) {
-                sb.append(list.get(i).snap().entityId).append(' ');
-            }
-            diag(sb.toString().trim());
-        }
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f); // 复位残留染色
 
         long now = System.currentTimeMillis();
+        // 诊断（F3）:每条待绘 bar 的屏幕投影坐标（物理像素）——'behind' = 在相机背后,
+        // 坐标超出窗口 = 画在屏幕外;坐标正常却看不到 = 被后绘制的内容遮挡
+        if (mc.options.renderDebug && !list.isEmpty()) {
+            var vp = new org.joml.Matrix4f(com.mojang.blaze3d.systems.RenderSystem.getProjectionMatrix())
+                    .mul(viewMatrix);
+            StringBuilder sb = new StringBuilder("bars(" + list.size() + "):");
+            for (PendingBar st : list) {
+                var p = new org.joml.Vector4f(
+                        (float) (st.x() - camPos.x),
+                        (float) (st.y() - camPos.y) + st.snap().entityHeight + 0.6f,
+                        (float) (st.z() - camPos.z), 1f);
+                p.mul(vp);
+                String scr;
+                if (p.w <= 0.001f) scr = "behind";
+                else scr = (int) ((p.x / p.w * 0.5f + 0.5f) * mc.getWindow().getWidth())
+                        + "," + (int) ((1f - (p.y / p.w * 0.5f + 0.5f)) * mc.getWindow().getHeight());
+                var fxState = com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
+                        st.snap().entityId, st.snap().plainHealthRatio(),
+                        st.snap().hurtTime > 0, System.currentTimeMillis());
+                sb.append(' ').append(st.snap().entityId).append("->").append(scr)
+                        .append("(a=").append(fmt2(st.alpha()))
+                        .append(",hp=").append(fmt1(st.snap().health)).append('/').append(fmt1(st.snap().maxHealth))
+                        .append(",disp=").append(fmt3(fxState.display()))
+                        .append(",ratio=").append(fmt3(st.snap().plainHealthRatio()))
+                        .append(",feetY=").append(fmt1(st.y())).append(')');
+            }
+            diag(sb.toString());
+        }
         // 碎裂接管收集（循环后统一绘制——循环内样式切换 render type 会提前 flush barRect 批,
         // 提前 get 的顶点引用会写进已结束的批次,碎片丢失）
         record ShatterJob(int id, PoseStack pose, double rx, double ry, double rz) {}
@@ -243,10 +266,14 @@ public final class MobDisplayRenderer {
     private static final Map<Integer, Float> OCCLUSION_RATIO = new HashMap<>();
     private static final Map<Integer, Long> OCCLUSION_STAMP = new HashMap<>();
     private static final long OCCLUSION_INTERVAL_MS = 250L;
-    /** 可见比例阈值(用户规则:能看到 25% 以上部分则血条完整可见) */
-    private static final float OCCLUSION_MIN_RATIO = 0.25f;
-    /** 近距早退平方距离(3 格内不可能被墙完全遮挡,免采样) */
-    private static final double OCCLUSION_NEAR_EARLY_OUT = 9.0;
+    /**
+     * 可见比例阈值：> 0 即显示（原 25% 过苛刻——生物贴着池壁/墙角时 8 个采样点可能
+     * 全被判死,但它的头明明看得见,血条却整条消失,用户实测"像隔墙一样"）。
+     * 现在仅当 8 个采样点全部被不透明方块挡住（完全看不见）才隐藏。
+     */
+    private static final float OCCLUSION_MIN_RATIO = 0f;
+    /** 近距早退平方距离(6 格内几乎不可能被完全遮挡,免采样——也消除浅水池边的采样抖动) */
+    private static final double OCCLUSION_NEAR_EARLY_OUT = 36.0;
 
     private static boolean occlusionGate(Minecraft mc, LivingEntity entity) {
         // 近距早退:贴脸实体直接放行(射线采样成本与其意义都不存在)
@@ -259,7 +286,7 @@ public final class MobDisplayRenderer {
             OCCLUSION_STAMP.put(entity.getId(), now);
             float ratio = sampleVisibleRatio(mc, entity);
             OCCLUSION_RATIO.put(entity.getId(), ratio);
-            OCCLUSION_CACHE.put(entity.getId(), ratio >= OCCLUSION_MIN_RATIO);
+            OCCLUSION_CACHE.put(entity.getId(), ratio > OCCLUSION_MIN_RATIO);
         }
         return OCCLUSION_CACHE.getOrDefault(entity.getId(), true);
     }
