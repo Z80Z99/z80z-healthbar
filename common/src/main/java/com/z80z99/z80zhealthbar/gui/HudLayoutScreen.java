@@ -504,6 +504,8 @@ public final class HudLayoutScreen extends Screen {
                         "mount_text", "xp_text", "saturation_text", "text"},
                 {"z80zhealthbar.editor.cat_icons", "health_icon", "food_icon", "air_icon", "armor_icon", "mount_icon"},
                 {"z80zhealthbar.editor.cat_info", "coords_text", "fps_text", "biome_text", "time_text"},
+                {"z80zhealthbar.editor.cat_compat", "compat_saturation", "compat_exhaustion",
+                        "compat_thirst", "compat_stamina"},
         };
         for (String[] cat : cats) {
             panelEntries.add(new PEntry(cat[0], null, null));
@@ -964,7 +966,7 @@ public final class HudLayoutScreen extends Screen {
         // ---- 子组件入口（文本/图标各一个独立参数页,与主组件互不干扰） ----
         // 类型过滤：无该部件的类型不显示入口（如经验无状态图标,compat 无文本无图标）
         String selType = HudLayoutConfig.typeOf(selected, c);
-        if (selType.equals(HudLayoutConfig.COMPAT)) {
+        if (selType.equals(HudLayoutConfig.COMPAT) || selType.startsWith("compat_")) {
             // compat 特判：多行动态行的文本部件参数（开关/模板/对齐/偏移/缩放;
             // 行间距由上方"间距"行控制,渲染端已接入）
             panelEntries.add(toggle("z80zhealthbar.editor.show_text",

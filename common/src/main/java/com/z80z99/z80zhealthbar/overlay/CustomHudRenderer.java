@@ -112,6 +112,10 @@ public final class CustomHudRenderer {
                         if (t != null && !t.isEmpty()) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
                     } else if (type.equals("saturation_bar")) {
                         renderSaturationBar(graphics, mc, player, c);
+                    } else if (type.startsWith("compat_")) {
+                        // 兼容状态单行组件（compat_saturation/exhaustion/thirst/stamina）:
+                        // 从兼容组拆出的独立行,可单独摆放/配置（实测"上下不能分开成两个组件"）
+                        renderCompat(graphics, player, c, type.substring("compat_".length()));
                     } else if (type.endsWith("_text")) {
                         // 信息类文本组件（coords/fps/biome/time/saturation_text）：通用文本渲染
                         String t = c.textFormat != null && !c.textFormat.isBlank()
@@ -680,9 +684,18 @@ public final class CustomHudRenderer {
     // ============== 绘制原语（与 ASTEORBAR 模式同风格：卡片底/填充/图标/文本） ==============
 
     /** 兼容状态组：thirst/stamina/exhaustion 等动态行（数据源 CompatAdapters）。
-     *  组件配置全量接入：文本模板（{name}{value}{max}）/对齐/偏移/缩放/行间距（spacing） */
+     *  组件配置全量接入：文本模板（{name}{value}{max}）/对齐/偏移/缩放/行间距（spacing）。
+     *  statFilter 非空 = 单行模式（独立组件 compat_xxx 只渲染该行;如 compat_saturation） */
     private static void renderCompat(GuiGraphics g, Player p, ComponentLayout c) {
+        renderCompat(g, p, c, null);
+    }
+
+    private static void renderCompat(GuiGraphics g, Player p, ComponentLayout c, String statFilter) {
         var stats = com.z80z99.z80zhealthbar.compat.CompatAdapters.collect(p);
+        if (stats.isEmpty()) return;
+        if (statFilter != null) {
+            stats.removeIf(s -> !s.key().endsWith("." + statFilter));
+        }
         if (stats.isEmpty()) return;
         int w = c.barWidth, h = barH(c);
         int rowGap = Math.max(0, c.spacing);
