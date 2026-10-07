@@ -594,8 +594,9 @@ public final class MobDisplayRenderer {
             plaques.add(new OrigPlaque(healthValue + "x", heartIconU(snap), heartIconV(),
                     transitionedColor(ratio), true, false));
         }
-        if (plaqueCfg.showAirRow && snap.isUnderwater() && snap.airSupply > 0) {
-            // 氧气耗尽（0）不占行：原版 0 氧气不显示气泡/计数（与附加行同一判据）
+        if (plaqueCfg.showAirRow && com.z80z99.z80zhealthbar.util.AirBubbleRow.rowVisible(
+                snap.eyeInWater, snap.airSupply, snap.maxAirSupply)) {
+            // 判据与附加行氧气行完全一致（原版对玩家规则:眼睛在水里 或 空气未满;0 氧气不占行）
             plaques.add(new OrigPlaque(Math.max(0, snap.airSupply / 20) + "x", 16, 18, 0xFFFFFF, false, false));
         }
         if (plaqueCfg.showArmorRow && snap.hasArmor() && snap.armor > 0) {

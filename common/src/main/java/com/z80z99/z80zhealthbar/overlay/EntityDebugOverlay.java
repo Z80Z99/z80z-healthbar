@@ -45,8 +45,10 @@ public final class EntityDebugOverlay {
                 + " dist=" + String.format(java.util.Locale.ROOT, "%.1f", dist)
                 + " occl=" + (ratio < 0 ? "near/no-sample" : String.format(java.util.Locale.ROOT, "%.2f", ratio));
         var addons = com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().entityAddons;
-        String l5 = "addon armor/tough/air=" + addons.armorRow + "/" + addons.toughnessRow + "/" + addons.airRow
+        String l5 = "style=" + com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().entityStyle
+                + " addon armor/tough/air=" + addons.armorRow + "/" + addons.toughnessRow + "/" + addons.airRow
                 + " air=" + snap.airSupply + "/" + snap.maxAirSupply
+                + " eyeWater=" + snap.eyeInWater
                 + " armor=" + snap.armor + " tough=" + snap.armorToughness;
 
         int y = 100;

@@ -29,6 +29,9 @@ public final class EntityStatusSnapshot {
 
     public final int airSupply;
     public final int maxAirSupply;
+    /** 眼睛在水里（原版 Entity.isUnderWater;与玩家 HUD 空气条同一判据）——
+     *  氧气行按原版对玩家的规则显示：眼睛在水里 或 空气未满 */
+    public final boolean eyeInWater;
 
     public final boolean poisoned;
     public final boolean withered;
@@ -53,6 +56,7 @@ public final class EntityStatusSnapshot {
         this.armorToughness = b.armorToughness;
         this.airSupply = b.airSupply;
         this.maxAirSupply = b.maxAirSupply;
+        this.eyeInWater = b.eyeInWater;
         this.poisoned = b.poisoned;
         this.withered = b.withered;
         this.frozen = b.frozen;
@@ -67,6 +71,7 @@ public final class EntityStatusSnapshot {
 
     public boolean hasArmor() { return armor >= 0; }
     public boolean hasToughness() { return armorToughness > 0; }
+    /** 空气未满（掉氧中/回氧中）——注意不等于在水里：亡灵/水生生物在水下也不掉氧 */
     public boolean isUnderwater() { return airSupply < maxAirSupply; }
     public boolean isFullHealth() {
         return health >= maxHealth && absorption <= 0;
@@ -103,6 +108,7 @@ public final class EntityStatusSnapshot {
 
         b.airSupply = entity.getAirSupply();
         b.maxAirSupply = Math.max(1, entity.getMaxAirSupply());
+        b.eyeInWater = entity.isUnderWater();
 
         b.poisoned = entity.hasEffect(MobEffects.POISON);
         b.withered = entity.hasEffect(MobEffects.WITHER);
@@ -125,6 +131,7 @@ public final class EntityStatusSnapshot {
         float health, maxHealth, absorption;
         int armor = -1, armorToughness = -1;
         int airSupply, maxAirSupply = 1;
+        boolean eyeInWater;
         boolean poisoned, withered, frozen, regenerating, aggro;
         double distanceSqr;
         float entityHeight;
@@ -156,6 +163,7 @@ public final class EntityStatusSnapshot {
         b.armorToughness = toughness;
         b.airSupply = Math.max(0, Math.min(300, air));
         b.maxAirSupply = 300;
+        b.eyeInWater = air < 300; // 预览:空气未满即视为在水中
         b.entityHeight = entityHeight;
         b.hurtTime = hurt ? 10 : 0;
         return new EntityStatusSnapshot(b);

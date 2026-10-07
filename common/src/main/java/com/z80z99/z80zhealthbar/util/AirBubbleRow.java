@@ -19,6 +19,17 @@ public final class AirBubbleRow {
     private AirBubbleRow() {}
 
     /**
+     * 氧气行是否显示——**原版对玩家的规则**（{@code ForgeGui.renderAir}：
+     * {@code isEyeInFluidType(WATER) || air < maxAir}），外加"耗尽即隐藏"（原版 0 氧气不画任何气泡）。
+     *
+     * <p>关键点：只按"空气未满"判会漏掉两类情形——亡灵/水生生物在水下不掉氧（空气恒满），
+     * 以及出水回氧中（空气未满但已离水）。两者都应按"眼睛在水里"判定。
+     */
+    public static boolean rowVisible(boolean eyeInWater, int air, int maxAir) {
+        return (eyeInWater || air < Math.max(1, maxAir)) && air > 0;
+    }
+
+    /**
      * @param air   当前氧气
      * @param max   氧气上限（≤0 视为 1）
      * @param slots 槽位数（气泡格数,通常 10）

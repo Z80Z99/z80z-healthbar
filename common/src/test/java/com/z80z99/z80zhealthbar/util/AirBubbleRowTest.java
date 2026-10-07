@@ -64,4 +64,14 @@ class AirBubbleRowTest {
         assertDoesNotThrow(() -> AirBubbleRow.counts(5, 0, 10));
         assertEquals(0, drawn(0, 0));
     }
+
+    @Test
+    void rowVisibleFollowsVanillaRule() {
+        // 原版对玩家的规则：眼睛在水里 或 空气未满（且未耗尽）
+        assertTrue(AirBubbleRow.rowVisible(true, 300, 300));   // 亡灵/水生:水下满氧也要显示（用户实测场景）
+        assertTrue(AirBubbleRow.rowVisible(false, 100, 300));  // 出水回氧中
+        assertFalse(AirBubbleRow.rowVisible(false, 300, 300)); // 岸上满氧
+        assertFalse(AirBubbleRow.rowVisible(true, 0, 300));    // 耗尽（原版 0 氧气不画气泡）
+        assertFalse(AirBubbleRow.rowVisible(false, 0, 300));
+    }
 }
