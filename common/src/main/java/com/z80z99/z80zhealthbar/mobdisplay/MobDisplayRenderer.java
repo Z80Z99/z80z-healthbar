@@ -323,13 +323,14 @@ public final class MobDisplayRenderer {
     private static final Map<Integer, Long> OCCLUSION_STAMP = new HashMap<>();
     private static final long OCCLUSION_INTERVAL_MS = 250L;
     /**
-     * 可见比例阈值：> 0 即显示（原 25% 过苛刻——生物贴着池壁/墙角时 8 个采样点可能
-     * 全被判死,但它的头明明看得见,血条却整条消失,用户实测"像隔墙一样"）。
-     * 现在仅当 8 个采样点全部被不透明方块挡住（完全看不见）才隐藏。
+     * 可见比例阈值。陆地：> 0 即显示（仅完全被挡住才隐藏——贴墙角时头可见就该有条）。
+     * 水中：≥ 0.25（至少 2/8 采样可见）——血条走 GUI 通道无深度遮挡,水下放宽会
+     * "隔着地形就冒条",配合可见距离减半收紧（用户实测反馈）。
      */
     private static final float OCCLUSION_MIN_RATIO = 0f;
-    /** 近距早退平方距离(6 格内几乎不可能被完全遮挡,免采样——也消除浅水池边的采样抖动) */
-    private static final double OCCLUSION_NEAR_EARLY_OUT = 36.0;
+    private static final float OCCLUSION_MIN_RATIO_WATER = 0.25f;
+    /** 近距早退平方距离(3 格内不可能被墙完全遮挡,免采样)。曾放宽到 6 格——导致贴脸隔墙也显示,收回 */
+    private static final double OCCLUSION_NEAR_EARLY_OUT = 9.0;
 
     private static boolean occlusionGate(Minecraft mc, LivingEntity entity) {
         // 近距早退:贴脸实体直接放行(射线采样成本与其意义都不存在)
@@ -342,7 +343,11 @@ public final class MobDisplayRenderer {
             OCCLUSION_STAMP.put(entity.getId(), now);
             float ratio = sampleVisibleRatio(mc, entity);
             OCCLUSION_RATIO.put(entity.getId(), ratio);
-            OCCLUSION_CACHE.put(entity.getId(), ratio > OCCLUSION_MIN_RATIO);
+            // 水中收紧(≥2/8 采样可见)、陆地保持宽松(任一采样可见)——见常量注释
+            boolean inWater = entity.isUnderWater();
+            OCCLUSION_CACHE.put(entity.getId(), inWater
+                    ? ratio >= OCCLUSION_MIN_RATIO_WATER
+                    : ratio > OCCLUSION_MIN_RATIO);
         }
         return OCCLUSION_CACHE.getOrDefault(entity.getId(), true);
     }

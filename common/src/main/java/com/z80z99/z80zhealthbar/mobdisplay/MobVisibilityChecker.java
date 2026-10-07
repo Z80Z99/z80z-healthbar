@@ -24,8 +24,10 @@ public final class MobVisibilityChecker {
         if (player.isSpectator()) return 13;
         if (entity.isRemoved() || !entity.isAlive()) return 1;
 
-        // 2. 距离超限（全局统一规则）
-        if (distanceSqr > cfg.maxDistance * cfg.maxDistance) return 2;
+        // 2. 距离超限（全局统一规则）。水中生物可见距离减半——血条改走 GUI 通道后无深度遮挡,
+        //    水下远距离出现显得突兀（用户实测反馈"还没看到实体就出现血条"）
+        double maxDist = cfg.maxDistance * (entity.isUnderWater() ? 0.5 : 1.0);
+        if (distanceSqr > maxDist * maxDist) return 2;
 
         // 3-4. 隐身
         if (entity.isInvisibleTo(player)) return 3;
