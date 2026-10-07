@@ -470,9 +470,8 @@ public final class ModSettingsScreen extends Screen {
 
         // 快捷操作（编辑器入口自"玩家 HUD"页迁来，作为全局落地入口）
         rows.add(new SectionRow("z80zhealthbar.settings.section.quick"));
-        // HUD 管线切换（自定义/长条）——编辑器面板不再提供（切换会整套更换 HUD,组件编辑中误触反人类）
-        rows.add(cycleEnumRow("z80zhealthbar.hud.style", HudStyle.class,
-                ModSettingsScreen::hudStyle, v -> c.overlay.hudStyle = v.name()));
+        // HUD 管线选择已按反馈移除（切换会整套更换 HUD;管线经配置文件 z80zhealthbar.json 的
+        // overlay.hudStyle 仍可设置,编辑器打开时自动切到自定义）
         rows.add(actionRow("z80zhealthbar.settings.open_editor", () -> {
             c.overlay.hudStyle = HudStyle.CUSTOM.name();
             ConfigManager.saveConfig();
@@ -592,8 +591,7 @@ public final class ModSettingsScreen extends Screen {
                         v -> c.plaqueStyle.textOffsetX = v, String::valueOf));
                 rows.add(sliderRow("z80zhealthbar.option.plaqueStyle.textOffsetY", -50, 50, c.plaqueStyle.textOffsetY,
                         v -> c.plaqueStyle.textOffsetY = v, String::valueOf));
-                rows.add(toggleRow("z80zhealthbar.option.plaqueStyle.originalRender", c.plaqueStyle.originalRender,
-                        v -> c.plaqueStyle.originalRender = v));
+                // plaqueStyle.originalRender 为死字段+调试项,已从界面移除
                 // 牌匾此前无动态效果节——整条位移类动画（弹入/抖动/上浮/死亡收缩）对牌匾有效
                 buildFxRows();
             }
@@ -638,8 +636,7 @@ public final class ModSettingsScreen extends Screen {
                         v -> c.barStyle.barTextOffsetY = v, String::valueOf));
                 rows.add(toggleRow("z80zhealthbar.option.barStyle.healthBarHealthColorDynamic", c.barStyle.healthBarHealthColorDynamic,
                         v -> c.barStyle.healthBarHealthColorDynamic = v));
-                rows.add(toggleRow("z80zhealthbar.option.barStyle.originalRender", c.barStyle.originalRender,
-                        v -> c.barStyle.originalRender = v));
+                // originalRender（复刻调试路径）为调试项,已按反馈从界面隐藏（配置文件仍可设置）
                 rows.add(toggleRow("z80zhealthbar.option.barStyle.integerHealthText", c.barStyle.integerHealthText,
                         v -> c.barStyle.integerHealthText = v));
                 buildAddonRows();

@@ -78,6 +78,8 @@ public final class HudLayoutScreen extends Screen {
     private final List<PEntry> panelEntries = new ArrayList<>();
     private int panelX, panelY, panelH;
     private boolean panelDragging;
+    /** 面板滚动条拖拽中 */
+    private boolean panelScrollbarDragging;
     private int panelGrabX, panelGrabY;
     /** 面板滚动（px,平滑逼近目标;滚轮悬停面板时滚动,面板外滚轮仍是组件缩放） */
     private float panelScroll, panelScrollTarget;
@@ -413,16 +415,27 @@ public final class HudLayoutScreen extends Screen {
     private void buildAddPage() {
         panelEntries.add(backRow());
         panelEntries.add(new PEntry("z80zhealthbar.editor.pick_component", null, null));
-        for (String type : HudLayoutConfig.ADDABLE_TYPES) {
-            String dn = Component.translatable("z80zhealthbar.hud.component." + type).getString();
-            panelEntries.add(listRow(() -> dn, "z80zhealthbar.editor.add", () -> {
-                String k = layout().addInstance(type);
-                if (k != null) {
-                    selected = k;
-                    panelPage = PanelPage.EDIT;
-                }
-                rebuildWidgets();
-            }));
+        // 分类分组（多级菜单:状态条 / 文本 / 图标）
+        String[][] cats = {
+                {"z80zhealthbar.editor.cat_bars", "health", "food", "air", "armor", "mount", "experience", "compat"},
+                {"z80zhealthbar.editor.cat_texts", "health_text", "food_text", "air_text", "armor_text",
+                        "mount_text", "xp_text", "text"},
+                {"z80zhealthbar.editor.cat_icons", "health_icon", "food_icon", "air_icon", "armor_icon", "mount_icon"},
+        };
+        for (String[] cat : cats) {
+            panelEntries.add(new PEntry(cat[0], null, null));
+            for (int i = 1; i < cat.length; i++) {
+                String type = cat[i];
+                String dn = Component.translatable("z80zhealthbar.hud.component." + type).getString();
+                panelEntries.add(listRow(() -> dn, "z80zhealthbar.editor.add", () -> {
+                    String k = layout().addInstance(type);
+                    if (k != null) {
+                        selected = k;
+                        panelPage = PanelPage.EDIT;
+                    }
+                    rebuildWidgets();
+                }));
+            }
         }
     }
 
@@ -521,6 +534,38 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(stepper1("z80zhealthbar.editor.text_scale",
                 () -> c.textScale, v -> c.textScale = v, 0.25, 3.0, 0.1));
         panelEntries.add(new PEntry(null, "z80zhealthbar.editor.text_split_note", null));
+        // ---- 动作：拆分子件可取消拆分（回跟随条）;原子文本组件可复制/删除实例 ----
+        panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
+        if (isAtomicSelected()) {
+            panelEntries.add(cycler("z80zhealthbar.editor.duplicate_component",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> {
+                        String nk = layout().duplicateInstance(baseKey(selected));
+                        if (nk != null) {
+                            selected = nk;
+                            rebuildWidgets();
+                        }
+                    }));
+            panelEntries.add(cycler("z80zhealthbar.editor.delete_component",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> {
+                        layout().removeInstance(baseKey(selected));
+                        selected = HudLayoutConfig.HEALTH;
+                        panelPage = PanelPage.LIST;
+                        rebuildWidgets();
+                    }));
+        } else {
+            panelEntries.add(cycler("z80zhealthbar.editor.detach_off",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> {
+                        c.textAnchor = "";
+                        c.textOffsetX = 0;
+                        c.textOffsetY = 0;
+                        selected = baseKey(selected);
+                        panelPage = PanelPage.EDIT;
+                        rebuildWidgets();
+                    }));
+        }
         panelEntries.add(backRow());
     }
 
@@ -564,6 +609,38 @@ public final class HudLayoutScreen extends Screen {
                     c.iconTexture = sources.get(Math.floorMod(i + 1, sources.size()));
                 }));
         panelEntries.add(new PEntry(null, "z80zhealthbar.editor.icon_source_note", null));
+        // ---- 动作：拆分子件可取消拆分;原子图标组件可复制/删除实例 ----
+        panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
+        if (isAtomicSelected()) {
+            panelEntries.add(cycler("z80zhealthbar.editor.duplicate_component",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> {
+                        String nk = layout().duplicateInstance(baseKey(selected));
+                        if (nk != null) {
+                            selected = nk;
+                            rebuildWidgets();
+                        }
+                    }));
+            panelEntries.add(cycler("z80zhealthbar.editor.delete_component",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> {
+                        layout().removeInstance(baseKey(selected));
+                        selected = HudLayoutConfig.HEALTH;
+                        panelPage = PanelPage.LIST;
+                        rebuildWidgets();
+                    }));
+        } else {
+            panelEntries.add(cycler("z80zhealthbar.editor.detach_off",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> {
+                        c.iconAnchor = "";
+                        c.iconOffsetX = 0;
+                        c.iconOffsetY = 0;
+                        selected = baseKey(selected);
+                        panelPage = PanelPage.EDIT;
+                        rebuildWidgets();
+                    }));
+        }
         panelEntries.add(backRow());
     }
 
@@ -895,17 +972,36 @@ public final class HudLayoutScreen extends Screen {
                 : String.valueOf((int) Math.round(v)));
     }
 
-    /** 数值参数行（自定义显示格式，如 OFF / 百分比） */
+    /** 数值参数行（自定义显示格式，如 OFF / 百分比）。值区域为可编辑文本框（输入回车/失焦写回,± 步进保留） */
     private PEntry stepper1Fmt(String labelKey, DoubleSupplier get, DoubleConsumer set,
                                double min, double max, double step, DoubleFunction<String> fmt) {
-        PEntry e = new PEntry(null, labelKey, () -> fmt.apply(get.getAsDouble()));
+        PEntry e = new PEntry(null, labelKey, null);
         int minusX = PANEL_W - 4 - STEP_W * 2 - 2;
         int plusX = PANEL_W - 4 - STEP_W;
-        e.valueRight = minusX - 4;
-        FlatButton minus = new FlatButton(STEP_W, BTN_H, () -> Component.literal("\u2212"), () ->
-                set.accept(Math.max(min, roundStep(get.getAsDouble() - step, step))));
-        FlatButton plus = new FlatButton(STEP_W, BTN_H, () -> Component.literal("+"), () ->
-                set.accept(Math.min(max, roundStep(get.getAsDouble() + step, step))));
+        int boxW = minusX - 4 - 6;
+        EditBox box = new EditBox(font, 0, 0, boxW, BTN_H, Component.translatable(labelKey));
+        box.setMaxLength(24);
+        box.setValue(fmt.apply(get.getAsDouble()));
+        box.setFilter(s -> s.matches("[\\-0-9.%]")); // 数字/负号/小数点/百分号
+        box.setResponder(s -> {
+            try {
+                double v = s.endsWith("%") ? Double.parseDouble(s.substring(0, s.length() - 1))
+                        : Double.parseDouble(s);
+                set.accept(Math.max(min, Math.min(max, v)));
+            } catch (NumberFormatException ignored) {
+                // 非法输入不落盘,保留原值
+            }
+        });
+        addRenderableWidget(box);
+        e.widgets.add(new PW(box, 6));
+        FlatButton minus = new FlatButton(STEP_W, BTN_H, () -> Component.literal("\u2212"), () -> {
+            set.accept(Math.max(min, roundStep(get.getAsDouble() - step, step)));
+            box.setValue(fmt.apply(get.getAsDouble()));
+        });
+        FlatButton plus = new FlatButton(STEP_W, BTN_H, () -> Component.literal("+"), () -> {
+            set.accept(Math.min(max, roundStep(get.getAsDouble() + step, step)));
+            box.setValue(fmt.apply(get.getAsDouble()));
+        });
         addRenderableWidget(minus);
         addRenderableWidget(plus);
         e.widgets.add(new PW(minus, minusX));
@@ -1145,6 +1241,25 @@ public final class HudLayoutScreen extends Screen {
         }
     }
 
+    /** 面板滚动条命中测试（拖拽用;false = 无滚动条或不在轨道上） */
+    private boolean panelScrollbarHit(double mx, double my) {
+        int maxScroll = Math.max(0, panelContentH - panelH);
+        if (maxScroll <= 0) return false;
+        return mx >= panelX + PANEL_W - 7 && mx <= panelX + PANEL_W
+                && my >= panelY + TITLE_H && my <= panelY + panelH;
+    }
+
+    /** 面板滚动条拖拽定位：把滚动中心对到鼠标 y */
+    private void panelScrollbarDrag(double my) {
+        int trackY0 = panelY + TITLE_H + 2, trackY1 = panelY + panelH - 3;
+        int bodyView = Math.max(1, trackY1 - trackY0);
+        int thumbH = Math.min(bodyView, Math.max(10, bodyView * panelH / panelContentH));
+        int maxScroll = Math.max(0, panelContentH - panelH);
+        double frac = (my - trackY0 - thumbH / 2.0) / Math.max(1, bodyView - thumbH);
+        panelScrollTarget = (float) Math.max(0, Math.min(maxScroll, frac * maxScroll));
+        layoutPanel();
+    }
+
     /** 面板文本：节标题 / 行标签 / 行值（右对齐到控件左侧；随滚动位移,视口外不画） */
     private void renderPanelTexts(GuiGraphics g) {
         int scroll = Math.round(panelScroll);
@@ -1201,6 +1316,12 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // 0) 面板滚动条拖拽（优先于面板拖动）
+        if (panelScrollbarHit(mouseX, mouseY)) {
+            panelScrollbarDragging = true;
+            panelScrollbarDrag(mouseY);
+            return true;
+        }
         // 1) 悬浮面板拖动（标题栏或面板空白处）
         if (panelHit(mouseX, mouseY)) {
             panelDragging = true;
@@ -1300,6 +1421,10 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (panelScrollbarDragging) {
+            panelScrollbarDrag(mouseY);
+            return true;
+        }
         if (panelDragging) {
             panelX = (int) mouseX - panelGrabX;
             panelY = (int) mouseY - panelGrabY;
@@ -1349,6 +1474,7 @@ public final class HudLayoutScreen extends Screen {
         draggingAsteorIcon = false;
         draggingAsteorText = false;
         panelDragging = false;
+        panelScrollbarDragging = false;
         return super.mouseReleased(mouseX, mouseY, button);
     }
 
@@ -1368,6 +1494,12 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // Esc = 层级回退：编辑页/类型页/组页/子组件页 → 列表页;列表页再按才退出编辑器
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && panelPage != PanelPage.LIST) {
+            panelPage = PanelPage.LIST;
+            rebuildWidgets();
+            return true;
+        }
         // 文本输入框聚焦时方向键/快捷键归输入框（否则会被组件微调逻辑抢走）
         if (getFocused() instanceof EditBox eb && eb.isFocused()) {
             return super.keyPressed(keyCode, scanCode, modifiers);
