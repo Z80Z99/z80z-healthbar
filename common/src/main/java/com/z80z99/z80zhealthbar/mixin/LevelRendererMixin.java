@@ -33,15 +33,9 @@ public class LevelRendererMixin {
                                           boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer,
                                           LightTexture lightTexture, Matrix4f projectionMatrix, CallbackInfo ci) {
         if (!MobDisplayRenderer.barsPending() && !DamagePopupRenderer.popupsPending()) return;
-        // 此刻 poseStack 即世界视图矩阵（与 GameRenderer 传入 LevelRenderer 时同一状态）
-        Matrix4f view = poseStack.last().pose();
-        if (MobDisplayRenderer.barsPending()) {
-            MobDisplayRenderer.renderBarsGlobal(view);
-        }
-        if (DamagePopupRenderer.popupsPending()) {
-            DamagePopupRenderer.renderGlobal(view);
-        }
-        // 覆盖层顶点提交进缓冲后必须显式冲刷（世界通道内部冲刷不含末帧新提交的顶点）
-        net.minecraft.client.Minecraft.getInstance().renderBuffers().bufferSource().endBatch();
+        // 此刻 poseStack 即世界视图矩阵（与 GameRenderer 传入 LevelRenderer 时同一状态）。
+        // 延迟模式下（Forge 注册了 GUI 通道重放）只暂存矩阵——世界通道末尾的像素会被
+        // 玻璃+水体组合吃掉,GUI 通道（RenderGuiEvent.Post）用暂存矩阵重放才稳定可见
+        MobDisplayRenderer.renderOrStashWorldOverlays(poseStack.last().pose());
     }
 }

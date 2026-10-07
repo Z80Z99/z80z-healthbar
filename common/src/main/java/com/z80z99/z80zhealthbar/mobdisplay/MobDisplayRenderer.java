@@ -168,6 +168,62 @@ public final class MobDisplayRenderer {
     }
 
     /** 血条统一绘制:视锥/遮挡/开关已在前序门控,此处按距离 远→近 绘制 */
+    // ================= 世界覆盖层的 GUI 通道重放 =================
+    // 背景:关卡末尾(TAIL)绘制的覆盖层在"相机→生物之间隔着 玻璃+水体"时被整块吃掉
+    // (实测:露天浅水可见,玻璃缸深水不可见;名字走实体通道可见)——世界通道内没有更晚的
+    // 绘制点,而 GUI 通道像素稳定可见(F3 文字可浮在水面上)。
+    // 机制:平台(Forge)注册 GUI 通道重放后,LevelRendererMixin TAIL 只暂存本帧的世界
+    // 视图/投影矩阵;GUI 渲染末尾(RenderGuiEvent.Post)切换投影重放血条+跳字,再恢复。
+    // Fabric 无此事件 → 保持 TAIL 立即绘制(原路径)。
+
+    /** 平台已注册 GUI 重放（置真后 TAIL 只暂存矩阵） */
+    private static boolean overlayDeferred;
+    private static org.joml.Matrix4f stashedView;
+    private static org.joml.Matrix4f stashedProj;
+
+    public static void setOverlayDeferred(boolean deferred) {
+        overlayDeferred = deferred;
+    }
+
+    /** LevelRendererMixin TAIL 唯一入口:延迟模式只暂存,否则按原路径立即绘制 */
+    public static void renderOrStashWorldOverlays(org.joml.Matrix4f viewMatrix) {
+        if (overlayDeferred && (barsPending() || DamagePopupRenderer.popupsPending())) {
+            stashedView = new org.joml.Matrix4f(viewMatrix);
+            stashedProj = new org.joml.Matrix4f(
+                    com.mojang.blaze3d.systems.RenderSystem.getProjectionMatrix());
+            return;
+        }
+        if (barsPending()) renderBarsGlobal(viewMatrix);
+        if (DamagePopupRenderer.popupsPending()) DamagePopupRenderer.renderGlobal(viewMatrix);
+        net.minecraft.client.Minecraft.getInstance().renderBuffers().bufferSource().endBatch();
+    }
+
+    /** GUI 通道末尾重放:临时切到暂存的世界投影（ModelView 置单位阵——顶点已在视空间）,
+     *  绘制血条+跳字并冲刷,随后恢复 GUI 投影。无暂存(本帧无覆盖层)时为空操作。 */
+    public static void replayWorldOverlays() {
+        if (!overlayDeferred || stashedView == null || stashedProj == null) return;
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        var mvs = com.mojang.blaze3d.systems.RenderSystem.getModelViewStack();
+        var savedProj = new org.joml.Matrix4f(
+                com.mojang.blaze3d.systems.RenderSystem.getProjectionMatrix());
+        mvs.pushPose();
+        mvs.last().pose().identity();
+        com.mojang.blaze3d.systems.RenderSystem.setProjectionMatrix(stashedProj,
+                com.mojang.blaze3d.vertex.VertexSorting.DISTANCE_TO_ORIGIN); // 世界投影:透视按距离排序
+        com.mojang.blaze3d.systems.RenderSystem.applyModelViewMatrix();
+        try {
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+            if (barsPending()) renderBarsGlobal(stashedView);
+            if (DamagePopupRenderer.popupsPending()) DamagePopupRenderer.renderGlobal(stashedView);
+            mc.renderBuffers().bufferSource().endBatch();
+        } finally {
+            mvs.popPose();
+            com.mojang.blaze3d.systems.RenderSystem.setProjectionMatrix(savedProj,
+                com.mojang.blaze3d.vertex.VertexSorting.ORTHOGRAPHIC_Z); // 恢复 GUI 正交投影
+            com.mojang.blaze3d.systems.RenderSystem.applyModelViewMatrix();
+        }
+    }
+
     public static void renderBarsGlobal(org.joml.Matrix4f viewMatrix) {
         if (PENDING_BARS.isEmpty()) return;
         var cfg = ConfigManager.getConfig();
