@@ -68,7 +68,10 @@ public final class ReflectionHelperCompat {
         try {
             Object token = Class.forName(tokenHolderClass).getField(tokenField).get(null);
             Method getCap = player.getClass().getMethod("getCapability", token.getClass());
-            Object cap = getCap.invoke(player, token);
+            Object capOpt = getCap.invoke(player, token);
+            // getCapability 返回 LazyOptional<IThirst> 包装——必须先解包成能力实例,
+            // 直接在包装上反射数据方法必然 IllegalArgumentException（实测踩坑）
+            Object cap = unwrapLazy(capOpt);
             if (cap == null) return null;
             Class<?> itf = Class.forName(capabilityInterface);
             for (String vm : valueMethods) {
@@ -82,5 +85,20 @@ public final class ReflectionHelperCompat {
             Z80ZHealthBar.LOGGER.debug("[Compat] capability unavailable: {}.{}", tokenHolderClass, tokenField);
         }
         return null;
+    }
+
+    /** 解包 Forge LazyOptional（resolve() → Optional → get）;非包装对象原样返回 */
+    private static Object unwrapLazy(Object value) throws Exception {
+        if (value == null) return null;
+        try {
+            Object opt = value.getClass().getMethod("resolve").invoke(value);
+            if (opt == null) return value;
+            if ((Boolean) opt.getClass().getMethod("isPresent").invoke(opt)) {
+                return opt.getClass().getMethod("get").invoke(opt);
+            }
+            return null; // capability 未附加
+        } catch (NoSuchMethodException e) {
+            return value; // 没有 resolve() —— 不是 LazyOptional
+        }
     }
 }
