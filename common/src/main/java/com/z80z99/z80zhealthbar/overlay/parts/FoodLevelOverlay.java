@@ -96,21 +96,54 @@ public class FoodLevelOverlay extends SimpleBarOverlay {
 
         drawBarCard(graphics, left, top, barWidth, barH);
 
-        // 饱食度填充（统一内宽填充 + 高光/压暗；低饥饿抖动经 yOffset）
-        HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, fillW,
-                params.fillColor, params.verticalShift);
-
-        // 饱和度覆盖（金色叠加在食物条之上，原版逻辑;平滑收缩演示被消耗）
-        if (cfg.displaySaturation && saturation > 0) {
-            float satMax = (float)(cfg.fullSaturationValue > 0 ? cfg.fullSaturationValue : 20);
-            float satDisp = dxCfg.enabled && dxCfg.smooth
+        // 饱和度显示方式（长条管线组件级可选;0=覆盖 1=右侧追加(吸收式) 2=顶部细条 3=底部细条 4=关闭）
+        int satMode = Math.max(0, Math.min(4, BarLayouts.saturationMode("food")));
+        boolean satVisible = cfg.displaySaturation && satMode != 4 && saturation > 0;
+        float satMax = (float)(cfg.fullSaturationValue > 0 ? cfg.fullSaturationValue : 20);
+        float satDisp = 0f;
+        if (satVisible) {
+            satDisp = dxCfg.enabled && dxCfg.smooth
                     ? Math.max(0f, Math.min(1f, com.z80z99.z80zhealthbar.mobdisplay.BarFx.tick(
                             HudPreviewState.fxKeySat(player.getId()),
                             Math.max(0f, Math.min(1f, saturation / satMax)), false, nowMs).display()))
                     : Math.max(0f, Math.min(1f, saturation / satMax));
-            int satW = (int) Math.round(satDisp * innerW);
-            HudBarPainter.drawSegment(graphics, left, top, barWidth, barH, 0, satW,
-                    ColorHelper.parseColor(colors.saturation));
+        }
+        int goldColor = ColorHelper.parseColor(colors.saturation);
+
+        if (satVisible && satMode == 1) {
+            // 右侧追加（与血条吸收段同几何）：容量扩展 total = max(上限, 饱食+饱和),
+            // 棕段=饱食/total、金段接其后
+            float total = (float) Math.max(params.maxValue, foodLevel + saturation);
+            fillW = (int) Math.round(Math.max(0, Math.min(1,
+                    foodDisp * params.maxValue / total)) * innerW);
+            int satEnd = (int) Math.round(Math.max(0, Math.min(1,
+                    (foodDisp * params.maxValue + satDisp * satMax) / total)) * innerW);
+            HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, fillW,
+                    params.fillColor, params.verticalShift);
+            HudBarPainter.drawSegment(graphics, left, top, barWidth, barH,
+                    fillW, Math.min(innerW, satEnd), goldColor);
+        } else {
+            // 饱食度填充（统一内宽填充 + 高光/压暗；低饥饿抖动经 yOffset）
+            HudBarPainter.drawFillWidth(graphics, left, top, barWidth, barH, fillW,
+                    params.fillColor, params.verticalShift);
+            if (satVisible) {
+                int satW = (int) Math.round(satDisp * innerW);
+                if (satMode == 2 || satMode == 3) {
+                    // 顶部/底部细条：内嵌细带（不遮主填充,饱和度作为"薄缓冲层"呈现）
+                    int ih = HudBarPainter.innerHeight(barH);
+                    int stripH = Math.max(1, ih / 3);
+                    int y0 = HudBarPainter.fillTop(top, barH)
+                            + (satMode == 3 ? ih - stripH : 0) + params.verticalShift;
+                    if (satW > 0) {
+                        graphics.fill(left + HudBarPainter.INSET, y0,
+                                left + HudBarPainter.INSET + Math.min(innerW, satW), y0 + stripH, goldColor);
+                    }
+                } else {
+                    // 覆盖（AppleSkin 式,默认）：从左侧覆盖在饱食度填充之上
+                    HudBarPainter.drawSegment(graphics, left, top, barWidth, barH, 0,
+                            Math.min(innerW, satW), goldColor);
+                }
+            }
         }
 
         // 消耗值预告：exhaustion→4 临近一次扣除（扣饱和度/饱食度）;>3 时条尾微光呼吸,

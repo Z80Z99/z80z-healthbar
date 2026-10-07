@@ -80,6 +80,8 @@ public class HudLayoutConfig {
         public int idleFadeSecs = 0;
         /** 旋转角度（度,-180..180,绕组件中心;0 = 不旋转） */
         public int rotation = 0;
+        /** 饱和度显示方式（仅饱食度类组件）：0=覆盖 1=右侧追加(吸收式) 2=顶部细条 3=底部细条 4=关闭 */
+        public int saturationMode = 0;
 
         public ComponentMode modeParsed() {
             try {
@@ -147,6 +149,7 @@ public class HudLayoutConfig {
             c.iconOffsetX = iconOffsetX; c.iconOffsetY = iconOffsetY;
             c.group = group; c.iconTexture = iconTexture;
             c.opacity = opacity; c.idleFadeSecs = idleFadeSecs; c.rotation = rotation;
+            c.saturationMode = saturationMode;
             return c;
         }
     }

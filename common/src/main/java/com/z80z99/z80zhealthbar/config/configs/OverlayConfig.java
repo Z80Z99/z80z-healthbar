@@ -50,5 +50,7 @@ public class OverlayConfig {
         public int iconOffX, iconOffY;
         public boolean showText = true;
         public int textOffX, textOffY;
+        /** 饱和度显示方式（仅饱食度条）：0=覆盖 1=右侧追加(吸收式) 2=顶部细条 3=底部细条 4=关闭 */
+        public int saturationMode = 0;
     }
 }

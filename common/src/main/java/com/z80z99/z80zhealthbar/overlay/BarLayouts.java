@@ -55,6 +55,12 @@ public final class BarLayouts {
         return p == null ? new int[]{0, 0} : new int[]{p.textOffX, p.textOffY};
     }
 
+    /** 饱和度显示方式（仅饱食度条;缺省 0=覆盖） */
+    public static int saturationMode(String key) {
+        OverlayConfig.BarFreePos p = ConfigManager.getConfig().overlay.barFreePos.get(key);
+        return p == null ? 0 : p.saturationMode;
+    }
+
     /** 状态图标相对条默认位（条左外 -11px）的独立偏移——图标与条拆开摆放 */
     public static int[] iconOffset(String key) {
         OverlayConfig.BarFreePos p = ConfigManager.getConfig().overlay.barFreePos.get(key);

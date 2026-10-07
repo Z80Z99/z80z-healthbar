@@ -540,15 +540,39 @@ public final class CustomHudRenderer {
                     ? ColorHelper.parseColor(colors.foodHunger)
                     : ColorHelper.parseColor(colors.foodNormal);
             int innerW = HudBarPainter.innerWidth(w);
+            // 饱和度显示方式（组件级可选;0=覆盖 1=右侧追加(吸收式) 2=顶部细条 3=底部细条 4=关闭）
+            int satMode = Math.max(0, Math.min(4, c.saturationMode));
+            boolean satVisible = sat > 0.01f && satMode != 4;
+            int goldColor = ColorHelper.parseColor(colors.saturation);
             int foodW = Math.round(foodDisp * innerW);
-            HudBarPainter.drawFillWidth(g, 0, 0, w, h, foodW, color);
-            // 饱和度金段：叠在饱食度填充之后（生命条吸收段的语义——被消耗时随平滑收缩,
-            // 原版逻辑中动作消耗优先扣饱和度）
-            if (sat > 0.01f) {
-                int satW = Math.round(satDisp * innerW);
-                if (satW > 0) {
-                    HudBarPainter.drawSegment(g, 0, 0, w, h, 0, Math.min(innerW, satW),
-                            ColorHelper.parseColor(colors.saturation));
+            if (satVisible && satMode == 1) {
+                // 右侧追加（与血条吸收段同几何）：容量扩展 total = max(上限, 饱食+饱和),
+                // 棕段=饱食/total、金段接其后——"把缓冲层放在后面"的可选样式
+                float total = Math.max(max, food + sat);
+                foodW = Math.round(Mth.clamp(foodDisp * max / total, 0f, 1f) * innerW);
+                int satEnd = Math.round(Mth.clamp((foodDisp * max + satDisp * 20f) / total, 0f, 1f) * innerW);
+                HudBarPainter.drawFillWidth(g, 0, 0, w, h, foodW, color);
+                HudBarPainter.drawSegment(g, 0, 0, w, h, foodW, Math.min(innerW, satEnd), goldColor);
+            } else {
+                HudBarPainter.drawFillWidth(g, 0, 0, w, h, foodW, color);
+                if (satVisible) {
+                    int satW = Math.round(satDisp * innerW);
+                    if (satMode == 2 || satMode == 3) {
+                        // 顶部/底部细条：内嵌细带（不遮主填充,饱和度作为"薄缓冲层"呈现）
+                        int ih = HudBarPainter.innerHeight(h);
+                        int stripH = Math.max(1, ih / 3);
+                        int y0 = HudBarPainter.fillTop(0, h)
+                                + (satMode == 3 ? ih - stripH : 0);
+                        if (satW > 0) {
+                            g.fill(HudBarPainter.INSET, y0,
+                                    HudBarPainter.INSET + Math.min(innerW, satW), y0 + stripH, goldColor);
+                        }
+                    } else {
+                        // 覆盖（AppleSkin 式,默认）：从左侧覆盖在饱食度填充之上
+                        if (satW > 0) {
+                            HudBarPainter.drawSegment(g, 0, 0, w, h, 0, Math.min(innerW, satW), goldColor);
+                        }
+                    }
                 }
             }
             // 消耗值预告：exhaustion→4 临近一次扣除（扣饱和度/饱食度）;>3 时条尾微光呼吸,

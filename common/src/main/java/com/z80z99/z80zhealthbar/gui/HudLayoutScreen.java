@@ -871,6 +871,13 @@ public final class HudLayoutScreen extends Screen {
                 () -> p.y, v -> p.y = (int) Math.round(v), 0, 2000, 1));
         panelEntries.add(toggle("z80zhealthbar.editor.asteor.icon",
                 () -> p.showIcon, v -> p.showIcon = v));
+        // 饱和度显示方式（仅饱食度条;0=覆盖 1=右侧追加 2=顶部细条 3=底部细条 4=关闭）
+        if ("food".equals(selectedAsteorBar)) {
+            panelEntries.add(cycler("z80zhealthbar.editor.sat_mode",
+                    () -> Component.translatable("z80zhealthbar.editor.sat_mode."
+                            + Math.max(0, Math.min(4, p.saturationMode))).getString(),
+                    () -> p.saturationMode = (p.saturationMode + 1) % 5));
+        }
         panelEntries.add(stepper("z80zhealthbar.editor.asteor.icon_x",
                 () -> p.iconOffX, v -> p.iconOffX = (int) Math.round(v), -500, 500, 1));
         panelEntries.add(stepper("z80zhealthbar.editor.asteor.icon_y",
@@ -922,6 +929,13 @@ public final class HudLayoutScreen extends Screen {
         }
         panelEntries.add(toggle("z80zhealthbar.editor.stack",
                 () -> c.stack, v -> c.stack = v));
+        // 饱和度显示方式（仅饱食度组件;0=覆盖 1=右侧追加 2=顶部细条 3=底部细条 4=关闭）
+        if (HudLayoutConfig.typeOf(selected, c).equals(HudLayoutConfig.FOOD)) {
+            panelEntries.add(cycler("z80zhealthbar.editor.sat_mode",
+                    () -> Component.translatable("z80zhealthbar.editor.sat_mode."
+                            + Math.max(0, Math.min(4, c.saturationMode))).getString(),
+                    () -> c.saturationMode = (c.saturationMode + 1) % 5));
+        }
         panelEntries.add(cycler("z80zhealthbar.editor.anchor",
                 () -> Component.translatable("z80zhealthbar.editor.anchor."
                         + c.anchorParsed().name().toLowerCase(Locale.ROOT)).getString(),
