@@ -42,6 +42,9 @@ public final class MobHealthBarStyle {
     private static final int INNER_W = 121, FILL_H = 5;
     private static final int HEART_ROW_SIZE = 10, HEART_SIZE = 9, HEART_ROW_GAP = 1;
 
+    /** 外框条高度（像素）——附加行定位需按条底避让,故公开 */
+    public static int frameHeight() { return FRAME_H; }
+
     private MobHealthBarStyle() {}
 
     public static void render(EntityStatusSnapshot snap, PoseStack poseStack,

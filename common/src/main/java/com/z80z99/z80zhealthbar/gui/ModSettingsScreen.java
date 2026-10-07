@@ -645,13 +645,16 @@ public final class ModSettingsScreen extends Screen {
         }
     }
 
-    /** 附加行（条形样式 1/3 通用）：护甲/韧性/氧气图标行 */
+    /** 附加行（条形样式 1/3 通用）：护甲/韧性/氧气图标行——排布在主条（含数值行）下方 */
     private void buildAddonRows() {
         var c = cfg();
         rows.add(new SectionRow("z80zhealthbar.settings.section.addons"));
+        rows.add(new TextRow("z80zhealthbar.option.addons.note"));
         rows.add(toggleRow("z80zhealthbar.option.addons.armorRow", c.entityAddons.armorRow, v -> c.entityAddons.armorRow = v));
         rows.add(toggleRow("z80zhealthbar.option.addons.toughnessRow", c.entityAddons.toughnessRow, v -> c.entityAddons.toughnessRow = v));
         rows.add(toggleRow("z80zhealthbar.option.addons.airRow", c.entityAddons.airRow, v -> c.entityAddons.airRow = v));
+        rows.add(sliderRow("z80zhealthbar.option.addons.rowGap", 0, 16, c.entityAddons.rowGap,
+                v -> c.entityAddons.rowGap = v, String::valueOf));
     }
 
     /** 动态效果（实体条样式 1/3 与玩家 HUD 血条通用）：平滑/残影/闪白/数字动效 + 第二层特效 */

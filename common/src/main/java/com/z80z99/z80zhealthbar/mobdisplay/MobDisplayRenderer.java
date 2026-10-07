@@ -157,7 +157,12 @@ public final class MobDisplayRenderer {
                 continue;
             }
             switch (st.style()) {
-                case MOBHEALTHBAR -> MobHealthBarStyle.render(st.snap(), pose, bs, 0xF000F0, st.alpha());
+                case MOBHEALTHBAR -> {
+                    MobHealthBarStyle.render(st.snap(), pose, bs, 0xF000F0, st.alpha());
+                    // 附加行（护甲/韧性/氧气）此前仅样式3 生效——样式1 也按同一实体附加组件开关渲染
+                    // （设置页说明与工具提示均承诺"样式1/3 通用"）
+                    renderStyleAAddonRows(st.snap(), pose, bs, 0xF000F0, st.alpha(), font);
+                }
                 case MOBPLAQUES -> renderPlaques(st.snap(), st.entity(), pose, bs, 0, 0xF000F0, st.alpha(), font);
                 case ASTEORBAR -> {
                     renderAsteorBar(st.entity(), st.snap(), pose, bs, 0, st.alpha(), font);
@@ -257,12 +262,12 @@ public final class MobDisplayRenderer {
         poseStack.popPose();
     }
 
-    /** 样式 A/C 下主动开启的附加牌匾行（armor/toughness/air），叠加在主条下方 */
-    private static void renderAddonPlaqueRows(LivingEntity entity, EntityStatusSnapshot snap, PoseStack poseStack,
-                                              MultiBufferSource buffer, float partialTick,
-                                              int packedLight, float alpha, Font font) {
-        var cfg = ConfigManager.getConfig();
-        var addons = cfg.entityAddons;
+    /** 附加行组统一紧凑尺度（牌匾尺度的一半） */
+    private static final float ADDON_ROW_SCALE = 0.025f * 0.5f;
+
+    /** 附加行清单（entityAddons 开关 + 各行自身可见性）：护甲 / 韧性 / 氧气 */
+    private static List<IMobDisplayRenderer> collectAddonRows(EntityStatusSnapshot snap) {
+        var addons = ConfigManager.getConfig().entityAddons;
         List<IMobDisplayRenderer> rows = new ArrayList<>(3);
         var armor = getRenderer("armor");
         var air = getRenderer("air");
@@ -270,9 +275,59 @@ public final class MobDisplayRenderer {
         if (addons.armorRow && armor.wantsToRender(snap)) rows.add(armor);
         if (addons.toughnessRow && toughness.wantsToRender(snap)) rows.add(toughness);
         if (addons.airRow && air.wantsToRender(snap)) rows.add(air);
-        if (rows.isEmpty()) return;
+        return rows;
+    }
 
-        float scale = 0.025f * 0.5f; // 附加行用牌匾尺度（plaqueScale 一半的紧凑尺寸）
+    /** 样式 C 附加牌匾行：锚点 = 条挂点（含条像素偏移）,行起点在条下方 2px */
+    private static void renderAddonPlaqueRows(LivingEntity entity, EntityStatusSnapshot snap, PoseStack poseStack,
+                                              MultiBufferSource buffer, float partialTick,
+                                              int packedLight, float alpha, Font font) {
+        List<IMobDisplayRenderer> rows = collectAddonRows(snap);
+        if (rows.isEmpty()) return;
+        var barCfg = ConfigManager.getConfig().barStyle;
+        // 条像素偏移同样带动附加行（条移动时整组跟随,否则附加行与条脱节）
+        float pxPerPx = 0.025f * (float) barCfg.barScale;
+        poseStack.pushPose();
+        poseStack.translate(barCfg.barPixelOffsetX * pxPerPx,
+                snap.entityHeight + (float) barCfg.barOffsetY + barCfg.barPixelOffsetY * pxPerPx, 0);
+        poseStack.mulPose(Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation());
+        poseStack.scale(-ADDON_ROW_SCALE, -ADDON_ROW_SCALE, ADDON_ROW_SCALE); // 原版名牌约定
+        DisplayAnimation.applyScreenFx(poseStack, snap); // 附加行组跟随主条整条动画
+        poseStack.translate(0, 2, 0); // 主条下方
+        drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows);
+        poseStack.popPose();
+    }
+
+    /** 样式 A（贴图条）附加牌匾行：按样式1 的条几何换算锚点——条底 + 数值行 + 2px 行距,
+     *  并计入 scaleBar 缩放补偿与条像素偏移；心形排（barType 1）从锚点上堆,下缘即锚点。 */
+    private static void renderStyleAAddonRows(EntityStatusSnapshot snap, PoseStack poseStack,
+                                              MultiBufferSource buffer, int packedLight, float alpha, Font font) {
+        List<IMobDisplayRenderer> rows = collectAddonRows(snap);
+        if (rows.isEmpty()) return;
+        var cfg = ConfigManager.getConfig().styleA;
+        float s1 = 0.025f * (float) cfg.scaleBar; // 样式1 像素 → 方块
+        float hs = cfg.scaleBarHeight > 0 ? (float) cfg.scaleBarHeight : 1f;
+        float barBottom = cfg.barType == 1 ? 0f : (cfg.barType == 2 ? 11f : MobHealthBarStyle.frameHeight()) * hs;
+        float numScale = (float) (cfg.scaleNums * 0.7);
+        float textTop = cfg.barType == 1 ? 2f : barBottom + 2f; // 与 renderTexts 的 ty 同式
+        float below = (cfg.showHp ? textTop + 8f * numScale : barBottom) + 2f;
+        // 与 MobHealthBarStyle 相同的 scaleBar 高度补偿（条下沉/上移时附加行同随）
+        float compPx = cfg.scaleBar < 1.0 ? 1.5f * (1f - (float) cfg.scaleBar) / 0.025f
+                : cfg.scaleBar > 1.0 ? -((float) cfg.scaleBar - 1f) * 1.5f / 0.025f : 0f;
+        poseStack.pushPose();
+        poseStack.translate(cfg.offsetX * s1, snap.entityHeight + cfg.heightOffset
+                + (compPx + (float) cfg.offsetY + below) * s1, 0);
+        poseStack.mulPose(Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation());
+        poseStack.scale(-ADDON_ROW_SCALE, -ADDON_ROW_SCALE, ADDON_ROW_SCALE); // 原版名牌约定
+        DisplayAnimation.applyScreenFx(poseStack, snap); // 附加行组跟随主条整条动画
+        drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows);
+        poseStack.popPose();
+    }
+
+    /** 附加行绘制：调用方已完成定位与紧凑尺度缩放,y=0 = 行组顶部;行距 = entityAddons.rowGap */
+    private static void drawAddonRows(EntityStatusSnapshot snap, PoseStack poseStack, MultiBufferSource buffer,
+                                      float alpha, Font font, int packedLight, List<IMobDisplayRenderer> rows) {
+        int rowGap = ConfigManager.getConfig().entityAddons.rowGap;
         int totalIconW = 0;
         for (IMobDisplayRenderer r : rows) totalIconW += r.getPlaqueWidth(font, snap) + 2;
         int maxTextW = 0;
@@ -282,17 +337,12 @@ public final class MobDisplayRenderer {
         }
         int totalW = totalIconW + maxTextW;
 
-        poseStack.pushPose();
-        poseStack.translate(0, snap.entityHeight + (float) cfg.barStyle.barOffsetY, 0);
-        poseStack.mulPose(Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation());
-        poseStack.scale(-scale, -scale, scale); // 原版名牌约定
-        DisplayAnimation.applyScreenFx(poseStack, snap); // 附加行组跟随主条整条动画
         int rowX = -totalW / 2;
-        int rowY = 2; // 主条下方
+        int rowY = 0;
         int i = 0;
         for (IMobDisplayRenderer r : rows) {
-            if (i > 0) rowY += addons.rowGap;
-            r.renderPlaque(poseStack, buffer, snap, rowX, rowY, font, packedLight, alpha, scale);
+            if (i > 0) rowY += rowGap;
+            r.renderPlaque(poseStack, buffer, snap, rowX, rowY, font, packedLight, alpha, ADDON_ROW_SCALE);
             String text = r.getValueText(snap);
             if (text != null) {
                 int color = ColorHelper.modifyAlpha(r.getValueColor(snap), (int) (alpha * 255));
@@ -302,7 +352,6 @@ public final class MobDisplayRenderer {
             rowX += r.getPlaqueWidth(font, snap) + 2;
             i++;
         }
-        poseStack.popPose();
     }
 
     /** 样式 B：Mob Plaques 牌匾(实体绑定渲染,与原版名牌同管线;行换行 + 距离缩放 + 背景盒 + 数值文本) */
@@ -483,7 +532,8 @@ public final class MobDisplayRenderer {
             plaques.add(new OrigPlaque(healthValue + "x", heartIconU(snap), heartIconV(),
                     transitionedColor(ratio), true, false));
         }
-        if (plaqueCfg.showAirRow && snap.isUnderwater()) {
+        if (plaqueCfg.showAirRow && snap.isUnderwater() && snap.airSupply > 0) {
+            // 氧气耗尽（0）不占行：原版 0 氧气不显示气泡/计数（与附加行同一判据）
             plaques.add(new OrigPlaque(Math.max(0, snap.airSupply / 20) + "x", 16, 18, 0xFFFFFF, false, false));
         }
         if (plaqueCfg.showArmorRow && snap.hasArmor() && snap.armor > 0) {

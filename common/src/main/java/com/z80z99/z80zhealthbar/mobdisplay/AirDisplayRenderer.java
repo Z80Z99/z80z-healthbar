@@ -3,6 +3,7 @@ package com.z80z99.z80zhealthbar.mobdisplay;
 import com.z80z99.z80zhealthbar.Z80ZHealthBar;
 import com.z80z99.z80zhealthbar.config.ConfigManager;
 import com.z80z99.z80zhealthbar.status.EntityStatusSnapshot;
+import com.z80z99.z80zhealthbar.util.AirBubbleRow;
 import com.z80z99.z80zhealthbar.util.ColorHelper;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -11,7 +12,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
 import org.joml.Matrix4f;
 
-/** 氧气渲染器：条形（附加行）+ 原版气泡牌匾行；仅水下（air < maxAir）显示 */
+/** 氧气渲染器：条形（附加行）+ 原版气泡牌匾行；空气未满时显示（耗尽后整行消失） */
 public class AirDisplayRenderer implements IMobDisplayRenderer {
     private static final ResourceLocation KEY = new ResourceLocation(Z80ZHealthBar.MOD_ID, "air");
     private static final ResourceLocation ICONS =
@@ -22,7 +23,9 @@ public class AirDisplayRenderer implements IMobDisplayRenderer {
 
     @Override
     public boolean wantsToRender(EntityStatusSnapshot snap) {
-        return snap.isUnderwater();
+        // 空气未满（isUnderwater 即 air < max：水下掉氧或出水回氧）且还有残余氧气。
+        // 氧气耗尽（0）整行消失——原版 0 氧气不画任何气泡；此前无此判据,耗尽后整行仍在
+        return snap.isUnderwater() && snap.airSupply > 0;
     }
 
     @Override
@@ -51,24 +54,18 @@ public class AirDisplayRenderer implements IMobDisplayRenderer {
     public void renderPlaque(PoseStack poseStack, MultiBufferSource buffer,
                               EntityStatusSnapshot snap, int x, int y,
                               Font font, int packedLight, float alpha, float worldScale) {
-        int curBubbles = (int) Math.ceil(snap.airSupply / (float) snap.maxAirSupply * MAX_BUBBLES);
-        curBubbles = Math.min(curBubbles, MAX_BUBBLES);
+        // 原版气泡语义（见 AirBubbleRow）：满泡 + 至多一个正在破裂的边界泡,其余槽位不绘制。
+        // 此前把"将破"贴图铺满 10 格当槽底 → 破掉的气泡看起来永久残留（实测"泡沫爆裂后不消失"）
+        int[] counts = AirBubbleRow.counts(snap.airSupply, snap.maxAirSupply, MAX_BUBBLES);
+        int full = counts[0];
+        int count = full + counts[1];
+        if (count <= 0) return; // 空槽/零氧气：不画任何气泡
 
         Matrix4f matrix = poseStack.last().pose();
         VertexConsumer builder = buffer.getBuffer(ModRenderType.plaqueIcon(ICONS));
-
-        // 原版 icons.png 仅两种气泡：满 (16,18)、将破 (25,18)；无空槽，用将破气泡做槽底
-        for (int i = 0; i < MAX_BUBBLES; i++) {
-            ArmorDisplayRenderer.icon(builder, matrix, x + i * 9, y, 25, 18);
-        }
-        if (curBubbles > 0) {
-            poseStack.pushPose();
-            poseStack.translate(0, 0, -0.02f / Math.max(1e-5f, worldScale));
-            Matrix4f mFill = poseStack.last().pose();
-            for (int i = 0; i < curBubbles; i++) {
-                ArmorDisplayRenderer.icon(builder, mFill, x + i * 9, y, 16, 18);
-            }
-            poseStack.popPose();
+        for (int i = 0; i < count; i++) {
+            // 原版 icons.png 仅两种气泡：满 (16,18)、将破 (25,18)
+            ArmorDisplayRenderer.icon(builder, matrix, x + i * 9, y, i < full ? 16 : 25, 18);
         }
     }
 

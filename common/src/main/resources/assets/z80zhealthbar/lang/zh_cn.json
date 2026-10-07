@@ -249,9 +249,9 @@
   "z80zhealthbar.option.plaqueStyle.plaqueBackground.tooltip": "在牌匾后绘制半透明底色，提升亮背景下的可读性。",
   "z80zhealthbar.option.plaqueStyle.behindWalls.tooltip": "开启后隔墙也显示牌匾（跳过遮挡检测，最流畅）；关闭则只显示视线可达的实体。",
   "z80zhealthbar.option.plaqueStyle.originalRender.tooltip": "调试选项：按 Mob Plaques 反编译源逐行复刻渲染。普通使用无需开启。",
-  "z80zhealthbar.option.addons.armorRow.tooltip": "样式1/3 下在血条下方追加护甲图标行（样式2 的护甲行由牌匾设置自身控制）。",
-  "z80zhealthbar.option.addons.toughnessRow.tooltip": "样式1/3 下在血条下方追加韧性图标行。",
-  "z80zhealthbar.option.addons.airRow.tooltip": "样式1/3 下在血条下方追加氧气气泡行（水下显示）。",
+  "z80zhealthbar.option.addons.armorRow.tooltip": "样式1/3（条形类样式）通用：在血条（含数值行）下方追加护甲图标行，有护甲值才显示。样式2 的护甲行在「牌匾」页用 showArmorRow 单独控制。",
+  "z80zhealthbar.option.addons.toughnessRow.tooltip": "样式1/3（条形类样式）通用：在血条（含数值行）下方追加韧性图标行，有韧性值才显示。样式2 的韧性行在「牌匾」页用 showToughnessRow 单独控制。",
+  "z80zhealthbar.option.addons.airRow.tooltip": "样式1/3（条形类样式）通用：在血条（含数值行）下方追加氧气气泡行，空气未满时显示，氧气耗尽整行消失（原版气泡语义）。样式2 的氧气行在「牌匾」页用 showAirRow 单独控制。",
   "z80zhealthbar.option.damagePopup.enabled.tooltip": "伤害跳字总开关：对实体造成伤害时在其头顶弹出伤害数字。",
   "z80zhealthbar.option.damagePopup.theme.tooltip": "配色主题：APEX=护盾蓝/生命白/击杀红；TACTICAL=单色白+大额金；WARFRAME=按伤害类型配色；CLASSIC=经典类型配色；MINIMAL=极简白。",
   "z80zhealthbar.option.damagePopup.motion.tooltip": "运动方式：RISE=上升漂浮；ARC=弹出坠落；STACK=塔式堆叠（旧上新下）；CUMULATIVE=多段伤害合并累计。",
@@ -625,5 +625,8 @@
   "z80zhealthbar.option.styleA.scaleBarWidth.label": "宽度拉伸",
   "z80zhealthbar.option.styleA.scaleBarWidth.tooltip": "仅横向拉伸血条（框条/宽条/心排），不影响高度与文字；100%=原始宽度。用于“只调宽不调高”。",
   "z80zhealthbar.option.styleA.scaleBarHeight.label": "高度拉伸",
-  "z80zhealthbar.option.styleA.scaleBarHeight.tooltip": "仅纵向拉伸血条，不影响宽度与文字；100%=原始高度，数值文本随条底移动。用于“只调高不调宽”。"
+  "z80zhealthbar.option.styleA.scaleBarHeight.tooltip": "仅纵向拉伸血条，不影响宽度与文字；100%=原始高度，数值文本随条底移动。用于“只调高不调宽”。",
+  "z80zhealthbar.option.addons.note": "这三项对样式1 与样式3 共用（同为条形类）；样式2（牌匾）的附加行由「牌匾」页的三个行开关单独控制。",
+  "z80zhealthbar.option.addons.rowGap": "附加行行距",
+  "z80zhealthbar.option.addons.rowGap.tooltip": "多个附加行之间的像素间距（只开一行时无效果）。"
 }
