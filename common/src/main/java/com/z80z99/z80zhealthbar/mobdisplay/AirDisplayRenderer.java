@@ -83,6 +83,24 @@ public class AirDisplayRenderer implements IMobDisplayRenderer {
     @Override
     public String getValueText(EntityStatusSnapshot snap) { return String.valueOf(snap.airSupply); }
 
+    @Override
+    public void renderBadge(PoseStack poseStack, MultiBufferSource buffer,
+                             EntityStatusSnapshot snap, int x, int y,
+                             int packedLight, float alpha) {
+        var builder = buffer.getBuffer(ModRenderType.plaqueIcon(ICONS));
+        ArmorDisplayRenderer.icon(builder, poseStack.last().pose(), x, y, 16, 18); // 满气泡
+    }
+
+    /** 徽章数值 = 气泡数（与图标语义一致;tick 数如 182 玩家无法直读） */
+    @Override
+    public String getBadgeValue(EntityStatusSnapshot snap) {
+        int[] c = AirBubbleRow.counts(snap.airSupply, snap.maxAirSupply, MAX_BUBBLES);
+        return String.valueOf(c[0] + c[1]);
+    }
+
+    @Override
+    public int getValueColor(EntityStatusSnapshot snap) { return 0xFFA8D8FF; } // 冰蓝
+
     private void drawRect(Matrix4f m, MultiBufferSource b, int x, int y, int w, int h, int c) {
         if (w <= 0 || h <= 0) return;
         VertexConsumer v = b.getBuffer(ModRenderType.barRect());

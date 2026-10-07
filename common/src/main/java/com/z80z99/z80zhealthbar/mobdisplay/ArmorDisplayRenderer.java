@@ -106,6 +106,17 @@ public class ArmorDisplayRenderer implements IMobDisplayRenderer {
     @Override
     public String getValueText(EntityStatusSnapshot snap) { return String.valueOf(snap.armor); }
 
+    @Override
+    public void renderBadge(PoseStack poseStack, MultiBufferSource buffer,
+                             EntityStatusSnapshot snap, int x, int y,
+                             int packedLight, float alpha) {
+        var builder = buffer.getBuffer(ModRenderType.plaqueIcon(ICONS));
+        icon(builder, poseStack.last().pose(), x, y, 34, 9); // 满护甲图标,原色
+    }
+
+    @Override
+    public int getValueColor(EntityStatusSnapshot snap) { return 0xFFE2E8F0; } // 钢白
+
     private void drawRect(Matrix4f m, MultiBufferSource b, int x, int y, int w, int h, int c) {
         if (w <= 0 || h <= 0) return;
         VertexConsumer v = b.getBuffer(ModRenderType.barRect());

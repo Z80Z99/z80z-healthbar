@@ -77,6 +77,18 @@ public class ToughnessDisplayRenderer implements IMobDisplayRenderer {
     @Override
     public String getValueText(EntityStatusSnapshot snap) { return String.valueOf(snap.armorToughness); }
 
+    @Override
+    public void renderBadge(PoseStack poseStack, MultiBufferSource buffer,
+                             EntityStatusSnapshot snap, int x, int y,
+                             int packedLight, float alpha) {
+        // 原版无韧性专属图标:护甲图标整体染青蓝,与护甲行明确区分（与旧牌匾行同一语义）
+        var builder = buffer.getBuffer(ModRenderType.tintedIcon(ICONS));
+        ArmorDisplayRenderer.iconTinted(builder, poseStack.last().pose(), x, y, 34, 9, 0xFF7FD4F0);
+    }
+
+    @Override
+    public int getValueColor(EntityStatusSnapshot snap) { return 0xFF7FD4F0; } // 青
+
     private static void drawRect(VertexConsumer v, Matrix4f m, int x, int y, int w, int h, int c) {
         if (w <= 0 || h <= 0) return;
         v.vertex(m, x, y, 0).color(c).endVertex();

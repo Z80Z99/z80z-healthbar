@@ -504,32 +504,52 @@ public final class MobDisplayRenderer {
         poseStack.popPose();
     }
 
-    /** 附加行绘制：调用方已完成定位与紧凑尺度缩放,yStart = 行组顶部（**单行**排列）。
-     *  三行同行内水平排布（护甲/韧性/氧气成一排,行间距 2px）,纵向只由 yStart 决定——
-     *  旧实现每行同时右移并下移,三行排成阶梯状（实测反馈"排列那么奇怪"）。 */
+    /** 附加行绘制（徽章式状态牌）：单行暗底卡片,每属性一段 = [9x9 单图标][色化数值]，
+     *  段间 6px、牌内边 3px、牌高 13px;氧气数值为气泡数（getBadgeValue）。
+     *  绘制顺序：先整牌底（同批 barRect 一次画完）→ 再逐段图标+文本——中途切换 render type
+     *  会提前 flush barRect 批,顶点引用写进已结束批次会丢段（与碎裂接管同款教训）。 */
     private static void drawAddonRows(EntityStatusSnapshot snap, PoseStack poseStack, MultiBufferSource buffer,
                                       float alpha, Font font, int packedLight, List<IMobDisplayRenderer> rows,
                                       int yStart) {
-        int totalIconW = 0;
-        for (IMobDisplayRenderer r : rows) totalIconW += r.getPlaqueWidth(font, snap) + 2;
-        int maxTextW = 0;
-        for (IMobDisplayRenderer r : rows) {
-            String t = r.getValueText(snap);
-            maxTextW = Math.max(maxTextW, t == null ? 0 : font.width(t) + 2);
+        int n = rows.size();
+        int[] segW = new int[n];
+        int totalW = 3 * 2; // 左右内边
+        for (int i = 0; i < n; i++) {
+            if (i > 0) totalW += 6; // 段间
+            String v = rows.get(i).getBadgeValue(snap);
+            segW[i] = 9 + 2 + font.width(v == null ? "" : v);
+            totalW += segW[i];
         }
-        int totalW = totalIconW + maxTextW;
-
-        int rowX = -totalW / 2;
-        for (IMobDisplayRenderer r : rows) {
-            r.renderPlaque(poseStack, buffer, snap, rowX, yStart, font, packedLight, alpha, ADDON_ROW_SCALE);
-            String text = r.getValueText(snap);
-            if (text != null) {
-                int color = ColorHelper.modifyAlpha(r.getValueColor(snap), (int) (alpha * 255));
-                font.drawInBatch(text, rowX + r.getPlaqueWidth(font, snap) + 2, yStart + 1, color, false,
+        int cardA = (int) (alpha * 255);
+        // 牌底:近黑卡片 + 顶部 1px 微高光（上缘受光,与玩家 HUD 卡片语言一致）
+        VertexConsumer vc = buffer.getBuffer(ModRenderType.barRect());
+        Matrix4f m = poseStack.last().pose();
+        int x0 = -totalW / 2;
+        fillRect(vc, m, x0, yStart, totalW, 13, ColorHelper.modifyAlpha(0xFF14161C, cardA));
+        int hlA = Math.min(0x30, cardA);
+        if (hlA > 0) fillRect(vc, m, x0, yStart, totalW, 1, (hlA << 24) | 0xFFFFFF);
+        // 段:图标 9x9（上下边距 2px）+ 2px 间隙 + 数值文本（第三行像素起）
+        int x = x0 + 3;
+        for (int i = 0; i < n; i++) {
+            IMobDisplayRenderer r = rows.get(i);
+            r.renderBadge(poseStack, buffer, snap, x, yStart + 2, packedLight, alpha);
+            String v = r.getBadgeValue(snap);
+            if (v != null && !v.isEmpty()) {
+                int color = ColorHelper.modifyAlpha(r.getValueColor(snap), cardA);
+                font.drawInBatch(v, x + 11, yStart + 3, color, false,
                         poseStack.last().pose(), buffer, Font.DisplayMode.SEE_THROUGH, 0, 0xF000F0);
             }
-            rowX += r.getPlaqueWidth(font, snap) + 2; // 同一行内继续右排（不再下移）
+            x += segW[i] + 6;
         }
+    }
+
+    /** 状态牌矩形填充（position_color,无深度屏显批次） */
+    private static void fillRect(VertexConsumer vc, Matrix4f m, int x, int y, int w, int h, int color) {
+        if (w <= 0 || h <= 0) return;
+        vc.vertex(m, x, y, 0).color(color).endVertex();
+        vc.vertex(m, x, y + h, 0).color(color).endVertex();
+        vc.vertex(m, x + w, y + h, 0).color(color).endVertex();
+        vc.vertex(m, x + w, y, 0).color(color).endVertex();
     }
 
     /**

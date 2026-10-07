@@ -39,4 +39,14 @@ public interface IMobDisplayRenderer {
 
     /** 数值文本颜色（可随数值渐变） */
     default int getValueColor(EntityStatusSnapshot snap) { return 0xFFFFFFFF; }
+
+    /** 徽章式附加行（状态牌美术,2026-10 重设计）：在 (x,y) 绘制**单个** 9x9 状态图标。
+     *  与 renderPlaque 的多图标行并存——牌匾样式 B 仍用图标行,样式 A/C 的附加行用徽章。 */
+    default void renderBadge(PoseStack poseStack, MultiBufferSource buffer,
+                             EntityStatusSnapshot snap, int x, int y,
+                             int packedLight, float alpha) {
+    }
+
+    /** 徽章数值文本（状态牌用）。默认同 getValueText;如氧气显示气泡数而非 tick 数 */
+    default String getBadgeValue(EntityStatusSnapshot snap) { return getValueText(snap); }
 }
