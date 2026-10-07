@@ -17,11 +17,15 @@ loom {
 			name "Forge Client"
 			runDir "run/client"
 			programArgs "--username", "Player1"
+			// dev 用 Mojmap 命名空间直配 mixin 目标,禁用 refmap（生产 jar 的 SRG 映射
+			// 在 dev 下会把目标类替换为 intermediary 名导致 Mixin apply failed）
+			property 'mixin.env.disableRefMap', 'true'
 		}
 		server {
 			server()
 			name "Forge Server"
 			runDir "run/server"
+			property 'mixin.env.disableRefMap', 'true'
 		}
 	}
 }
