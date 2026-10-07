@@ -185,13 +185,15 @@ public final class HudLayoutScreen extends Screen {
         pendingUnsaved = false;
     }
 
-    /** 面板行：节标题 / 参数行（label + 值 + 控件组）/ 列表行（动态名） */
+    /** 面板行：节标题 / 参数行（label + 值 + 控件组）/ 列表行（动态名）/ note 说明行 */
     private static final class PEntry {
         final String headerKey;
         final String labelKey;
         final Supplier<String> value;
         /** 动态标签（列表行实例名;非空时优先于 labelKey） */
         Supplier<String> labelDyn;
+        /** note 说明行（按面板内宽换行绘制、按行数占高）——显式标记,不再靠 value==null 猜 */
+        boolean note;
         final List<PW> widgets = new ArrayList<>();
         int relY;
         int valueRight = -1;
@@ -200,6 +202,13 @@ public final class HudLayoutScreen extends Screen {
             this.headerKey = headerKey;
             this.labelKey = labelKey;
             this.value = value;
+        }
+
+        /** note 说明行工厂 */
+        static PEntry note(String labelKey) {
+            PEntry e = new PEntry(null, labelKey, null);
+            e.note = true;
+            return e;
         }
 
         boolean isHeader() { return headerKey != null; }
@@ -277,7 +286,7 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.clear();
         // 未保存确认页（全屏级）：保存 / 放弃
         if (pendingUnsaved) {
-            panelEntries.add(new PEntry(null, "z80zhealthbar.editor.unsaved_note", null));
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.unsaved_note"));
             panelEntries.add(cycler("z80zhealthbar.editor.save",
                     () -> Component.translatable("z80zhealthbar.editor.done").getString(),
                     () -> {
@@ -296,7 +305,7 @@ public final class HudLayoutScreen extends Screen {
         }
         HudStyle st = hudStyle();
         if (st == HudStyle.VANILLA) {
-            panelEntries.add(new PEntry(null, "z80zhealthbar.editor.vanilla_note", null));
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.vanilla_note"));
             panelEntries.add(doneRow());
             return;
         }
@@ -616,7 +625,7 @@ public final class HudLayoutScreen extends Screen {
                 }));
         panelEntries.add(stepper1("z80zhealthbar.editor.text_scale",
                 () -> c.textScale, v -> c.textScale = v, 0.25, 3.0, 0.1));
-        panelEntries.add(new PEntry(null, "z80zhealthbar.editor.text_split_note", null));
+        panelEntries.add(PEntry.note("z80zhealthbar.editor.text_split_note"));
         // ---- 动作：拆分子件可取消拆分（回跟随条）;原子文本组件可复制/删除实例 ----
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
         if (isAtomicSelected()) {
@@ -691,7 +700,7 @@ public final class HudLayoutScreen extends Screen {
                     int i = sources.indexOf(c.iconTexture == null ? "" : c.iconTexture);
                     c.iconTexture = sources.get(Math.floorMod(i + 1, sources.size()));
                 }));
-        panelEntries.add(new PEntry(null, "z80zhealthbar.editor.icon_source_note", null));
+        panelEntries.add(PEntry.note("z80zhealthbar.editor.icon_source_note"));
         // ---- 动作：拆分子件可取消拆分;原子图标组件可复制/删除实例 ----
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
         if (isAtomicSelected()) {
@@ -783,7 +792,7 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(toggle("z80zhealthbar.option.overlay.mountHealthOnLeftSide.label",
                 () -> o.mountHealthOnLeftSide, v -> o.mountHealthOnLeftSide = v));
         // 自由摆放提示：预览中直接拖拽任意条/图标/数值文本即可调整;单条的组件级参数点列表进入其编辑页
-        panelEntries.add(new PEntry(null, "z80zhealthbar.editor.asteor.note", null));
+        panelEntries.add(PEntry.note("z80zhealthbar.editor.asteor.note"));
         // ---- 显示开关 ----
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.asteor_display", null, null));
         panelEntries.add(toggle("z80zhealthbar.option.overlay.displayHealthText",
@@ -937,11 +946,11 @@ public final class HudLayoutScreen extends Screen {
                 () -> c.rotation, v -> c.rotation = (int) Math.round(v), -180, 180, 5));
 
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.OFF) {
-            panelEntries.add(new PEntry(null, "z80zhealthbar.editor.off_mode_note", null));
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.off_mode_note"));
             return;
         }
         if (c.modeParsed() != HudLayoutConfig.ComponentMode.BAR) {
-            panelEntries.add(new PEntry(null, "z80zhealthbar.editor.icon_mode_note", null));
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.icon_mode_note"));
             return;
         }
 
@@ -961,7 +970,7 @@ public final class HudLayoutScreen extends Screen {
                     () -> c.showText, v -> c.showText = v));
             panelEntries.add(textInput("z80zhealthbar.editor.text_format",
                     () -> c.textFormat == null ? "" : c.textFormat, v -> c.textFormat = v));
-            panelEntries.add(new PEntry(null, "z80zhealthbar.editor.compat_fmt_note", null));
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.compat_fmt_note"));
             panelEntries.add(backRow());
             return;
         }
@@ -1077,22 +1086,26 @@ public final class HudLayoutScreen extends Screen {
         PEntry e = new PEntry(null, labelKey, null);
         int minusX = PANEL_W - 4 - STEP_W * 2 - 2;
         int plusX = PANEL_W - 4 - STEP_W;
-        int boxW = minusX - 4 - 6;
+        // 文本框放数值区（标签右侧到 − 按钮前）——此前从标签处 x=6 起,深色框直接盖住行标签
+        int boxX = 76;
+        int boxW = Math.max(28, minusX - 4 - boxX);
         EditBox box = new EditBox(font, 0, 0, boxW, BTN_H, Component.translatable(labelKey));
         box.setMaxLength(24);
         box.setValue(fmt.apply(get.getAsDouble()));
-        box.setFilter(s -> s.matches("[\\-0-9.%]")); // 数字/负号/小数点/百分号
+        // 过滤:数字/负号/小数点/百分号任意组合——此前正则漏 * 只匹配单字符,输第二个字符即被拒绝
+        box.setFilter(s -> s.matches("[\\-0-9.%]*"));
         box.setResponder(s -> {
+            if (s.isEmpty()) return; // 清空/中间态不落盘
             try {
                 double v = s.endsWith("%") ? Double.parseDouble(s.substring(0, s.length() - 1))
                         : Double.parseDouble(s);
                 set.accept(Math.max(min, Math.min(max, v)));
             } catch (NumberFormatException ignored) {
-                // 非法输入不落盘,保留原值
+                // 非法输入（"-"/"." 等中间态）不落盘,保留原值
             }
         });
         addRenderableWidget(box);
-        e.widgets.add(new PW(box, 6));
+        e.widgets.add(new PW(box, boxX));
         FlatButton minus = new FlatButton(STEP_W, BTN_H, () -> Component.literal("\u2212"), () -> {
             set.accept(Math.max(min, roundStep(get.getAsDouble() - step, step)));
             box.setValue(fmt.apply(get.getAsDouble()));
@@ -1153,7 +1166,7 @@ public final class HudLayoutScreen extends Screen {
             if (e.isHeader()) {
                 e.relY = cursor + 2;
                 cursor += HEADER_H;
-            } else if (e.value == null && e.labelDyn == null) {
+            } else if (e.note) {
                 e.noteLines = Math.max(1, font.split(Component.translatable(e.labelKey), PANEL_W - 12).size());
                 e.relY = cursor;
                 cursor += e.noteLines * 10 + 6;
@@ -1370,8 +1383,7 @@ public final class HudLayoutScreen extends Screen {
                 }
                 continue;
             }
-            if (e.value == null && e.labelDyn == null && e.labelKey == null) continue;
-            if (e.value == null && e.labelDyn == null) {
+            if (e.note) {
                 // note 行：按面板内宽换行绘制（layoutPanel 已按行数计高）
                 if (y < panelY + TITLE_H + 2 || y + e.noteLines * 10 > panelY + panelH - 1) continue;
                 var lines = font.split(Component.translatable(e.labelKey), PANEL_W - 12);
