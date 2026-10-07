@@ -670,6 +670,10 @@ public final class ModSettingsScreen extends Screen {
         rows.add(toggleRow("z80zhealthbar.option.barfx.sheen", fx.sheen, v -> fx.sheen = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.healGlow", fx.healGlow, v -> fx.healGlow = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.hitShake", fx.hitShake, v -> fx.hitShake = v));
+        // 抖动方式：关/静态/平滑比例/动态（随伤害量增幅）
+        rows.add(cycleRow("z80zhealthbar.option.barfx.shakeMode",
+                List.of(0, 1, 2, 3), () -> fx.shakeMode, v -> fx.shakeMode = v,
+                v -> Component.translatable("z80zhealthbar.option.barfx.shakeMode." + v)));
         // 实体条整条动画（三种样式共用,位移类对牌匾同样有效）
         rows.add(toggleRow("z80zhealthbar.option.barfx.spawnPop", fx.spawnPop, v -> fx.spawnPop = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.healLift", fx.healLift, v -> fx.healLift = v));

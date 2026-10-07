@@ -21,7 +21,8 @@ import java.util.Map;
 public final class BarFx {
 
     /** display = 平滑填充比例;preHit = 残影区域上缘（掉血前血量比例）;ghostAlpha = 残影区域不透明度(0..1) */
-    public record State(float display, float preHit, float ghostAlpha, float flash, float heal) {}
+    public record State(float display, float preHit, float ghostAlpha, float flash, float heal,
+                        float lastDamage) {}
 
     private static final float SMOOTH_MS = 90f;
     private static final float GHOST_MS = 420f;
@@ -39,6 +40,8 @@ public final class BarFx {
         float flash;
         float heal;
         float lastTarget;
+        /** 本次受伤的伤害量（0..1 比例;flash 衰减期随 flash 同步衰减,动态抖动幅度用） */
+        float lastDamage;
         long lastMs;
         long lastSeen;
 
@@ -75,6 +78,7 @@ public final class BarFx {
         } else if (target < prevTarget - 1e-4f) {
             fx.preHit = Math.max(fx.preHit, prevTarget); // 掉血：上缘抬到掉血前血量
             fx.hitAt = now;                              // 渐隐重新计时
+            fx.lastDamage = Math.max(fx.lastDamage, prevTarget - target); // 本次伤害量（动态抖动幅度用）
         }
         fx.lastTarget = target;
 
@@ -88,7 +92,10 @@ public final class BarFx {
         }
 
         if (hurt) fx.flash = 1f;
-        else fx.flash = Math.max(0f, fx.flash - dt / FLASH_MS);
+        else {
+            fx.flash = Math.max(0f, fx.flash - dt / FLASH_MS);
+            fx.lastDamage = Math.min(fx.lastDamage, fx.flash); // 伤害量随 flash 同步衰减收敛
+        }
         // 治疗脉冲：target 相对上一帧上升即触发（受伤由 hurtTime 驱动，不走这里）。
         // 修复：此前与 fx.lastTarget 比较——但它在第 79 行已被覆盖为当前 target,
         // 恒为 target > target 永假,heal 从未置 1（治疗泛光/数字变绿从未生效的根因）;
@@ -97,7 +104,7 @@ public final class BarFx {
         else fx.heal = Math.max(0f, fx.heal - dt / FLASH_MS);
 
         if (FX.size() > 512) sweep(now);
-        return new State(fx.display, fx.preHit, ghostAlpha, fx.flash, fx.heal);
+        return new State(fx.display, fx.preHit, ghostAlpha, fx.flash, fx.heal, fx.lastDamage);
     }
 
     private static void sweep(long now) {

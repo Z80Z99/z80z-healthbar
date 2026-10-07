@@ -64,53 +64,93 @@ public final class CustomHudRenderer {
             String base = (isText || isIcon) ? key.substring(0, key.lastIndexOf('.')) : key;
             ComponentLayout c = layout.get(base);
 
+            // 组件级透明度（opacity）× 动态 HUD（idleFadeSecs：数值无变化淡出/变化淡入）
+            float compAlpha = (c.opacity / 100f) * idleFadeAlpha(key, base, player, c);
+            if (compAlpha <= 0.01f) continue; // 完全透明整帧跳过
+            boolean tinted = compAlpha < 1f;
+            if (tinted) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, compAlpha);
+
             graphics.pose().pushPose();
             graphics.pose().translate(box.x(), box.y(), 0);
-            if (isText) {
-                // 分离文本元素：独立定位（缩放 = 组件缩放 × 文本缩放;模板优先于默认文本）
-                float s = (float) (c.scale * c.textScale);
-                graphics.pose().scale(s, s, 1f);
-                String t = c.textFormat != null && !c.textFormat.isBlank()
-                        ? formatText(c.textFormat, player) : valueText(base, player);
-                if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
-            } else if (isIcon) {
-                // 分离图标元素：独立定位（缩放 = 组件缩放 × 图标缩放）
-                float s = (float) (c.scale * c.iconScale);
-                graphics.pose().scale(s, s, 1f);
-                int[] uv = iconUV(base, player);
-                if (uv != null) drawComponentIcon(graphics, c, 0, 0, 9, uv[0], uv[1]);
-            } else {
-                float scale = (float) c.scale;
-                graphics.pose().scale(scale, scale, 1f);
-                // 类型分发（typeOf：显式 type > 键名 '#' 前段）——同一类型可有多实例（health#2）,
-                // 并支持原子组件（纯文本/纯图标/自由文本）,全部可自由增删组合
-                String type = HudLayoutConfig.typeOf(key, c);
-                if (type.endsWith("_text")) {
-                    // 纯文本组件：只渲染对应数值文本（模板优先）
-                    String t = c.textFormat != null && !c.textFormat.isBlank()
-                            ? formatText(c.textFormat, player) : valueText(type, player);
-                    if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
-                } else if (type.endsWith("_icon")) {
-                    // 纯图标组件：只渲染状态图标
-                    int[] uv = iconUV(type, player);
-                    if (uv != null) drawComponentIcon(graphics, c, 0, 0, 9, uv[0], uv[1]);
-                } else if (type.equals("text")) {
-                    // 自由文本组件：内容 = 模板串（可引用任意玩家数据变量,组件间互相调用）
-                    String t = formatText(c.textFormat, player);
-                    if (t != null && !t.isEmpty()) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
-                } else switch (type) {
-                    case HudLayoutConfig.HEALTH -> renderHealth(graphics, mc, player, c);
-                    case HudLayoutConfig.FOOD -> renderFood(graphics, mc, player, c);
-                    case HudLayoutConfig.AIR -> renderAir(graphics, mc, player, c);
-                    case HudLayoutConfig.EXPERIENCE -> renderExperience(graphics, mc, player, c);
-                    case HudLayoutConfig.ARMOR -> renderArmor(graphics, mc, player, c);
-                    case HudLayoutConfig.MOUNT -> renderMount(graphics, mc, player, c);
-                    case HudLayoutConfig.COMPAT -> renderCompat(graphics, player, c);
-                    default -> { }
-                }
+            // 旋转角度（绕组件中心;0 = 不旋转）
+            if (c.rotation != 0) {
+                float cx = box.width() / 2f, cy = box.height() / 2f;
+                graphics.pose().translate(cx, cy, 0);
+                graphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float) Math.toRadians(c.rotation)));
+                graphics.pose().translate(-cx, -cy, 0);
             }
-            graphics.pose().popPose();
+            try {
+                if (isText) {
+                    // 分离文本元素：独立定位（缩放 = 组件缩放 × 文本缩放;模板优先于默认文本）
+                    float s = (float) (c.scale * c.textScale);
+                    graphics.pose().scale(s, s, 1f);
+                    String t = c.textFormat != null && !c.textFormat.isBlank()
+                            ? formatText(c.textFormat, player) : valueText(base, player);
+                    if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
+                } else if (isIcon) {
+                    // 分离图标元素：独立定位（缩放 = 组件缩放 × 图标缩放）
+                    float s = (float) (c.scale * c.iconScale);
+                    graphics.pose().scale(s, s, 1f);
+                    int[] uv = iconUV(base, player);
+                    if (uv != null) drawComponentIcon(graphics, c, 0, 0, 9, uv[0], uv[1]);
+                } else {
+                    float scale = (float) c.scale;
+                    graphics.pose().scale(scale, scale, 1f);
+                    // 类型分发（typeOf：显式 type > 键名 '#' 前段）——同一类型可有多实例（health#2）,
+                    // 并支持原子组件（纯文本/纯图标/自由文本）,全部可自由增删组合
+                    String type = HudLayoutConfig.typeOf(key, c);
+                    if (type.endsWith("_text")) {
+                        // 纯文本组件：只渲染对应数值文本（模板优先）
+                        String t = c.textFormat != null && !c.textFormat.isBlank()
+                                ? formatText(c.textFormat, player) : valueText(type, player);
+                        if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
+                    } else if (type.endsWith("_icon")) {
+                        // 纯图标组件：只渲染状态图标
+                        int[] uv = iconUV(type, player);
+                        if (uv != null) drawComponentIcon(graphics, c, 0, 0, 9, uv[0], uv[1]);
+                    } else if (type.equals("text")) {
+                        // 自由文本组件：内容 = 模板串（可引用任意玩家数据变量,组件间互相调用）
+                        String t = formatText(c.textFormat, player);
+                        if (t != null && !t.isEmpty()) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
+                    } else switch (type) {
+                        case HudLayoutConfig.HEALTH -> renderHealth(graphics, mc, player, c);
+                        case HudLayoutConfig.FOOD -> renderFood(graphics, mc, player, c);
+                        case HudLayoutConfig.AIR -> renderAir(graphics, mc, player, c);
+                        case HudLayoutConfig.EXPERIENCE -> renderExperience(graphics, mc, player, c);
+                        case HudLayoutConfig.ARMOR -> renderArmor(graphics, mc, player, c);
+                        case HudLayoutConfig.MOUNT -> renderMount(graphics, mc, player, c);
+                        case HudLayoutConfig.COMPAT -> renderCompat(graphics, player, c);
+                        default -> { }
+                    }
+                }
+            } finally {
+                if (tinted) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+                graphics.pose().popPose();
+            }
         }
+    }
+
+    /** 动态 HUD 跟踪器（key → 上次数值/变化时间;数值=组件当前显示文本,空视为不变） */
+    private static final Map<String, String> IDLE_LAST = new java.util.HashMap<>();
+    private static final Map<String, Long> IDLE_CHANGE = new java.util.HashMap<>();
+
+    /** 动态 HUD 透明度系数（idleFadeSecs=0 恒 1）：数值变化重置计时,无变化 N 秒后线性淡出 */
+    private static float idleFadeAlpha(String key, String base, Player player, ComponentLayout c) {
+        if (c.idleFadeSecs <= 0) return 1f;
+        String cur = valueText(HudLayoutConfig.typeOf(key, c).endsWith("_text")
+                ? HudLayoutConfig.typeOf(key, c) : base, player);
+        if (cur == null) cur = "";
+        String last = IDLE_LAST.put(key, cur);
+        long now = System.currentTimeMillis();
+        if (!cur.equals(last)) {
+            IDLE_CHANGE.put(key, now);
+        }
+        long changedAt = IDLE_CHANGE.getOrDefault(key, now);
+        long hold = c.idleFadeSecs * 1000L;
+        long dt = now - changedAt;
+        if (dt <= hold) return 1f;
+        float out = 1f - Math.min(1f, (dt - hold) / 600f);
+        return Math.max(0.05f, out); // 不完全归零:保留一点轮廓便于找到/再编辑
     }
 
     /**
@@ -317,7 +357,7 @@ public final class CustomHudRenderer {
             }
         }
         int hitShift = dxFxCfg.enabled && dxFxCfg.hitShake
-                ? HudFx.shakeOffset(nowMs, fxSt.flash()) : 0;
+                ? HudFx.shakeByMode(dxFxCfg.shakeMode, nowMs, fxSt.flash(), fxSt.lastDamage()) : 0;
         int innerW = HudBarPainter.innerWidth(w);
         int healthW = Math.round(dispR * compress * innerW);
         if (c.showBar) {
@@ -646,7 +686,8 @@ public final class CustomHudRenderer {
         var dxCfg = ConfigManager.getConfig().dynamicFx;
         if (!dxCfg.enabled || !dxCfg.sheen || fillW <= 0) return;
         int innerW = HudBarPainter.innerWidth(w);
-        int[] band = HudFx.sheenBand(innerW, fillW, System.currentTimeMillis(), 0);
+        double phase = HudFx.advanceSheen("custom.health", fillW, System.currentTimeMillis(), false);
+        int[] band = HudFx.sheenBandPhase(innerW, fillW, phase);
         if (band == null) return;
         int x0 = HudBarPainter.INSET + band[0];
         int x1 = HudBarPainter.INSET + band[1];

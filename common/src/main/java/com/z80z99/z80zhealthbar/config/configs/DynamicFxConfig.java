@@ -31,6 +31,10 @@ public class DynamicFxConfig {
     public boolean healGlow = true;
     /** 受击抖动：受伤瞬间条本体垂直抖动,幅度随受击闪白衰减收敛 */
     public boolean hitShake = true;
+    /** 抖动方式：0=关 1=静态(恒幅 0/1 序列) 2=平滑比例(正弦,幅度∝受击强度,默认) 3=动态(幅度∝本次伤害量) */
+    public int shakeMode = 2;
+    /** 扫光动态速率：数值变化时 1.0 倍速、静止 0.5 倍速,方向随数据增减 */
+    public boolean sheenAdaptive = true;
     /** 实体条弹入：血条首次出现时缩放弹入 + 从上方落入（220ms,替代纯透明度淡入的呆板出场） */
     public boolean spawnPop = true;
     /** 实体条治疗上浮：回血脉冲期血条整体上浮并随治疗衰减回落 */

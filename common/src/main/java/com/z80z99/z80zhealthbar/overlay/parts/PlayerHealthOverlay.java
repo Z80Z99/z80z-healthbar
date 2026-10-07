@@ -104,7 +104,8 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
             applyShakeEffect(params, 2);
         }
         if (dxCfg.enabled && dxCfg.hitShake) {
-            int hit = com.z80z99.z80zhealthbar.overlay.HudFx.shakeOffset(nowMs, fxSt.flash());
+            int hit = com.z80z99.z80zhealthbar.overlay.HudFx.shakeByMode(dxCfg.shakeMode, nowMs,
+                    fxSt.flash(), fxSt.lastDamage());
             params.verticalShift = Math.max(params.verticalShift, hit);
         }
 
@@ -248,8 +249,9 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         var dxCfg = ConfigManager.getConfig().dynamicFx;
         if (!dxCfg.enabled || !dxCfg.sheen || fillW <= 0) return;
         int innerW = HudBarPainter.innerWidth(barWidth);
-        int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBand(innerW, fillW,
-                System.currentTimeMillis(), 0);
+        double phase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen("hud.health",
+                fillW, System.currentTimeMillis(), false);
+        int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW, phase);
         if (band == null) return;
         int x0 = left + HudBarPainter.INSET + band[0];
         int x1 = left + HudBarPainter.INSET + band[1];

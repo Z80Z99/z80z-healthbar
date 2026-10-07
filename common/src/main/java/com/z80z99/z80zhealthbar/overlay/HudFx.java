@@ -1,5 +1,7 @@
 package com.z80z99.z80zhealthbar.overlay;
 
+import java.util.Map;
+
 /**
  * 血条动态效果的第二层纯函数（状态层仍是 BarFx：display/ghost/flash/heal）。
  * 本类只做"时间 → 视觉参数"计算，全部可纯 JVM 单测：
@@ -28,18 +30,17 @@ public final class HudFx {
     }
 
     /**
-     * 扫光带在填充内的区间。
+     * 扫光带在填充内的区间（相位驱动版——扫光速度/方向由调用方按数据变化状态推进相位）。
      *
      * @param innerW 条内宽（带宽 = max(6, innerW/6)）
      * @param fillW 当前填充宽（扫光只在有血区域流动）
-     * @param now   时间戳
-     * @param phase 每条相位偏移（如 entityId*400,防多根条同步扫）
+     * @param phaseMs 累计相位（ms;调用方积分:speed 随数据变化 1.0/静止 0.5,方向随增减 ±1）
      * @return {start, end} 相对填充左缘的像素区间;不在填充内（如 fillW=0）返回 null
      */
-    public static int[] sheenBand(int innerW, int fillW, long now, int phase) {
+    public static int[] sheenBandPhase(int innerW, int fillW, double phaseMs) {
         if (fillW <= 0) return null;
         int bandW = Math.max(6, innerW / 6);
-        long t = Math.floorMod(now + phase, SHEEN_PERIOD_MS);
+        double t = Math.floorMod(Math.round(phaseMs), SHEEN_PERIOD_MS);
         double frac = t / (double) SHEEN_PERIOD_MS;
         // 从填充左侧外进入、右侧外离开:pos ∈ [-bandW, fillW]
         int pos = (int) Math.round(-bandW + frac * (fillW + bandW));
@@ -49,16 +50,72 @@ public final class HudFx {
         return new int[]{start, end};
     }
 
+    /** 旧签名兼容（纯时间相位） */
+    public static int[] sheenBand(int innerW, int fillW, long now, int phase) {
+        return sheenBandPhase(innerW, fillW, Math.floorMod(now + phase, SHEEN_PERIOD_MS));
+    }
+
+    // ---- 自适应扫光（数值变化 1.0× 速、静止 0.5× 速,方向随数据增减） ----
+    private static final Map<String, Double> SHEEN_PHASE = new java.util.HashMap<>();
+    private static final Map<String, Long> SHEEN_LAST = new java.util.HashMap<>();
+    private static final Map<String, Float> SHEEN_LAST_FILL = new java.util.HashMap<>();
+
+    /**
+     * 自适应扫光相位推进：静止 0.5× 速、数值变化 1.0× 速;数据增加向右扫、减少向左扫。
+     *
+     * @param key    相位跟踪键（per-entity/组件）
+     * @param fillW  当前填充宽（变化检测;==0 视为静止）
+     * @param now    时间戳
+     * @param changing 数据是否正在变化（如 BarFx display 与 target 差 > ε）
+     * @return 累计相位（ms）——直接喂 sheenBandPhase
+     */
+    public static double advanceSheen(String key, int fillW, long now, boolean changing) {
+        long last = SHEEN_LAST.getOrDefault(key, now);
+        long dt = Math.max(0, Math.min(100, now - last));
+        SHEEN_LAST.put(key, now);
+        Float prev = SHEEN_LAST_FILL.put(key, (float) fillW);
+        boolean grew = prev != null && fillW > prev + 0.5f;
+        boolean shrank = prev != null && fillW < prev - 0.5f;
+        double dir = SHEEN_PHASE.computeIfAbsent(key, k -> 0.0) >= 0 ? 1.0 : -1.0;
+        if (grew) dir = 1.0;
+        if (shrank) dir = -1.0;
+        double speed = (changing || grew || shrank ? 1.0 : 0.5) * dir;
+        double phase = SHEEN_PHASE.merge(key, dt * speed, Double::sum);
+        return phase;
+    }
+
     /** 扫光带前缘宽（亮边,占带宽 1/4,至少 1px） */
     public static int sheenEdgeW(int innerW) {
         return Math.max(1, Math.max(6, innerW / 6) / 4);
     }
 
-    /** 受击抖动 y 偏移：flash 衰减期按 50ms 步进取 0/1 序列,幅度随 flash 收敛 */
-    public static int shakeOffset(long now, float flash) {
-        if (flash <= 0f) return 0;
+    /** 抖动方式：0=关 1=静态(0/1 序列,原版) 2=平滑比例(正弦,幅度∝强度) 3=动态(幅度∝伤害量) */
+    public static final int SHAKE_OFF = 0, SHAKE_STATIC = 1, SHAKE_SMOOTH = 2, SHAKE_DYNAMIC = 3;
+
+    /** 受击抖动 y 偏移（平滑正弦版,取代 0/1 跳变——实测反馈"抖动更平滑"） */
+    public static int shakeSmooth(long now, float intensity, float ampPx) {
+        if (intensity <= 0f) return 0;
+        float osc = (float) Math.sin(now / 40.0); // 40ms 半周期,肉眼平滑
+        return Math.round(osc * Math.min(1f, intensity) * ampPx);
+    }
+
+    /** 静态抖动（原版 0/1 序列,恒幅 2px） */
+    public static int shakeStatic(long now, float intensity) {
+        if (intensity <= 0f) return 0;
         int idx = (int) ((now / 50) % SHAKE.length);
-        return Math.round(SHAKE[idx] * Math.min(1f, flash) * 2);
+        return Math.round(SHAKE[idx] * Math.min(1f, intensity) * 2);
+    }
+
+    /** 按抖动方式分派：1 静态（恒幅 0/1 序列）/ 2 平滑比例（正弦,幅度∝受击强度,默认）/
+     *  3 动态（幅度∝本次伤害量:小伤害轻抖、大伤害猛抖）/ 其它=关 */
+    public static int shakeByMode(int mode, long now, float flash, float lastDamage) {
+        if (flash <= 0f) return 0;
+        return switch (mode) {
+            case SHAKE_STATIC -> shakeStatic(now, flash);
+            case SHAKE_SMOOTH -> shakeSmooth(now, flash, 2f);
+            case SHAKE_DYNAMIC -> shakeSmooth(now, flash, 1.5f + Math.min(1f, lastDamage * 4f) * 3.5f);
+            default -> 0;
+        };
     }
 
     /**

@@ -924,6 +924,13 @@ public final class HudLayoutScreen extends Screen {
                 () -> c.scale, v -> c.scale = v, 0.5, 2.0, 0.1));
         panelEntries.add(stepper("z80zhealthbar.editor.spacing",
                 () -> c.spacing, v -> c.spacing = (int) Math.round(v), 0, 12, 1));
+        // 组件透明度（0..100）/ 动态 HUD（无变化淡出,0=关）/ 旋转角度（绕组件中心）
+        panelEntries.add(stepper("z80zhealthbar.editor.opacity",
+                () -> c.opacity, v -> c.opacity = (int) Math.round(v), 0, 100, 5));
+        panelEntries.add(stepper("z80zhealthbar.editor.idle_fade",
+                () -> c.idleFadeSecs, v -> c.idleFadeSecs = (int) Math.round(v), 0, 60, 1));
+        panelEntries.add(stepper("z80zhealthbar.editor.rotation",
+                () -> c.rotation, v -> c.rotation = (int) Math.round(v), -180, 180, 5));
 
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.OFF) {
             panelEntries.add(new PEntry(null, "z80zhealthbar.editor.off_mode_note", null));

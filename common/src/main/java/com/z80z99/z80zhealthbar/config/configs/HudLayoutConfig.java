@@ -74,6 +74,12 @@ public class HudLayoutConfig {
         public String group = "";
         /** 外部图标贴图文件名（config/z80zhealthbar/icons/ 下的 png;空 = 原版 icons.png 图标） */
         public String iconTexture = "";
+        /** 组件透明度（0..100,默认 100;渲染整体乘算） */
+        public int opacity = 100;
+        /** 动态 HUD：数值持续无变化 N 秒后淡出至透明,变化时淡入（0 = 关闭） */
+        public int idleFadeSecs = 0;
+        /** 旋转角度（度,-180..180,绕组件中心;0 = 不旋转） */
+        public int rotation = 0;
 
         public ComponentMode modeParsed() {
             try {
@@ -140,6 +146,7 @@ public class HudLayoutConfig {
             c.iconAnchor = iconAnchor; c.iconScale = iconScale;
             c.iconOffsetX = iconOffsetX; c.iconOffsetY = iconOffsetY;
             c.group = group; c.iconTexture = iconTexture;
+            c.opacity = opacity; c.idleFadeSecs = idleFadeSecs; c.rotation = rotation;
             return c;
         }
     }

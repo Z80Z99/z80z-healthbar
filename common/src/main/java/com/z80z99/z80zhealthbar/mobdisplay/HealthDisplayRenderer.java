@@ -159,8 +159,9 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         // 7) 扫光流动：填充区周期性扫过移动高光带（前缘亮边 + 主体淡带,裁剪在填充内;
         //    per-entity 相位偏移防多根条同步）。绘制于填充之上、刻度之下
         if (fx.enabled && fx.sheen && fillW > 0) {
-            int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBand(
-                    barWidth, fillW, System.currentTimeMillis(), snap.entityId * 400);
+            double sheenPhase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
+                    "mob." + snap.entityId, fillW, System.currentTimeMillis(), false);
+            int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(barWidth, fillW, sheenPhase);
             if (band != null) {
                 int edge = com.z80z99.z80zhealthbar.overlay.HudFx.sheenEdgeW(barWidth);
                 int a1 = (int) (0x10 * alphaMul) << 24 | 0xFFFFFF;

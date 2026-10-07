@@ -710,7 +710,8 @@ public final class MobDisplayRenderer {
                 var st = BarFx.tick(snap.entityId, snap.plainHealthRatio(),
                         snap.hurtTime > 0, now);
                 if (fx.hitShake) {
-                    int dy = com.z80z99.z80zhealthbar.overlay.HudFx.shakeOffset(now, st.flash());
+                    int dy = com.z80z99.z80zhealthbar.overlay.HudFx.shakeByMode(fx.shakeMode, now,
+                            st.flash(), st.lastDamage());
                     if (dy != 0) pose.translate(0, dy, 0);
                 }
                 if (fx.healLift && st.heal() > 0.01f) {
