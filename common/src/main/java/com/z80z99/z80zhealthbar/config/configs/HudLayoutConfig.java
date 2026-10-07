@@ -338,6 +338,17 @@ public class HudLayoutConfig {
         return removed;
     }
 
+    /** 深拷贝（编辑器进入时快照,显式保存机制用） */
+    public HudLayoutConfig copy() {
+        HudLayoutConfig c = new HudLayoutConfig();
+        c.panelX = panelX;
+        c.panelY = panelY;
+        for (Map.Entry<String, ComponentLayout> e : components.entrySet()) {
+            c.components.put(e.getKey(), e.getValue() == null ? new ComponentLayout() : e.getValue().copy());
+        }
+        return c;
+    }
+
     public void resetToDefaults() {
         components = defaultComponents();
     }

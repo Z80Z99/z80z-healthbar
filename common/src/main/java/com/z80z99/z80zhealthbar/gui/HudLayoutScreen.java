@@ -159,6 +159,32 @@ public final class HudLayoutScreen extends Screen {
     /** GROUP 页当前查看的分组名 */
     private String currentGroup = "";
 
+    // ---- 显式保存机制（10）：进入编辑器快照,改动标脏,保存/放弃/未保存退出确认 ----
+    /** 进入编辑器时的布局快照（放弃 = 回滚到此） */
+    private com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig savedSnapshot;
+    private boolean dirty;
+    /** 退出确认页显示中（保存/放弃 二选一） */
+    private boolean pendingUnsaved;
+
+    private void markDirty() {
+        dirty = true;
+    }
+
+    private void saveChanges() {
+        ConfigManager.saveConfig();
+        dirty = false;
+        pendingUnsaved = false;
+    }
+
+    /** 放弃改动：回滚到进入编辑器时的快照 */
+    private void discardChanges() {
+        if (savedSnapshot != null) {
+            ConfigManager.getConfig().hudLayout = savedSnapshot;
+        }
+        dirty = false;
+        pendingUnsaved = false;
+    }
+
     /** 面板行：节标题 / 参数行（label + 值 + 控件组）/ 列表行（动态名） */
     private static final class PEntry {
         final String headerKey;
@@ -218,6 +244,10 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     protected void init() {
+        // 显式保存机制：首次 init 拍快照（rebuild 触发的重复 init 不覆盖）
+        if (savedSnapshot == null) {
+            savedSnapshot = layout().copy();
+        }
         buildPanelEntries();
         // 面板默认右上（曾拖动过则用记录值）
         panelX = layout().panelX < 0 ? width - PANEL_W - 6 : layout().panelX;
@@ -245,6 +275,25 @@ public final class HudLayoutScreen extends Screen {
     /** 组织面板行（多级菜单）：LIST/ADD/GROUP/SUB_TEXT/SUB_ICON/EDIT 按层级路由 */
     private void buildPanelEntries() {
         panelEntries.clear();
+        // 未保存确认页（全屏级）：保存 / 放弃
+        if (pendingUnsaved) {
+            panelEntries.add(new PEntry(null, "z80zhealthbar.editor.unsaved_note", null));
+            panelEntries.add(cycler("z80zhealthbar.editor.save",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> {
+                        saveChanges();
+                        ConfigManager.saveConfig();
+                        if (minecraft != null) minecraft.setScreen(parent);
+                    }));
+            panelEntries.add(cycler("z80zhealthbar.editor.discard",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> {
+                        discardChanges();
+                        ConfigManager.saveConfig();
+                        if (minecraft != null) minecraft.setScreen(parent);
+                    }));
+            return;
+        }
         HudStyle st = hudStyle();
         if (st == HudStyle.VANILLA) {
             panelEntries.add(new PEntry(null, "z80zhealthbar.editor.vanilla_note", null));
@@ -396,8 +445,22 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(confirmRow("z80zhealthbar.editor.reset_all", () -> {
             layout().resetToDefaults();
             panelPage = PanelPage.LIST;
+            markDirty();
             rebuildWidgets();
         }));
+        // 显式保存/放弃（改动后可见;放弃回滚到进入编辑器时）
+        if (dirty) {
+            panelEntries.add(cycler("z80zhealthbar.editor.save",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    this::saveChanges));
+            panelEntries.add(cycler("z80zhealthbar.editor.discard",
+                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> {
+                        discardChanges();
+                        panelPage = PanelPage.LIST;
+                        rebuildWidgets();
+                    }));
+        }
         panelEntries.add(doneRow());
     }
 
@@ -881,6 +944,16 @@ public final class HudLayoutScreen extends Screen {
         // ---- 子组件入口（文本/图标各一个独立参数页,与主组件互不干扰） ----
         // 类型过滤：无该部件的类型不显示入口（如经验无状态图标,compat 无文本无图标）
         String selType = HudLayoutConfig.typeOf(selected, c);
+        if (selType.equals(HudLayoutConfig.COMPAT)) {
+            // compat 特判：显示数值文本开关 + 行文本模板（{name} {value} {max}）——参考其它组件形式
+            panelEntries.add(toggle("z80zhealthbar.editor.show_text",
+                    () -> c.showText, v -> c.showText = v));
+            panelEntries.add(textInput("z80zhealthbar.editor.text_format",
+                    () -> c.textFormat == null ? "" : c.textFormat, v -> c.textFormat = v));
+            panelEntries.add(new PEntry(null, "z80zhealthbar.editor.compat_fmt_note", null));
+            panelEntries.add(backRow());
+            return;
+        }
         if (!selType.equals(HudLayoutConfig.COMPAT)) {
             panelEntries.add(listRow(() -> Component.translatable("z80zhealthbar.editor.sub_text").getString()
                             + (c.textAnchorParsed() != null
@@ -1346,7 +1419,9 @@ public final class HudLayoutScreen extends Screen {
         }
         // 2) 控件优先（面板行 / 底栏 / 重置按钮）
         if (overAnyWidget(mouseX, mouseY)) {
-            return super.mouseClicked(mouseX, mouseY, button);
+            boolean consumed = super.mouseClicked(mouseX, mouseY, button);
+            if (consumed) markDirty(); // 控件交互即标脏（显式保存机制）
+            return consumed;
         }
         // 3) 元素命中 → 开始拖拽（自定义 = 组件/文本/图标;长条 = 预览中的条/状态图标/数值文本）
         if (hudStyle() == HudStyle.ASTEORBAR) {
@@ -1475,7 +1550,8 @@ public final class HudLayoutScreen extends Screen {
             return true;
         }
         if (dragging && editingCustom()) {
-            applyDrag(selected, dragStartOffX + (int) mouseX - draggingX,
+            markDirty();
+                applyDrag(selected, dragStartOffX + (int) mouseX - draggingX,
                     dragStartOffY + (int) mouseY - draggingY);
             return true;
         }
@@ -1521,6 +1597,7 @@ public final class HudLayoutScreen extends Screen {
         }
         if (!editingCustom()) return super.keyPressed(keyCode, scanCode, modifiers);
         int step = Screen.hasShiftDown() ? 10 : 1;
+        markDirty();
         switch (keyCode) {
             case org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT -> {
                 applyDrag(selected, dragStartX(selected) - step, dragStartY(selected));
@@ -1548,11 +1625,16 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public void removed() {
-        ConfigManager.saveConfig();
+        // 显式保存机制:removed 不再无条件落盘（保存/放弃经确认页决定）
     }
 
     @Override
     public void onClose() {
+        if (dirty && !pendingUnsaved) {
+            pendingUnsaved = true; // 下一次渲染为确认页
+            rebuildWidgets();
+            return;
+        }
         ConfigManager.saveConfig();
         if (minecraft != null) minecraft.setScreen(parent);
     }

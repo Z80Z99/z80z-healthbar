@@ -49,6 +49,12 @@ public class CompatStatsOverlay extends SimpleBarOverlay {
             renderGui.setLeftHeight(top + blockH + margin);
         }
 
+        // compat 组件编辑项（参考其它组件形式）：显示数值文本开关 + 行文本模板（{name} {value} {max}）
+        var compatC = com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().hudLayout
+                .get(com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.COMPAT);
+        boolean showText = compatC.showText;
+        String rowFmt = compatC.textFormat == null ? "" : compatC.textFormat;
+
         for (CompatAdapters.Stat stat : stats) {
             drawBarCard(graphics, left, top, barWidth, barH);
             if (stat.max() != null && stat.max() > 0) {
@@ -56,10 +62,21 @@ public class CompatStatsOverlay extends SimpleBarOverlay {
                         left, top, barWidth, barH,
                         (float) Math.max(0d, Math.min(1d, stat.value() / stat.max())), stat.color());
             }
-            String text = net.minecraft.network.chat.Component.translatable(
-                    stat.langKey()).getString() + ": " + format(stat.value(), stat.max());
-            OverlayManager.addStringRender(text,
-                    left + barWidth + 5, top + barH / 2 - 4, 0xFFFFFFFF, OverlayManager.ALIGN_LEFT);
+            if (showText) {
+                String text;
+                if (!rowFmt.isBlank()) {
+                    text = rowFmt
+                            .replace("{name}", net.minecraft.network.chat.Component.translatable(
+                                    stat.langKey()).getString())
+                            .replace("{value}", format(stat.value(), stat.max()))
+                            .replace("{max}", stat.max() == null ? "—" : format(stat.max(), stat.max()));
+                } else {
+                    text = net.minecraft.network.chat.Component.translatable(
+                            stat.langKey()).getString() + ": " + format(stat.value(), stat.max());
+                }
+                OverlayManager.addStringRender(text,
+                        left + barWidth + 5, top + barH / 2 - 4, 0xFFFFFFFF, OverlayManager.ALIGN_LEFT);
+            }
             top += barH + margin;
         }
 
