@@ -440,6 +440,13 @@ public final class MobDisplayRenderer {
     /** 附加行组统一紧凑尺度（牌匾尺度的一半） */
     private static final float ADDON_ROW_SCALE = 0.025f * 0.5f;
 
+    /** 设置页预览用整条动画入口：样式 3/2 的预览分支不经过世界路径（renderAsteorBar/renderPlaques）,
+     *  直接调底层渲染器——弹入/受击抖动/治疗上浮/死亡收缩会全部缺失（实测反馈"样式3 预览看不到受击抖动"）,
+     *  在位姿 scale 之后、渲染之前调用与世界路径同序。样式 1 预览走 MobHealthBarStyle.render 内部自含,无需此调用。 */
+    public static void previewScreenFx(com.mojang.blaze3d.vertex.PoseStack poseStack, EntityStatusSnapshot snap) {
+        DisplayAnimation.applyScreenFx(poseStack, snap);
+    }
+
     /** 附加行清单（entityAddons 开关 + 各行自身可见性）：护甲 / 韧性 / 氧气 */
     private static List<IMobDisplayRenderer> collectAddonRows(EntityStatusSnapshot snap) {
         var addons = ConfigManager.getConfig().entityAddons;

@@ -1221,6 +1221,7 @@ public final class ModSettingsScreen extends Screen {
                 pose.pushPose();
                 pose.translate(cx, anchorY, 0);
                 pose.scale(gpx, gpx, -gpx);
+                MobDisplayRenderer.previewScreenFx(pose, snap); // 整条动画与世界路径同源
                 MobDisplayRenderer.drawPlaqueRows(snap, pose, buffer, 0xF000F0, 1.0f, font, ps);
                 pose.popPose();
                 popupBaseY = anchorY - 30;
@@ -1232,6 +1233,7 @@ public final class ModSettingsScreen extends Screen {
                 pose.translate(cx, barBottomY, 0);
                 // z 取负：内部 -z 层间偏移（填充/吸收环/边框）翻回相机侧——否则整条只剩空槽
                 pose.scale(p, p, -p);
+                MobDisplayRenderer.previewScreenFx(pose, snap); // 整条动画与世界路径同源（弹入/受击抖动/治疗上浮/死亡收缩）
                 var health = new HealthDisplayRenderer();
                 int barW = health.getBarWidth(snap);
                 int barH = cfg.barStyle.barHalfHeight * 2;
