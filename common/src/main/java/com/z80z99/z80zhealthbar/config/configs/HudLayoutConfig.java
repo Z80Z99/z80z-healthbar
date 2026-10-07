@@ -27,6 +27,10 @@ public class HudLayoutConfig {
         public String mode = ComponentMode.BAR.name();
         /** 组件类型（空 = 从键推断：键名取 '#' 与 '.' 前段）。多实例键如 "health#2" 靠此分发渲染。 */
         public String type = "";
+        /** 自定义名称（空 = 用类型默认名;列表/标题优先显示） */
+        public String displayName = "";
+        /** 参与同锚点堆叠（默认关 = 独立定位:改尺寸/缩放不影响其它组件的位置） */
+        public boolean stack = false;
         public String anchor = HudAnchor.BOTTOM_CENTER.name();
         /** 拖拽偏移（px，GUI 缩放坐标） */
         public int offsetX = 0;
@@ -125,6 +129,7 @@ public class HudLayoutConfig {
         public ComponentLayout copy() {
             ComponentLayout c = new ComponentLayout();
             c.mode = mode; c.type = type; c.anchor = anchor;
+            c.displayName = displayName; c.stack = stack;
             c.offsetX = offsetX; c.offsetY = offsetY;
             c.scale = scale; c.spacing = spacing;
             c.barWidth = barWidth; c.showText = showText; c.showBar = showBar; c.showIcon = showIcon;

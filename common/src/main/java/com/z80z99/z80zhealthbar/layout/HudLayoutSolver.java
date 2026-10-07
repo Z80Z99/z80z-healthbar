@@ -39,7 +39,8 @@ public final class HudLayoutSolver {
                                          int screenW, int screenH) {
         Map<String, Box> result = new LinkedHashMap<>();
 
-        // 按锚点分组（保持插入顺序）
+        // 按锚点分组（保持插入顺序）。stack=false（默认）的组件不参与堆叠游标——
+        // 各自按锚点+偏移独立定位,改尺寸/缩放不会推移其它组件（实测反馈）
         Map<HudAnchor, List<String>> groups = new LinkedHashMap<>();
         for (HudAnchor a : HudAnchor.values()) groups.put(a, new ArrayList<>());
         for (String key : layout.components.keySet()) {
@@ -53,15 +54,20 @@ public final class HudLayoutSolver {
             List<String> keys = entry.getValue();
             if (keys.isEmpty()) continue;
 
-            // 计算该组缩放后的总高（含间距）
-            int totalH = 0;
+            // 计算该组参与堆叠的组件总高（含间距;stack=false 的不参与）
+            List<String> stacked = new java.util.ArrayList<>();
             for (String key : keys) {
+                if (layout.get(key).stack) stacked.add(key);
+            }
+
+            int totalH = 0;
+            for (String key : stacked) {
                 ComponentLayout c = layout.get(key);
                 int[] size = sizes.getOrDefault(key, new int[]{0, 0});
                 totalH += Math.max(1, (int) Math.round(size[1] * c.scale));
                 totalH += c.spacing;
             }
-            totalH -= layout.get(keys.get(keys.size() - 1)).spacing;
+            if (!stacked.isEmpty()) totalH -= layout.get(stacked.get(stacked.size() - 1)).spacing;
 
             int baseX = anchor.baseX(screenW, MARGIN_X);
             int baseY = anchor.baseY(screenH, MARGIN_Y);
@@ -84,10 +90,18 @@ public final class HudLayoutSolver {
                 };
                 x += c.offsetX;
 
-                int y = cursorY + c.offsetY;
+                int y;
+                if (c.stack) {
+                    y = cursorY + c.offsetY;
+                    cursorY += h + c.spacing;
+                } else {
+                    // 独立定位：锚点垂直基线 + 自身偏移（BOTTOM 组以基线为下缘向上）
+                    int yFromAnchor = anchor.isTop() || anchor.isMiddle()
+                            ? baseY
+                            : baseY - h;
+                    y = yFromAnchor + c.offsetY;
+                }
                 result.put(key, new Box(x, y, w, h));
-
-                cursorY += h + c.spacing;
             }
         }
 

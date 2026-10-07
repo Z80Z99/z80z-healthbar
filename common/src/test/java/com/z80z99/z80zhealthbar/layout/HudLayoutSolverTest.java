@@ -45,8 +45,10 @@ class HudLayoutSolverTest {
         layout.components.clear();
         var foodLayout = new HudLayoutConfig.ComponentLayout();
         foodLayout.anchor = "BOTTOM_RIGHT";
+        foodLayout.stack = true;
         var airLayout = new HudLayoutConfig.ComponentLayout();
         airLayout.anchor = "BOTTOM_RIGHT";
+        airLayout.stack = true;
         layout.components.put(HudLayoutConfig.FOOD, foodLayout);
         layout.components.put(HudLayoutConfig.AIR, airLayout);
         var boxes = HudLayoutSolver.solve(layout, sizes(layout), W, H);
@@ -96,7 +98,9 @@ class HudLayoutSolverTest {
     void topAnchorStacksDownwardFromMargin() {
         HudLayoutConfig layout = new HudLayoutConfig();
         layout.get(HudLayoutConfig.HEALTH).anchor = "TOP_LEFT";
+        layout.get(HudLayoutConfig.HEALTH).stack = true;
         layout.get(HudLayoutConfig.ARMOR).anchor = "TOP_LEFT";
+        layout.get(HudLayoutConfig.ARMOR).stack = true;
         var boxes = HudLayoutSolver.solve(layout, sizes(layout), W, H);
         var health = boxes.get(HudLayoutConfig.HEALTH);
         var armor = boxes.get(HudLayoutConfig.ARMOR);

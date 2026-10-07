@@ -275,6 +275,18 @@ public final class HudLayoutScreen extends Screen {
         return t.endsWith("_text") || t.endsWith("_icon") || t.equals("text");
     }
 
+    /** 组件显示名：自定义名称优先,否则类型中文名 + 实例号（多实例辨识） */
+    private String displayNameOf(String key) {
+        ComponentLayout cc = layout().get(key);
+        if (cc != null && cc.displayName != null && !cc.displayName.isBlank()) {
+            return cc.displayName;
+        }
+        String disp = Component.translatable("z80zhealthbar.hud.component."
+                + HudLayoutConfig.baseKeyOf(key)).getString();
+        int hash = key.indexOf('#');
+        return hash > 0 ? disp + " #" + key.substring(hash + 1) : disp;
+    }
+
     /** 列表行：动态实例名 + 动作按钮（文字可定制,如 调整/添加） */
     private PEntry listRow(Supplier<String> name, String btnKey, Runnable enter) {
         PEntry e = new PEntry(null, null, null);
@@ -333,10 +345,7 @@ public final class HudLayoutScreen extends Screen {
         // 未分组组件行（已拆分的子组件缩进跟随其后）
         for (String key : ungrouped) {
             ComponentLayout mc = comps.get(key);
-            String disp = Component.translatable("z80zhealthbar.hud.component."
-                    + HudLayoutConfig.baseKeyOf(key)).getString();
-            int hash = key.indexOf('#');
-            String name = hash > 0 ? disp + " #" + key.substring(hash + 1) : disp;
+            String name = displayNameOf(key);
             panelEntries.add(listRow(() -> name, "z80zhealthbar.editor.adjust", () -> {
                 selected = key;
                 panelPage = PanelPage.EDIT;
@@ -349,8 +358,7 @@ public final class HudLayoutScreen extends Screen {
             boolean iconDetached = mc != null && mc.showIcon && mc.iconAnchorParsed() != null
                     && (mc.group == null || mc.group.isBlank());
             if (textDetached) {
-                String subDisp = Component.translatable("z80zhealthbar.hud.component."
-                        + HudLayoutConfig.baseKeyOf(key)).getString()
+                String subDisp = displayNameOf(key)
                         + " · " + Component.translatable("z80zhealthbar.editor.sub_text").getString();
                 String subKey = key;
                 panelEntries.add(listRow(() -> "   " + subDisp, "z80zhealthbar.editor.adjust", () -> {
@@ -360,8 +368,7 @@ public final class HudLayoutScreen extends Screen {
                 }));
             }
             if (iconDetached) {
-                String subDisp = Component.translatable("z80zhealthbar.hud.component."
-                        + HudLayoutConfig.baseKeyOf(key)).getString()
+                String subDisp = displayNameOf(key)
                         + " · " + Component.translatable("z80zhealthbar.editor.sub_icon").getString();
                 String subKey = key;
                 panelEntries.add(listRow(() -> "   " + subDisp, "z80zhealthbar.editor.adjust", () -> {
@@ -454,25 +461,33 @@ public final class HudLayoutScreen extends Screen {
         }
     }
 
-    /** 分组 · 成员页：组内组件清单（点击编辑成员）+ 解散分组 */
+    /** 分组 · 成员页：组重命名 + 组内组件清单（点击编辑成员）+ 解散分组 */
     private void buildGroupPage() {
         panelEntries.add(backRow());
         panelEntries.add(new PEntry(null, "z80zhealthbar.editor.selected_component",
                 () -> currentGroup));
+        // 组重命名（写回组内全部成员的 group 字段）
+        panelEntries.add(textInput("z80zhealthbar.editor.rename_group",
+                () -> currentGroup, v -> {
+                    if (v.isBlank() || v.equals(currentGroup)) return;
+                    for (ComponentLayout cc : ConfigManager.getConfig().hudLayout.components.values()) {
+                        if (cc != null && currentGroup.equals(cc.group)) cc.group = v;
+                    }
+                    currentGroup = v;
+                }));
         for (String key : ConfigManager.getConfig().hudLayout.components.keySet()) {
             if (key.endsWith(".text") || key.endsWith(".icon")) continue;
             ComponentLayout cc = ConfigManager.getConfig().hudLayout.components.get(key);
             if (cc == null || !currentGroup.equals(cc.group)) continue;
-            String dn = Component.translatable("z80zhealthbar.hud.component."
-                    + HudLayoutConfig.baseKeyOf(key)).getString();
-            panelEntries.add(listRow(() -> dn, "z80zhealthbar.editor.adjust", () -> {
+            panelEntries.add(listRow(() -> displayNameOf(key), "z80zhealthbar.editor.adjust", () -> {
                 selected = key;
                 panelPage = PanelPage.EDIT;
                 rebuildWidgets();
             }));
             // 组合收纳拆分子件：文本/图标作为组合成员列出（配置在父件字段,无独立键）
             if (cc.showText && cc.textAnchorParsed() != null) {
-                String td = dn + " · " + Component.translatable("z80zhealthbar.editor.sub_text").getString();
+                String td = displayNameOf(key) + " · "
+                        + Component.translatable("z80zhealthbar.editor.sub_text").getString();
                 String tk = key;
                 panelEntries.add(listRow(() -> "   " + td, "z80zhealthbar.editor.adjust", () -> {
                     selected = tk + ".text";
@@ -481,7 +496,8 @@ public final class HudLayoutScreen extends Screen {
                 }));
             }
             if (cc.showIcon && cc.iconAnchorParsed() != null) {
-                String id2 = dn + " · " + Component.translatable("z80zhealthbar.editor.sub_icon").getString();
+                String id2 = displayNameOf(key) + " · "
+                        + Component.translatable("z80zhealthbar.editor.sub_icon").getString();
                 String ik = key;
                 panelEntries.add(listRow(() -> "   " + id2, "z80zhealthbar.editor.adjust", () -> {
                     selected = ik + ".icon";
@@ -802,14 +818,11 @@ public final class HudLayoutScreen extends Screen {
     private void buildCustomEdit() {
         ComponentLayout c = sel();
         panelEntries.add(backRow());
-        // 组件标题：类型中文名 + 实例号（多实例辨识）
-        panelEntries.add(new PEntry(null, "z80zhealthbar.editor.selected_component", () -> {
-            String base = HudLayoutConfig.baseKeyOf(baseKey(selected));
-            String disp = Component.translatable("z80zhealthbar.hud.component." + base).getString();
-            int hash = selected.indexOf('#');
-            return hash > 0 ? disp + " #" + selected.substring(hash + 1) : disp;
-        }));
-        // 切换组件用顶部"← 组件列表"返回列表后点选（独立行已按反馈移除）
+        // 组件标题：自定义名称优先,否则类型中文名 + 实例号（多实例辨识）
+        panelEntries.add(new PEntry(null, "z80zhealthbar.editor.selected_component", () -> displayNameOf(selected)));
+        // 自定义名称（空 = 类型默认名;列表/标题/框选标签均优先显示）
+        panelEntries.add(textInput("z80zhealthbar.editor.display_name",
+                () -> c.displayName == null ? "" : c.displayName, v -> c.displayName = v));
         // 组件显示形式:长条/图标/关闭(作用于当前选中组件)
         panelEntries.add(cycler("z80zhealthbar.editor.component_mode",
                 () -> Component.translatable("z80zhealthbar.editor.mode."
@@ -829,6 +842,8 @@ public final class HudLayoutScreen extends Screen {
             panelEntries.add(toggle("z80zhealthbar.editor.show_icon",
                     () -> c.showIcon, v -> c.showIcon = v));
         }
+        panelEntries.add(toggle("z80zhealthbar.editor.stack",
+                () -> c.stack, v -> c.stack = v));
         panelEntries.add(cycler("z80zhealthbar.editor.anchor",
                 () -> Component.translatable("z80zhealthbar.editor.anchor."
                         + c.anchorParsed().name().toLowerCase(Locale.ROOT)).getString(),
