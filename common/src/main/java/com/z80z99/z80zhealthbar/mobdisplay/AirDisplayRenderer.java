@@ -23,10 +23,11 @@ public class AirDisplayRenderer implements IMobDisplayRenderer {
 
     @Override
     public boolean wantsToRender(EntityStatusSnapshot snap) {
-        // 原版对玩家的规则（ForgeGui.renderAir）：眼睛在水里 或 空气未满；氧气耗尽（0）整行消失。
-        // 只按"空气未满"判会漏掉亡灵/水生生物——它们在水下不掉氧（canBreatheUnderwater 对
-        // MobType.UNDEAD/WATER 为真），于是"泡在水里却永远不显示氧气行"（实测反馈）
-        return AirBubbleRow.rowVisible(snap.eyeInWater, snap.airSupply, snap.maxAirSupply);
+        // 空气未满（isUnderwater 即 air < max：水下掉氧或出水回氧）且还有残余氧气。
+        // 氧气耗尽（0）整行消失——原版 0 氧气不画任何气泡。
+        // 不采用「眼睛在水里」判据（用户回调）：亡灵/水生生物在水下不掉氧，
+        // 那样会给根本不需要氧气的生物显示满格气泡，方向不对。
+        return snap.isUnderwater() && snap.airSupply > 0;
     }
 
     @Override

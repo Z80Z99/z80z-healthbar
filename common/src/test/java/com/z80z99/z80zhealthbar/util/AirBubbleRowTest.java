@@ -65,13 +65,7 @@ class AirBubbleRowTest {
         assertEquals(0, drawn(0, 0));
     }
 
-    @Test
-    void rowVisibleFollowsVanillaRule() {
-        // 原版对玩家的规则：眼睛在水里 或 空气未满（且未耗尽）
-        assertTrue(AirBubbleRow.rowVisible(true, 300, 300));   // 亡灵/水生:水下满氧也要显示（用户实测场景）
-        assertTrue(AirBubbleRow.rowVisible(false, 100, 300));  // 出水回氧中
-        assertFalse(AirBubbleRow.rowVisible(false, 300, 300)); // 岸上满氧
-        assertFalse(AirBubbleRow.rowVisible(true, 0, 300));    // 耗尽（原版 0 氧气不画气泡）
-        assertFalse(AirBubbleRow.rowVisible(false, 0, 300));
-    }
+    // 氧气行显隐判据（曾按原版「眼睛在水里 或 空气未满」实现）已按用户回调移除：
+    // 亡灵/水生生物在水下不掉氧，那样会给不需要氧气的生物显示满格气泡。
+    // 现行判据在 AirDisplayRenderer.wantsToRender（空气未满且未耗尽）。
 }
