@@ -537,6 +537,7 @@
   "z80zhealthbar.hud.component.fps_text": "FPS",
   "z80zhealthbar.hud.component.biome_text": "群系",
   "z80zhealthbar.hud.component.time_text": "游戏时间",
+  "z80zhealthbar.editor.toggle_group": "分组",
   "z80zhealthbar.editor.done": "完成",
   "z80zhealthbar.editor.section.asteorbar": "长条参数",
   "z80zhealthbar.editor.asteor.note": "拖拽条自由摆放;图标可拆分;选择行含隐藏条。",

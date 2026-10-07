@@ -57,8 +57,32 @@ public final class DamagePopupManager {
     private static final Map<Integer, Byte> CUM_FLAGS = new HashMap<>();
     private static final Map<Integer, Integer> CUM_COUNT = new HashMap<>();
     private static final Map<Integer, Float> CUM_MAX = new HashMap<>();
+    /** onSnapshot 最近写入时间（周期清扫 LAST_HEALTH/LAST_ANCHOR/SERVER_TRACKED 用） */
+    private static final Map<Integer, Long> LAST_TOUCH = new HashMap<>();
+    private static final long PURGE_INTERVAL_MS = 5_000L;
+    private static final long PURGE_KEEP_MS = 15_000L;
+    private static long lastPurgeMs;
     private static long lastHitMillis = -10_000L;
     private static long lastKillMillis = -10_000L;
+
+    /** 周期清扫（每 5 秒一次）：移除 15 秒未渲染实体的基线/锚点/追踪记录——
+     *  此前这三张表只增不减,按"曾经渲染过的实体 ID"无界增长（性能审查 P3 泄漏） */
+    private static void periodicPurge() {
+        long now = System.currentTimeMillis();
+        if (now - lastPurgeMs < PURGE_INTERVAL_MS) return;
+        lastPurgeMs = now;
+        Iterator<Map.Entry<Integer, Long>> it = LAST_TOUCH.entrySet().iterator();
+        while (it.hasNext()) {
+            var e = it.next();
+            if (now - e.getValue() > PURGE_KEEP_MS) {
+                int id = e.getKey();
+                it.remove();
+                LAST_HEALTH.remove(id);
+                LAST_ANCHOR.remove(id);
+                SERVER_TRACKED.remove(id);
+            }
+        }
+    }
 
     private DamagePopupManager() {}
 
@@ -103,7 +127,18 @@ public final class DamagePopupManager {
     public static void onSnapshot(EntityStatusSnapshot snap, double x, double feetY, double z) {
         var cfg = ConfigManager.getConfig().damagePopup;
         int id = snap.entityId;
-        LAST_ANCHOR.put(id, new double[]{x, feetY + snap.entityHeight, feetY, z});
+        // 锚点原地复用（避免每帧 new double[4];性能审查 P3）
+        double[] anchor = LAST_ANCHOR.get(id);
+        if (anchor == null) {
+            anchor = new double[4];
+            LAST_ANCHOR.put(id, anchor);
+        }
+        anchor[0] = x;
+        anchor[1] = feetY + snap.entityHeight;
+        anchor[2] = feetY;
+        anchor[3] = z;
+        LAST_TOUCH.put(id, System.currentTimeMillis());
+        periodicPurge();
         Float last = LAST_HEALTH.get(id);
         LAST_HEALTH.put(id, snap.health);
         boolean cumulative = isCumulative();

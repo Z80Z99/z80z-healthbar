@@ -61,12 +61,6 @@ public final class MobDisplayRenderer {
 
         double distSqr = entity.distanceToSqr(player);
         if (barEnabled && !MobVisibilityChecker.shouldRender(entity, distSqr)) barEnabled = false;
-        // 诊断（临时）：死亡实体被可见性拒绝时记录拒绝码,定位"死亡瞬间血条消失"
-        if (entity.isDeadOrDying()) {
-            int code = MobVisibilityChecker.check(entity, player, distSqr);
-            if (code != 0) System.out.println("[z80z-dbg] dying " + entity.getId()
-                    + " rejected by visibility code=" + code);
-        }
         if (!barEnabled && !popupEnabled) return;
 
         long gameTime = mc.level.getGameTime();
@@ -119,12 +113,13 @@ public final class MobDisplayRenderer {
                               double x, double y, double z, double distSqr, float alpha) {}
     private static final Map<Integer, PendingBar> PENDING_BARS = new java.util.LinkedHashMap<>();
 
-    /** 是否有待绘制血条(通道门控) */
+    /** 是否有待绘制血条(通道门控)。碎裂遗留会话也算待绘——否则无条期间遗留碎片
+     *  永不推进/回收（性能审查 §1 半泄漏） */
     public static boolean barsPending() {
-        if (PENDING_BARS.isEmpty()) return false;
+        if (PENDING_BARS.isEmpty()) return ShatterFx.hasActive();
         if (!ConfigManager.getConfig().barStyle.enableHealthBar) {
             PENDING_BARS.clear();
-            return false;
+            return ShatterFx.hasActive();
         }
         return true;
     }
@@ -156,10 +151,6 @@ public final class MobDisplayRenderer {
             pose.translate((float) (st.x() - camPos.x), (float) (st.y() - camPos.y),
                     (float) (st.z() - camPos.z)); // 实体脚部世界锚点,样式方法内部按 entityHeight 抬升
             // 死亡碎裂接管：dying + shatter + 有条矩形记录 → 原样式不画,碎片起飞
-            if (st.snap().dying) {
-                System.out.println("[z80z-dbg] dying " + st.snap().entityId + " in pipeline, hasBox="
-                        + ShatterFx.hasBox(st.snap().entityId));
-            }
             if (st.snap().dying && ShatterFx.hasBox(st.snap().entityId)) {
                 shatterJobs.add(new ShatterJob(st.snap().entityId, pose,
                         st.x() - camPos.x, st.y() - camPos.y, st.z() - camPos.z));
@@ -644,8 +635,18 @@ public final class MobDisplayRenderer {
         while (it.hasNext()) {
             if (gameTime - it.next().getValue() > 40) it.remove();
         }
-        OCCLUSION_CACHE.keySet().retainAll(FRAME_RENDERED.keySet());
-        OCCLUSION_STAMP.keySet().retainAll(FRAME_RENDERED.keySet());
+        // 遮挡缓存按自身采样时间戳清理（10 秒未采样 = 实体已远离/卸载）。
+        // 此前用 retainAll(FRAME_RENDERED) —— 被墙挡住（采样不通过）的实体永远不进
+        // FRAME_RENDERED,缓存每 tick 被清,8 次射线采样从 4Hz 退化到 20Hz（性能审查 P2）
+        long nowMs = System.currentTimeMillis();
+        Iterator<Map.Entry<Integer, Long>> occIt = OCCLUSION_STAMP.entrySet().iterator();
+        while (occIt.hasNext()) {
+            var e = occIt.next();
+            if (nowMs - e.getValue() > 10_000L) {
+                occIt.remove();
+                OCCLUSION_CACHE.remove(e.getKey());
+            }
+        }
         ShatterFx.purgeStale(FRAME_RENDERED.keySet());
         if (FIRST_SEEN.size() > 512) {
             Iterator<Map.Entry<Integer, Long>> it2 = FIRST_SEEN.entrySet().iterator();

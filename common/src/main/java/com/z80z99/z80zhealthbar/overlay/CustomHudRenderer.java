@@ -84,8 +84,7 @@ public final class CustomHudRenderer {
                     // 分离文本元素：独立定位（缩放 = 组件缩放 × 文本缩放;模板优先于默认文本）
                     float s = (float) (c.scale * c.textScale);
                     graphics.pose().scale(s, s, 1f);
-                    String t = c.textFormat != null && !c.textFormat.isBlank()
-                            ? formatText(c.textFormat, player) : valueText(base, player);
+                    String t = componentText(base, player);
                     if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
                 } else if (isIcon) {
                     // 分离图标元素：独立定位（缩放 = 组件缩放 × 图标缩放）
@@ -100,9 +99,8 @@ public final class CustomHudRenderer {
                     // 并支持原子组件（纯文本/纯图标/自由文本）,全部可自由增删组合
                     String type = HudLayoutConfig.typeOf(key, c);
                     if (type.endsWith("_text")) {
-                        // 纯文本组件：只渲染对应数值文本（模板优先）
-                        String t = c.textFormat != null && !c.textFormat.isBlank()
-                                ? formatText(c.textFormat, player) : valueText(type, player);
+                        // 纯文本组件：只渲染对应数值文本（模板优先;帧内缓存）
+                        String t = componentText(key, player);
                         if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
                     } else if (type.endsWith("_icon")) {
                         // 纯图标组件：只渲染状态图标
@@ -141,11 +139,32 @@ public final class CustomHudRenderer {
     private static final Map<String, String> IDLE_LAST = new java.util.HashMap<>();
     private static final Map<String, Long> IDLE_CHANGE = new java.util.HashMap<>();
 
+    /** 帧内文本缓存：同一帧（50ms 窗口）内同一组件的文本只算一次——
+     *  measureAll / 渲染循环 / idleFadeAlpha 此前各算一遍（每帧 2-3 次重复,性能审查 §3） */
+    private static final Map<String, String> FRAME_TEXT = new java.util.HashMap<>();
+    private static long frameTextAt;
+
+    private static String onceText(String cacheKey, java.util.function.Supplier<String> compute) {
+        long now = System.currentTimeMillis();
+        if (now - frameTextAt > 50) {
+            FRAME_TEXT.clear();
+            frameTextAt = now;
+        }
+        return FRAME_TEXT.computeIfAbsent(cacheKey, k -> compute.get());
+    }
+
+    /** 组件的显示文本（模板优先于默认值;带帧内缓存） */
+    private static String componentText(String key, Player p) {
+        ComponentLayout c = ConfigManager.getConfig().hudLayout.components.get(key);
+        if (c == null) return valueText(key, p);
+        return onceText(key, () -> c.textFormat != null && !c.textFormat.isBlank()
+                ? formatText(c.textFormat, p) : valueText(key, p));
+    }
+
     /** 动态 HUD 透明度系数（idleFadeSecs=0 恒 1）：数值变化重置计时,无变化 N 秒后线性淡出 */
     private static float idleFadeAlpha(String key, String base, Player player, ComponentLayout c) {
         if (c.idleFadeSecs <= 0) return 1f;
-        String cur = valueText(HudLayoutConfig.typeOf(key, c).endsWith("_text")
-                ? HudLayoutConfig.typeOf(key, c) : base, player);
+        String cur = componentText(base, player);
         if (cur == null) cur = "";
         String last = IDLE_LAST.put(key, cur);
         long now = System.currentTimeMillis();
@@ -175,17 +194,14 @@ public final class CustomHudRenderer {
                 continue;
             }
             if (type.endsWith("_text") || type.equals("text")) {
-                // 纯文本/自由文本组件：尺寸 = 实际文本宽
-                String t = type.equals("text") ? formatText(c.textFormat, player)
-                        : (c.textFormat != null && !c.textFormat.isBlank()
-                                ? formatText(c.textFormat, player) : valueText(type, player));
+                // 纯文本/自由文本组件：尺寸 = 实际文本宽（帧内缓存复用）
+                String t = type.equals("text") ? formatText(c.textFormat, player) : componentText(key, player);
                 sizes.put(key, new int[]{Math.max(8, t == null ? 8 : mc.font.width(t)), 10});
                 continue;
             }
             sizes.put(key, HudLayoutSolver.measure(c));
             if (player == null || c.modeParsed() != HudLayoutConfig.ComponentMode.BAR) continue;
-            String t = c.textFormat != null && !c.textFormat.isBlank()
-                    ? formatText(c.textFormat, player) : valueText(key, player);
+            String t = componentText(key, player);
             if (c.showText && c.textAnchorParsed() != null && t != null) {
                 sizes.put(key + ".text", new int[]{mc.font.width(t), 8});
             }
@@ -280,6 +296,8 @@ public final class CustomHudRenderer {
      *  {armor} {toughness} {level} {xp_percent} {mount_health} {mount_max} */
     public static String formatText(String template, Player p) {
         if (template == null || template.isBlank()) return "";
+        // 早退：无 '{' 的模板（纯文字）不做 18 连全串扫描与全量变量取值（性能审查 §4）
+        if (template.indexOf('{') < 0) return template;
         boolean pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
         float hp = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.health : p.getHealth();
         float maxHp = Math.max(1, pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxHealth : p.getMaxHealth());
@@ -755,7 +773,8 @@ public final class CustomHudRenderer {
         var dxCfg = ConfigManager.getConfig().dynamicFx;
         if (!dxCfg.enabled || !dxCfg.sheen || fillW <= 0) return;
         int innerW = HudBarPainter.innerWidth(w);
-        double phase = HudFx.advanceSheen("custom.health", fillW, System.currentTimeMillis(), false);
+        double phase = HudFx.advanceSheen(-2, // 自定义管线血条固定编号
+                fillW, System.currentTimeMillis(), false);
         int[] band = HudFx.sheenBandPhase(innerW, fillW, phase);
         if (band == null) return;
         int x0 = HudBarPainter.INSET + band[0];

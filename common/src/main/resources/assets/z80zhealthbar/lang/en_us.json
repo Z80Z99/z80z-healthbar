@@ -537,6 +537,7 @@
   "z80zhealthbar.hud.component.fps_text": "FPS",
   "z80zhealthbar.hud.component.biome_text": "Biome",
   "z80zhealthbar.hud.component.time_text": "Game time",
+  "z80zhealthbar.editor.toggle_group": "Group",
   "z80zhealthbar.editor.done": "Done",
   "z80zhealthbar.editor.section.asteorbar": "Bar options",
   "z80zhealthbar.editor.asteor.note": "Drag bars to move; drag icons to detach.",

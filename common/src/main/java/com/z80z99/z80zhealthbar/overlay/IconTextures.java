@@ -21,6 +21,9 @@ import java.util.Map;
 public final class IconTextures {
 
     private static final Map<String, ResourceLocation> LOADED = new HashMap<>();
+    /** 已知缺失文件名 → 到期重试时间（负结果缓存——此前失败路径每帧每图标一次文件系统探测） */
+    private static final Map<String, Long> MISSING = new HashMap<>();
+    private static final long MISSING_RETRY_MS = 10_000L;
     private static List<String> cachedNames;
     private static long cachedAt;
 
@@ -46,21 +49,29 @@ public final class IconTextures {
         return out;
     }
 
-    /** 取外部贴图（懒加载;文件缺失/读取失败返回 null → 调用方回退原版图标） */
+    /** 取外部贴图（懒加载;文件缺失/读取失败返回 null → 调用方回退原版图标。
+     *  负结果缓存 10 秒（避免渲染线程每帧文件系统探测）,到期自动重试支持热替换） */
     public static ResourceLocation get(String name) {
         if (name == null || name.isBlank()) return null;
         ResourceLocation cached = LOADED.get(name);
         if (cached != null) return cached;
+        Long retryAt = MISSING.get(name);
+        if (retryAt != null && System.currentTimeMillis() < retryAt) return null;
         try {
             File f = iconDir().resolve(name + ".png").toFile();
-            if (!f.isFile()) return null;
+            if (!f.isFile()) {
+                MISSING.put(name, System.currentTimeMillis() + MISSING_RETRY_MS);
+                return null;
+            }
             var img = com.mojang.blaze3d.platform.NativeImage.read(Files.newInputStream(f.toPath()));
             ResourceLocation id = new ResourceLocation("z80zhealthbar",
                     "icons/" + name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9/._-]", "_"));
             Minecraft.getInstance().getTextureManager().register(id, new DynamicTexture(img));
             LOADED.put(name, id);
+            MISSING.remove(name);
             return id;
         } catch (Exception e) {
+            MISSING.put(name, System.currentTimeMillis() + MISSING_RETRY_MS);
             return null;
         }
     }

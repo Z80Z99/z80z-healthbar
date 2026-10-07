@@ -56,32 +56,41 @@ public final class HudFx {
     }
 
     // ---- 自适应扫光（数值变化 1.0× 速、静止 0.5× 速,方向随数据增减） ----
-    private static final Map<String, Double> SHEEN_PHASE = new java.util.HashMap<>();
-    private static final Map<String, Long> SHEEN_LAST = new java.util.HashMap<>();
-    private static final Map<String, Float> SHEEN_LAST_FILL = new java.util.HashMap<>();
+    // int key（实体 ID / 固定组件编号）——此前 String key 每帧拼接（"mob."+id）且表无界增长
+    private static final Map<Integer, double[]> SHEEN = new java.util.HashMap<>(); // {phase, lastMs, lastFill}
+    private static final int SHEEN_STALE_MS = 10_000;
 
     /**
      * 自适应扫光相位推进：静止 0.5× 速、数值变化 1.0× 速;数据增加向右扫、减少向左扫。
      *
-     * @param key    相位跟踪键（per-entity/组件）
+     * @param key    相位跟踪键（实体 ID;玩家组件用负编号）
      * @param fillW  当前填充宽（变化检测;==0 视为静止）
      * @param now    时间戳
      * @param changing 数据是否正在变化（如 BarFx display 与 target 差 > ε）
      * @return 累计相位（ms）——直接喂 sheenBandPhase
      */
-    public static double advanceSheen(String key, int fillW, long now, boolean changing) {
-        long last = SHEEN_LAST.getOrDefault(key, now);
-        long dt = Math.max(0, Math.min(100, now - last));
-        SHEEN_LAST.put(key, now);
-        Float prev = SHEEN_LAST_FILL.put(key, (float) fillW);
-        boolean grew = prev != null && fillW > prev + 0.5f;
-        boolean shrank = prev != null && fillW < prev - 0.5f;
-        double dir = SHEEN_PHASE.computeIfAbsent(key, k -> 0.0) >= 0 ? 1.0 : -1.0;
+    public static double advanceSheen(int key, int fillW, long now, boolean changing) {
+        double[] st = SHEEN.get(key);
+        if (st == null) {
+            if (SHEEN.size() > 256) { // 有界清理:整体重建（存活条目 << 256,代价可忽略）
+                SHEEN.entrySet().removeIf(e -> now - e.getValue()[1] > SHEEN_STALE_MS);
+            }
+            st = new double[]{0.0, now, fillW};
+            SHEEN.put(key, st);
+            return 0.0;
+        }
+        long dt = Math.max(0, Math.min(100, now - (long) st[1]));
+        double prevFill = st[2];
+        boolean grew = fillW > prevFill + 0.5;
+        boolean shrank = fillW < prevFill - 0.5;
+        double dir = st[0] >= 0 ? 1.0 : -1.0;
         if (grew) dir = 1.0;
         if (shrank) dir = -1.0;
         double speed = (changing || grew || shrank ? 1.0 : 0.5) * dir;
-        double phase = SHEEN_PHASE.merge(key, dt * speed, Double::sum);
-        return phase;
+        st[0] += dt * speed;
+        st[1] = now;
+        st[2] = fillW;
+        return st[0];
     }
 
     /** 扫光带前缘宽（亮边,占带宽 1/4,至少 1px） */
