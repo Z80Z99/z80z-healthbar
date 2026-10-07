@@ -140,9 +140,11 @@ public final class EntityStatusSnapshot {
      * @param armor        传 -1 表示无护甲行
      * @param toughness    传 -1 表示无韧性行
      * @param hurt         模拟"正处于受伤硬直"（触发血条动态效果的受伤闪白）
+     * @param air          模拟氧气（上限固定 300）。必须小于 300 才能预览氧气行——
+     *                     空气满时按原版语义氧气行/气泡不显示（此前恒 300,氧气相关设置看不到预览效果）
      */
     public static EntityStatusSnapshot preview(String displayName, float entityHeight, float health, float maxHealth,
-                                               float absorption, int armor, int toughness, boolean hurt) {
+                                               float absorption, int armor, int toughness, boolean hurt, int air) {
         Builder b = new Builder();
         b.entityId = -1;
         b.entityType = new ResourceLocation("minecraft", "player");
@@ -152,7 +154,7 @@ public final class EntityStatusSnapshot {
         b.absorption = absorption;
         b.armor = armor;
         b.armorToughness = toughness;
-        b.airSupply = 300;
+        b.airSupply = Math.max(0, Math.min(300, air));
         b.maxAirSupply = 300;
         b.entityHeight = entityHeight;
         b.hurtTime = hurt ? 10 : 0;

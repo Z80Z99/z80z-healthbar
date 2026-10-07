@@ -294,13 +294,13 @@ public final class MobDisplayRenderer {
         // 主条 1 像素 = 0.025*barScale 方块 = 2*barScale 个紧凑行像素
         float pxScale = 2f * (float) barCfg.barScale;
         poseStack.translate(barCfg.barPixelOffsetX * pxScale, barCfg.barPixelOffsetY * pxScale + 2, 0);
-        drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows);
+        drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, 0);
         poseStack.popPose();
     }
 
     /** 样式 A（贴图条）附加牌匾行：按样式1 的条几何换算锚点——条底 + 数值行 + 2px 行距,
      *  并计入 scaleBar 缩放补偿与条像素偏移；心形排（barType 1）从锚点上堆,下缘即锚点。 */
-    private static void renderStyleAAddonRows(EntityStatusSnapshot snap, PoseStack poseStack,
+    public static void renderStyleAAddonRows(EntityStatusSnapshot snap, PoseStack poseStack,
                                               MultiBufferSource buffer, int packedLight, float alpha, Font font) {
         List<IMobDisplayRenderer> rows = collectAddonRows(snap);
         if (rows.isEmpty()) return;
@@ -321,13 +321,14 @@ public final class MobDisplayRenderer {
         // 样式1 像素 → 紧凑行像素（×2×scaleBar）,在镜像空间内施加（+x 屏幕右 / +y 屏幕下,与条偏移同向）
         float pxScale = 2f * (float) cfg.scaleBar;
         poseStack.translate(cfg.offsetX * pxScale, (compPx + (float) cfg.offsetY + below) * pxScale, 0);
-        drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows);
+        drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, 0);
         poseStack.popPose();
     }
 
-    /** 附加行绘制：调用方已完成定位与紧凑尺度缩放,y=0 = 行组顶部;行距 = entityAddons.rowGap */
+    /** 附加行绘制：调用方已完成定位与紧凑尺度缩放,yStart = 行组顶部;行距 = entityAddons.rowGap */
     private static void drawAddonRows(EntityStatusSnapshot snap, PoseStack poseStack, MultiBufferSource buffer,
-                                      float alpha, Font font, int packedLight, List<IMobDisplayRenderer> rows) {
+                                      float alpha, Font font, int packedLight, List<IMobDisplayRenderer> rows,
+                                      int yStart) {
         int rowGap = ConfigManager.getConfig().entityAddons.rowGap;
         int totalIconW = 0;
         for (IMobDisplayRenderer r : rows) totalIconW += r.getPlaqueWidth(font, snap) + 2;
@@ -339,7 +340,7 @@ public final class MobDisplayRenderer {
         int totalW = totalIconW + maxTextW;
 
         int rowX = -totalW / 2;
-        int rowY = 0;
+        int rowY = yStart;
         int i = 0;
         for (IMobDisplayRenderer r : rows) {
             if (i > 0) rowY += rowGap;
@@ -353,6 +354,30 @@ public final class MobDisplayRenderer {
             rowX += r.getPlaqueWidth(font, snap) + 2;
             i++;
         }
+    }
+
+    /**
+     * 设置页预览用（GUI 屏幕空间：+x 右 / +y 下）：在 yStart 处绘制附加行组。
+     * 世界路径的两个入口自带名牌镜像约定与相机朝向,预览的平面坐标系不能复用——
+     * 此处只按 {@code pxInBlocks}（调用方位姿下 1 像素 = 多少方块）换算到紧凑行尺度,
+     * 不施加任何旋转/镜像;条像素偏移由调用方在自身像素空间内 translate。
+     *
+     * @param yStart     行组顶部（调用方像素）
+     * @param pxInBlocks 调用方位姿的像素当量（世界名牌 0.025*scale,预览按各样式换算）
+     */
+    public static void drawAddonRowsPreview(EntityStatusSnapshot snap, PoseStack poseStack, MultiBufferSource buffer,
+                                            Font font, float alpha, int packedLight, int yStart, float pxInBlocks) {
+        List<IMobDisplayRenderer> rows = collectAddonRows(snap);
+        if (rows.isEmpty()) return;
+        float f = pxInBlocks > 1e-6f ? ADDON_ROW_SCALE / pxInBlocks : 1f; // 紧凑行像素 → 调用方像素
+        if (Math.abs(f - 1f) < 1e-4f) {
+            drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, yStart);
+            return;
+        }
+        poseStack.pushPose();
+        poseStack.scale(f, f, 1f);
+        drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, Math.round(yStart / f));
+        poseStack.popPose();
     }
 
     /** 样式 B：Mob Plaques 牌匾(实体绑定渲染,与原版名牌同管线;行换行 + 距离缩放 + 背景盒 + 数值文本) */

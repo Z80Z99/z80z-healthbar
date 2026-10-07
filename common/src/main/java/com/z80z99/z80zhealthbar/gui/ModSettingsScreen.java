@@ -1076,6 +1076,13 @@ public final class ModSettingsScreen extends Screen {
         }
     }
 
+    /**
+     * 预览用模拟氧气（上限 300）。必须小于上限,否则按原版语义氧气行/气泡不显示,
+     * "附加组件：氧气行"开关与行距在预览里永远看不到效果（实测反馈"有些设置看不到预览效果"）。
+     * 取值 182 → 6 个满泡 + 1 个正在破裂的边界泡（两种气泡贴图都能看到）。
+     */
+    private static final int PREVIEW_MOCK_AIR = 182;
+
     private void drawMockBar(GuiGraphics g, int cx, int boxTop, int boxH) {
         var mc = Minecraft.getInstance();
         var cfg = cfg();
@@ -1122,10 +1129,10 @@ public final class ModSettingsScreen extends Screen {
         var snap = previewFriendly
                 ? EntityStatusSnapshot.preview(
                         Component.translatable("z80zhealthbar.settings.preview.mock.friendly").getString(),
-                        mobHeight, hp, maxHp, Math.round(remainingAbs), 6, 2, hurtNow)
+                        mobHeight, hp, maxHp, Math.round(remainingAbs), 6, 2, hurtNow, PREVIEW_MOCK_AIR)
                 : EntityStatusSnapshot.preview(
                         Component.translatable("z80zhealthbar.settings.preview.mock.enemy").getString(),
-                        mobHeight, hp, maxHp, 0, 6, 2, hurtNow);
+                        mobHeight, hp, maxHp, 0, 6, 2, hurtNow, PREVIEW_MOCK_AIR);
 
         var buffer = g.bufferSource();
         var pose = g.pose();
@@ -1196,6 +1203,9 @@ public final class ModSettingsScreen extends Screen {
                 pose.mulPose(new org.joml.Quaternionf(qf).conjugate());
                 pose.scale(-zb, -zb, zb);
                 MobHealthBarStyle.render(snap, pose, buffer, 0xF000F0, 1.0f);
+                // 附加行（护甲/韧性/氧气）：同一变换链内绘制——附加行渲染器内部与
+                // MobHealthBarStyle.render 同样自带 高度抬升×名牌朝向×镜像,故在该位姿下与条自然对齐
+                MobDisplayRenderer.renderStyleAAddonRows(snap, pose, buffer, 0xF000F0, 1.0f, font);
                 pose.popPose();
                 dispatcher.overrideCameraOrientation(savedOrient);
                 popupBaseY = feetY - (mobHeight + (float) cfg.styleA.heightOffset) * zb - 30;
@@ -1225,6 +1235,12 @@ public final class ModSettingsScreen extends Screen {
                 int barH = cfg.barStyle.barHalfHeight * 2;
                 health.renderBar(pose, buffer, font, snap, -barW / 2, -barH, barW, 1.0f,
                         0.025f * (float) cfg.barStyle.barScale);
+                // 附加行：跟随条像素偏移（与世界路径同语义）,条底（y=0）下方 2px 起
+                pose.pushPose();
+                pose.translate(cfg.barStyle.barPixelOffsetX, cfg.barStyle.barPixelOffsetY, 0);
+                MobDisplayRenderer.drawAddonRowsPreview(snap, pose, buffer, font, 1.0f, 0xF000F0, 2,
+                        0.025f * (float) cfg.barStyle.barScale); // 本位姿 1 像素 = 0.025*barScale 方块
+                pose.popPose();
                 pose.popPose();
                 popupBaseY = barBottomY - barH * p - 14;
             }
@@ -1249,17 +1265,103 @@ public final class ModSettingsScreen extends Screen {
             };
             boolean plate = theme.equals("APEX") || theme.equals("WARFRAME");
             boolean outline = theme.equals("TACTICAL") || theme.equals("CLASSIC");
+            // 头顶抬升（方块,正=向上）——与世界路径同语义（此前预览忽略该项,offsetY 看不到效果）
+            float baseY = popupBaseY - (float) dp.offsetY * zb;
 
-            // 存活中的命中（时间正序）
-            int alive = 0;
-            for (int i = 0; i < 5; i++) {
-                long age = tCycle - births[i];
-                if (age >= 0 && age <= lifeMs) alive++;
+            // 命中标记（FPS hitmarker）：命中后 320ms 内在准星处画 X——预览画在取景框中心
+            // （真实渲染见 DamagePopupRenderer.renderHitMarker;开关与配色随设置实时变化）
+            boolean hitLive = false;
+            for (long birth : births) {
+                long age = tCycle - birth;
+                if (age >= 0 && age <= 320) hitLive = true;
             }
-            int seen = 0;
+            if (dp.hitMarker && hitLive) {
+                long nearest = 320;
+                for (long birth : births) {
+                    long age = tCycle - birth;
+                    if (age >= 0 && age < nearest) nearest = age;
+                }
+                float progress = 1f - nearest / 320f;
+                int argb = ColorHelper.modifyAlpha(ColorHelper.parseColor(dp.colorHealth), (int) (255 * progress));
+                int mx0 = cx, my0 = boxTop + boxH / 2;
+                pose.pushPose();
+                pose.translate(mx0, my0, 0);
+                pose.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(45f));
+                g.fill(4, -1, 4 + 5, 1, argb);   // 右
+                g.fill(-4 - 5, -1, -4, 1, argb); // 左
+                g.fill(-1, -4 - 5, 1, -4, argb); // 上
+                g.fill(-1, 4, 1, 4 + 5, argb);   // 下
+                pose.popPose();
+            }
+
+            // 演示伤害类别：每循环整体前移一位轮换（普通/投射物/火焰/爆炸/魔法/摔落）——
+            // 六项类别开关与五种类别配色因此都能在预览里看到效果（此前演示伤害无类别,
+            // 只显示生命色,类别相关设置"看不到预览效果"）
+            final byte[] cats = {
+                    com.z80z99.z80zhealthbar.network.packets.DamagePopupPacket.CAT_PHYSICAL,
+                    com.z80z99.z80zhealthbar.network.packets.DamagePopupPacket.CAT_PROJECTILE,
+                    com.z80z99.z80zhealthbar.network.packets.DamagePopupPacket.CAT_FIRE,
+                    com.z80z99.z80zhealthbar.network.packets.DamagePopupPacket.CAT_EXPLOSION,
+                    com.z80z99.z80zhealthbar.network.packets.DamagePopupPacket.CAT_MAGIC,
+                    com.z80z99.z80zhealthbar.network.packets.DamagePopupPacket.CAT_FALL};
+
+            if (motion.equals("CUMULATIVE")) {
+                // 伤害总和：同一点只显示累计值（与 DamagePopupManager.cumulativeLive + drawPopup 同语义,
+                // 此前预览按单条数字叠画,和游戏里"一条累计"完全不同步）
+                int last = -1;
+                float cumHealth = 0f, cumAbs = 0f;
+                for (int i = 0; i < 5; i++) {
+                    long age = tCycle - births[i];
+                    if (age < 0 || age > lifeMs) continue;
+                    last = i;
+                    cumHealth += healthPart[i];
+                    cumAbs += absPart[i];
+                }
+                if (last >= 0) {
+                    float tt = Math.min(1f, (tCycle - births[last]) / (float) lifeMs);
+                    float alpha = tt < 0.7f ? 1f : Math.max(0f, 1f - (tt - 0.7f) / 0.3f);
+                    int a255 = (int) (255 * alpha);
+                    if (a255 > 0) {
+                        String main = theme.equals("APEX")
+                                ? MobHealthBarStyle.formatNumber(cumHealth)
+                                : MobHealthBarStyle.formatNumber(cumHealth + cumAbs);
+                        int mainColor = theme.equals("APEX") || theme.equals("TACTICAL") || theme.equals("MINIMAL")
+                                ? ColorHelper.parseColor(dp.colorHealth)
+                                : DamagePopupRenderer.categoryColor(dp, cats[(int) ((cycleIdx + last) % cats.length)]);
+                        float punch = 1f + 0.45f * (float) Math.sin(
+                                Math.min(1f, (tCycle - births[last]) / 180f) * (float) Math.PI);
+                        pose.pushPose();
+                        pose.translate(cx, baseY, 0);
+                        float sc = (float) dp.scale * punch;
+                        pose.scale(sc, sc, 1f);
+                        var mat = pose.last().pose();
+                        if (plate) {
+                            int w = font.width(main);
+                            g.fill(-w / 2 - 3, -2, w / 2 + 3, 11, ColorHelper.modifyAlpha(0x8C10141C, a255));
+                            g.fill(-w / 2 - 3, -2, w / 2 + 3, -1, ColorHelper.modifyAlpha(0x30FFFFFF, a255));
+                        }
+                        if (outline) {
+                            int dark = ColorHelper.modifyAlpha(0xFF101014, a255);
+                            for (int[] d : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}) {
+                                font.drawInBatch(main, -font.width(main) / 2f + d[0], d[1], dark, false,
+                                        mat, buffer, Font.DisplayMode.SEE_THROUGH, 0, 0xF000F0);
+                            }
+                        }
+                        font.drawInBatch(main, -font.width(main) / 2f, 0,
+                                ColorHelper.modifyAlpha(mainColor, a255), false, mat, buffer,
+                                Font.DisplayMode.SEE_THROUGH, 0, 0xF000F0);
+                        pose.popPose();
+                    }
+                }
+                g.flush();
+                return; // 累计模式不画单条数字
+            }
+
             for (int i = 0; i < 5; i++) {
                 long age = tCycle - births[i];
                 if (age < 0 || age > lifeMs) continue;
+                byte cat = cats[(int) ((cycleIdx + i) % cats.length)];
+                if (!DamagePopupRenderer.categoryEnabled(dp, cat)) continue; // 类别关闭 → 该跳字不显示
                 float tt = Math.min(1f, age / (float) lifeMs);
                 float rise = 1f - (1f - tt) * (1f - tt); // easeOutQuad
                 float punch = 1f + 0.45f * (float) Math.sin(
@@ -1268,6 +1370,12 @@ public final class ModSettingsScreen extends Screen {
                 int a255 = (int) (255 * alpha);
                 if (a255 <= 0) continue;
                 boolean big = (float) dmg[i] / maxHp >= 0.2f;
+                // 堆叠序号取"其后仍存活的跳字数"——与世界路径按全体（含被类别隐藏的）计数一致
+                int after = 0;
+                for (int j = i + 1; j < 5; j++) {
+                    long a = tCycle - births[j];
+                    if (a >= 0 && a <= lifeMs) after++;
+                }
 
                 // 随机角度跳出:演示跳字以序号推导种子,与 DamagePopupRenderer.seedToUnit 同公式
                 float launchSin = 0f, launchCos = 1f;
@@ -1291,7 +1399,7 @@ public final class ModSettingsScreen extends Screen {
                         xPx = launchSin * risePx * rise;
                         worldDropPx = (mobHeight + 0.1f) * zb * fall * fall; // 坠落至脚底
                     }
-                    case "STACK" -> yPx = -12f * (alive - 1 - seen); // 顶旧底新
+                    case "STACK" -> yPx = -12f * after; // 顶旧底新（= 其后仍存活的跳字数）
                     case "CUMULATIVE" -> yPx = 0;
                     default -> { // RISE:沿发射方向的直线漂浮
                         yPx = -risePx * rise * launchCos;
@@ -1314,7 +1422,7 @@ public final class ModSettingsScreen extends Screen {
                         case "TACTICAL" -> big ? ColorHelper.parseColor(dp.colorBigHit)
                                 : ColorHelper.parseColor(dp.colorHealth);
                         case "MINIMAL" -> ColorHelper.parseColor(dp.colorHealth);
-                        default -> ColorHelper.parseColor(dp.colorHealth); // 演示伤害无类别 → 生命色兜底
+                        default -> DamagePopupRenderer.categoryColor(dp, cat); // CLASSIC/WARFRAME:按伤害类别配色
                     };
                     main = MobHealthBarStyle.formatNumber(dmg[i]);
                 }
@@ -1327,7 +1435,7 @@ public final class ModSettingsScreen extends Screen {
 
                 // 绘制（GUI 空间）：底板 → 描边 → 主字 → 吸收小字
                 pose.pushPose();
-                pose.translate(cx, popupBaseY + worldDropPx, 0);
+                pose.translate(cx, baseY + worldDropPx, 0);
                 float sc = (float) dp.scale * baseScaleF * punch;
                 pose.scale(sc, sc, 1f);
                 pose.translate(drift + xPx, yPx, 0);
@@ -1354,7 +1462,6 @@ public final class ModSettingsScreen extends Screen {
                             false, mat, buffer, Font.DisplayMode.SEE_THROUGH, 0, 0xF000F0);
                 }
                 pose.popPose();
-                seen++;
             }
         }
         g.flush();

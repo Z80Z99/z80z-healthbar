@@ -287,7 +287,8 @@ public final class DamagePopupRenderer {
         return p.maxHealth() > 0 && (p.healthDamage() + p.absorbed()) / p.maxHealth() >= 0.2f;
     }
 
-    private static boolean categoryEnabled(DamagePopupConfig cfg, byte category) {
+    /** 类别开关（设置页实时预览共用,保持单一事实来源） */
+    public static boolean categoryEnabled(DamagePopupConfig cfg, byte category) {
         return switch (category) {
             case DamagePopupPacket.CAT_PROJECTILE -> cfg.showProjectile;
             case DamagePopupPacket.CAT_FIRE -> cfg.showFire;
@@ -298,7 +299,8 @@ public final class DamagePopupRenderer {
         };
     }
 
-    private static int categoryColor(DamagePopupConfig cfg, byte category) {
+    /** 类别配色（设置页实时预览共用,保持单一事实来源） */
+    public static int categoryColor(DamagePopupConfig cfg, byte category) {
         return switch (category) {
             case DamagePopupPacket.CAT_FIRE -> ColorHelper.parseColor(cfg.colorFire);
             case DamagePopupPacket.CAT_EXPLOSION -> ColorHelper.parseColor(cfg.colorExplosion);
