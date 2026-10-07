@@ -159,6 +159,39 @@ public final class HudLayoutScreen extends Screen {
     /** GROUP 页当前查看的分组名 */
     private String currentGroup = "";
 
+    // ---- 设置说明（(?) 标记：点击显示对应设置的说明文字） ----
+    /** 当前显示的说明键;null = 未显示 */
+    private String helpKey;
+    /** (?) 命中区（每帧渲染时重建:视口外的行不记录） */
+    private record HelpHit(int x, int y, int w, int h, String key) {}
+    private final List<HelpHit> helpHits = new ArrayList<>();
+
+    /** 行标签 → 说明键（.label 后缀剥离;语言文件无译文时返回 null = 不画 (?)） */
+    private String tooltipKeyFor(String labelKey) {
+        if (labelKey == null) return null;
+        String base = labelKey.endsWith(".label")
+                ? labelKey.substring(0, labelKey.length() - ".label".length()) : labelKey;
+        String tk = base + ".tooltip";
+        return Component.translatable(tk).getString().equals(tk) ? null : tk;
+    }
+
+    /** 设置说明浮框（底部居中;跟随 (?) 点击切换） */
+    private void renderHelpBox(GuiGraphics g) {
+        var lines = font.split(Component.translatable(helpKey), Math.min(330, width - 60));
+        int lineH = 10, pad = 6;
+        int boxW = 0;
+        for (var l : lines) boxW = Math.max(boxW, font.width(l));
+        int boxH = lines.size() * lineH + pad * 2;
+        int bx = (width - boxW) / 2 - pad;
+        int by = Math.max(4, height - 42 - boxH);
+        g.fill(bx + 2, by + 2, bx + boxW + pad * 2 + 2, by + boxH + 2, 0x50000000);
+        g.fill(bx, by, bx + boxW + pad * 2, by + boxH, 0xE60E1218);
+        g.renderOutline(bx, by, boxW + pad * 2, boxH, 0x907FD4FF);
+        for (int i = 0; i < lines.size(); i++) {
+            g.drawString(font, lines.get(i), bx + pad, by + pad + i * lineH, 0xFFD0D8E0);
+        }
+    }
+
     // ---- 显式保存机制（10）：进入编辑器快照,改动标脏,保存/放弃/未保存退出确认 ----
     /** 进入编辑器时的布局快照（放弃 = 回滚到此） */
     private com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig savedSnapshot;
@@ -1325,7 +1358,9 @@ public final class HudLayoutScreen extends Screen {
         super.render(graphics, mouseX, mouseY, partialTick);
 
         // 6) 面板文本（标签/值/节标题；控件之上补文字）
-        renderPanelTexts(graphics);
+        renderPanelTexts(graphics, mouseX, mouseY);
+        // 设置说明浮框（点击 (?) 后显示,点击别处/再点同处/Esc 关闭）
+        if (helpKey != null) renderHelpBox(graphics);
 
         graphics.drawCenteredString(font, getTitle(), width / 2, 8, 0xFFFFFF);
         graphics.drawCenteredString(font, Component.translatable("z80zhealthbar.editor.hint"),
@@ -1404,8 +1439,9 @@ public final class HudLayoutScreen extends Screen {
         layoutPanel();
     }
 
-    /** 面板文本：节标题 / 行标签 / 行值（右对齐到控件左侧；随滚动位移,视口外不画） */
-    private void renderPanelTexts(GuiGraphics g) {
+    /** 面板文本：节标题 / 行标签 / 行值（右对齐到控件左侧；随滚动位移,视口外不画）;参数行标签后画 (?) 说明标记 */
+    private void renderPanelTexts(GuiGraphics g, int mouseX, int mouseY) {
+        helpHits.clear();
         int scroll = Math.round(panelScroll);
         for (PEntry e : panelEntries) {
             int y = panelY + e.relY - scroll;
@@ -1428,6 +1464,16 @@ public final class HudLayoutScreen extends Screen {
             String lbl = e.labelDyn != null ? e.labelDyn.get()
                     : (e.labelKey != null ? Component.translatable(e.labelKey).getString() : "");
             g.drawString(font, lbl, panelX + 6, y + (ROW_H - 8) / 2, 0xFFD0D8E0);
+            // (?) 说明标记：有译文的参数行才画;点击切换显示说明浮框
+            String tk = e.labelDyn == null ? tooltipKeyFor(e.labelKey) : null;
+            if (tk != null) {
+                int qx = panelX + 6 + font.width(lbl) + 3;
+                boolean hover = mouseX >= qx - 1 && mouseX <= qx + 8 && mouseY >= y && mouseY <= y + ROW_H;
+                boolean active = tk.equals(helpKey);
+                g.drawString(font, "?", qx, y + (ROW_H - 8) / 2,
+                        active ? 0xFF7FD4FF : hover ? 0xFFA8D8FF : 0x7090A8C0);
+                helpHits.add(new HelpHit(qx - 1, y, 10, ROW_H, tk));
+            }
             if (e.value != null && e.valueRight > 0) {
                 String v = e.value.get();
                 g.drawString(font, v, panelX + e.valueRight - font.width(v),
@@ -1459,7 +1505,16 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // 0) 面板滚动条拖拽（优先于面板拖动）
+        // 0) (?) 说明标记：命中 → 切换显示对应说明;其它点击先关闭已有说明再正常处理
+        for (HelpHit h : helpHits) {
+            if (mouseX >= h.x() && mouseX <= h.x() + h.w()
+                    && mouseY >= h.y() && mouseY <= h.y() + h.h()) {
+                helpKey = h.key().equals(helpKey) ? null : h.key();
+                return true;
+            }
+        }
+        helpKey = null;
+        // 0b) 面板滚动条拖拽（优先于面板拖动）
         if (panelScrollbarHit(mouseX, mouseY)) {
             panelScrollbarDragging = true;
             panelScrollbarDrag(mouseY);
@@ -1640,6 +1695,11 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // Esc 先关闭设置说明浮框（若有）
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && helpKey != null) {
+            helpKey = null;
+            return true;
+        }
         // Esc = 层级回退：编辑页/类型页/组页/子组件页 → 列表页;列表页再按才退出编辑器
         if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && panelPage != PanelPage.LIST) {
             panelPage = PanelPage.LIST;
