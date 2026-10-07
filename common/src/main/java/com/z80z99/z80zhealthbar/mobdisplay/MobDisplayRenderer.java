@@ -278,22 +278,22 @@ public final class MobDisplayRenderer {
         return rows;
     }
 
-    /** 样式 C 附加牌匾行：锚点 = 条挂点（含条像素偏移）,行起点在条下方 2px */
+    /** 样式 C 附加牌匾行：锚点 = 条挂点,行起点在条下方 2px;条像素偏移同向跟随 */
     private static void renderAddonPlaqueRows(LivingEntity entity, EntityStatusSnapshot snap, PoseStack poseStack,
                                               MultiBufferSource buffer, float partialTick,
                                               int packedLight, float alpha, Font font) {
         List<IMobDisplayRenderer> rows = collectAddonRows(snap);
         if (rows.isEmpty()) return;
         var barCfg = ConfigManager.getConfig().barStyle;
-        // 条像素偏移同样带动附加行（条移动时整组跟随,否则附加行与条脱节）
-        float pxPerPx = 0.025f * (float) barCfg.barScale;
         poseStack.pushPose();
-        poseStack.translate(barCfg.barPixelOffsetX * pxPerPx,
-                snap.entityHeight + (float) barCfg.barOffsetY + barCfg.barPixelOffsetY * pxPerPx, 0);
+        poseStack.translate(0, snap.entityHeight + (float) barCfg.barOffsetY, 0); // 世界空间锚点（条挂点）
         poseStack.mulPose(Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation());
         poseStack.scale(-ADDON_ROW_SCALE, -ADDON_ROW_SCALE, ADDON_ROW_SCALE); // 原版名牌约定
         DisplayAnimation.applyScreenFx(poseStack, snap); // 附加行组跟随主条整条动画
-        poseStack.translate(0, 2, 0); // 主条下方
+        // 像素偏移必须在镜像空间内（+x 屏幕右 / +y 屏幕下）——在世界空间做会变成上下颠倒/左右错位。
+        // 主条 1 像素 = 0.025*barScale 方块 = 2*barScale 个紧凑行像素
+        float pxScale = 2f * (float) barCfg.barScale;
+        poseStack.translate(barCfg.barPixelOffsetX * pxScale, barCfg.barPixelOffsetY * pxScale + 2, 0);
         drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows);
         poseStack.popPose();
     }
@@ -305,7 +305,6 @@ public final class MobDisplayRenderer {
         List<IMobDisplayRenderer> rows = collectAddonRows(snap);
         if (rows.isEmpty()) return;
         var cfg = ConfigManager.getConfig().styleA;
-        float s1 = 0.025f * (float) cfg.scaleBar; // 样式1 像素 → 方块
         float hs = cfg.scaleBarHeight > 0 ? (float) cfg.scaleBarHeight : 1f;
         float barBottom = cfg.barType == 1 ? 0f : (cfg.barType == 2 ? 11f : MobHealthBarStyle.frameHeight()) * hs;
         float numScale = (float) (cfg.scaleNums * 0.7);
@@ -315,11 +314,13 @@ public final class MobDisplayRenderer {
         float compPx = cfg.scaleBar < 1.0 ? 1.5f * (1f - (float) cfg.scaleBar) / 0.025f
                 : cfg.scaleBar > 1.0 ? -((float) cfg.scaleBar - 1f) * 1.5f / 0.025f : 0f;
         poseStack.pushPose();
-        poseStack.translate(cfg.offsetX * s1, snap.entityHeight + cfg.heightOffset
-                + (compPx + (float) cfg.offsetY + below) * s1, 0);
+        poseStack.translate(0, snap.entityHeight + cfg.heightOffset, 0); // 世界空间锚点（样式1 条挂点）
         poseStack.mulPose(Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation());
         poseStack.scale(-ADDON_ROW_SCALE, -ADDON_ROW_SCALE, ADDON_ROW_SCALE); // 原版名牌约定
         DisplayAnimation.applyScreenFx(poseStack, snap); // 附加行组跟随主条整条动画
+        // 样式1 像素 → 紧凑行像素（×2×scaleBar）,在镜像空间内施加（+x 屏幕右 / +y 屏幕下,与条偏移同向）
+        float pxScale = 2f * (float) cfg.scaleBar;
+        poseStack.translate(cfg.offsetX * pxScale, (compPx + (float) cfg.offsetY + below) * pxScale, 0);
         drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows);
         poseStack.popPose();
     }
