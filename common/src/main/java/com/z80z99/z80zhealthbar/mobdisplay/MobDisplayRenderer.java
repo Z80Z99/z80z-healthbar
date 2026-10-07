@@ -191,6 +191,8 @@ public final class MobDisplayRenderer {
     // 开销控制:8 点采样(2×2×2) + 近距早退——采样是逐方块射线,是帧率的主要热点之一
 
     private static final Map<Integer, Boolean> OCCLUSION_CACHE = new HashMap<>();
+    /** 最近一次采样得到的可见比例（F3 诊断用;与 CACHE 同生命周期） */
+    private static final Map<Integer, Float> OCCLUSION_RATIO = new HashMap<>();
     private static final Map<Integer, Long> OCCLUSION_STAMP = new HashMap<>();
     private static final long OCCLUSION_INTERVAL_MS = 250L;
     /** 可见比例阈值(用户规则:能看到 25% 以上部分则血条完整可见) */
@@ -207,13 +209,20 @@ public final class MobDisplayRenderer {
         long stamp = OCCLUSION_STAMP.getOrDefault(entity.getId(), 0L);
         if (now - stamp >= OCCLUSION_INTERVAL_MS) {
             OCCLUSION_STAMP.put(entity.getId(), now);
-            OCCLUSION_CACHE.put(entity.getId(),
-                    sampleVisibleRatio(mc, entity) >= OCCLUSION_MIN_RATIO);
+            float ratio = sampleVisibleRatio(mc, entity);
+            OCCLUSION_RATIO.put(entity.getId(), ratio);
+            OCCLUSION_CACHE.put(entity.getId(), ratio >= OCCLUSION_MIN_RATIO);
         }
         return OCCLUSION_CACHE.getOrDefault(entity.getId(), true);
     }
 
-    /** 包围盒 2x2x2 网格共 8 个采样点,射线(相机→采样点)未命中方块 = 该点可见 */
+    /** 最近一次遮挡采样的可见比例（-1 = 尚无记录;F3 诊断用） */
+    public static float lastVisibleRatio(int entityId) {
+        Float r = OCCLUSION_RATIO.get(entityId);
+        return r == null ? -1f : r;
+    }
+
+    /** 包围盒 2x2x2 网格共 8 个采样点,射线(相机→采样点)被**不透明整方块**挡住 = 该点不可见 */
     private static float sampleVisibleRatio(Minecraft mc, LivingEntity entity) {
         if (mc.level == null) return 1f;
         Vec3 eye = mc.gameRenderer.getMainCamera().getPosition();
@@ -227,14 +236,40 @@ public final class MobDisplayRenderer {
                             box.minX + (box.maxX - box.minX) * (xi + 0.5) / n,
                             box.minY + (box.maxY - box.minY) * (yi + 0.5) / n,
                             box.minZ + (box.maxZ - box.minZ) * (zi + 0.5) / n);
-                    var hit = mc.level.clip(new net.minecraft.world.level.ClipContext(eye, target,
-                            net.minecraft.world.level.ClipContext.Block.COLLIDER,
-                            net.minecraft.world.level.ClipContext.Fluid.NONE, null));
-                    if (hit.getType() == net.minecraft.world.phys.HitResult.Type.MISS) visible++;
+                    if (!sightBlocked(mc, eye, target)) visible++;
                 }
             }
         }
         return visible / (float) (n * n * n);
+    }
+
+    /**
+     * 视线是否被**不透明整方块**挡住（isSolidRender：玻璃/冰/树叶/半砖等均为 false）。
+     *
+     * <p>半透明方块不算遮挡：血条以无深度屏显绘制（NO_DEPTH_TEST），本来就会盖在玻璃/水面上；
+     * 旧实现用 Block.COLLIDER 判命中——玻璃有完整碰撞箱，于是"隔着玻璃墙看没事（3 格内早退）、
+     * 斜着看玻璃地板就整条消失"（实测反馈），与绘制语义自相矛盾。
+     *
+     * <p>命中半透明方块时越过它继续追踪，直到遇到不透明方块或到达目标点。
+     */
+    private static boolean sightBlocked(Minecraft mc, Vec3 from, Vec3 to) {
+        if (mc.level == null) return false;
+        Vec3 dir = to.subtract(from);
+        double len = dir.length();
+        if (len < 1e-3) return false;
+        Vec3 unit = dir.scale(1.0 / len);
+        Vec3 start = from;
+        for (int pass = 0; pass < 12; pass++) { // 防御上限:连续穿过多个半透明方块也不再追
+            var hit = mc.level.clip(new net.minecraft.world.level.ClipContext(start, to,
+                    net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                    net.minecraft.world.level.ClipContext.Fluid.NONE, null));
+            if (hit.getType() == net.minecraft.world.phys.HitResult.Type.MISS) return false;
+            var pos = hit.getBlockPos();
+            if (mc.level.getBlockState(pos).isSolidRender(mc.level, pos)) return true;
+            start = hit.getLocation().add(unit.scale(0.05)); // 命中半透明方块 → 越过后继续
+            if (start.distanceToSqr(to) < 1e-4) return false;
+        }
+        return false;
     }
 
     /** 样式 C 主条（复用 HealthDisplayRenderer.renderBar，含吸收环与文本） */
@@ -293,7 +328,8 @@ public final class MobDisplayRenderer {
         // 像素偏移必须在镜像空间内（+x 屏幕右 / +y 屏幕下）——在世界空间做会变成上下颠倒/左右错位。
         // 主条 1 像素 = 0.025*barScale 方块 = 2*barScale 个紧凑行像素
         float pxScale = 2f * (float) barCfg.barScale;
-        poseStack.translate(barCfg.barPixelOffsetX * pxScale, barCfg.barPixelOffsetY * pxScale + 2, 0);
+        int rowGap = ConfigManager.getConfig().entityAddons.rowGap; // 与主条（含数值行）的间距
+        poseStack.translate(barCfg.barPixelOffsetX * pxScale, barCfg.barPixelOffsetY * pxScale + rowGap, 0);
         drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, 0);
         poseStack.popPose();
     }
@@ -309,7 +345,8 @@ public final class MobDisplayRenderer {
         float barBottom = cfg.barType == 1 ? 0f : (cfg.barType == 2 ? 11f : MobHealthBarStyle.frameHeight()) * hs;
         float numScale = (float) (cfg.scaleNums * 0.7);
         float textTop = cfg.barType == 1 ? 2f : barBottom + 2f; // 与 renderTexts 的 ty 同式
-        float below = (cfg.showHp ? textTop + 8f * numScale : barBottom) + 2f;
+        int rowGap = ConfigManager.getConfig().entityAddons.rowGap; // 与主条（含数值行）的间距
+        float below = (cfg.showHp ? textTop + 8f * numScale : barBottom) + rowGap;
         // 与 MobHealthBarStyle 相同的 scaleBar 高度补偿（条下沉/上移时附加行同随）
         float compPx = cfg.scaleBar < 1.0 ? 1.5f * (1f - (float) cfg.scaleBar) / 0.025f
                 : cfg.scaleBar > 1.0 ? -((float) cfg.scaleBar - 1f) * 1.5f / 0.025f : 0f;
@@ -320,16 +357,19 @@ public final class MobDisplayRenderer {
         DisplayAnimation.applyScreenFx(poseStack, snap); // 附加行组跟随主条整条动画
         // 样式1 像素 → 紧凑行像素（×2×scaleBar）,在镜像空间内施加（+x 屏幕右 / +y 屏幕下,与条偏移同向）
         float pxScale = 2f * (float) cfg.scaleBar;
-        poseStack.translate(cfg.offsetX * pxScale, (compPx + (float) cfg.offsetY + below) * pxScale, 0);
+        // rowGap 与样式3 同单位（紧凑行像素）——在换算后再叠加,避免两样式间距不一致
+        poseStack.translate(cfg.offsetX * pxScale,
+                (compPx + (float) cfg.offsetY + below) * pxScale + rowGap, 0);
         drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, 0);
         poseStack.popPose();
     }
 
-    /** 附加行绘制：调用方已完成定位与紧凑尺度缩放,yStart = 行组顶部;行距 = entityAddons.rowGap */
+    /** 附加行绘制：调用方已完成定位与紧凑尺度缩放,yStart = 行组顶部（**单行**排列）。
+     *  三行同行内水平排布（护甲/韧性/氧气成一排,行间距 2px）,纵向只由 yStart 决定——
+     *  旧实现每行同时右移并下移,三行排成阶梯状（实测反馈"排列那么奇怪"）。 */
     private static void drawAddonRows(EntityStatusSnapshot snap, PoseStack poseStack, MultiBufferSource buffer,
                                       float alpha, Font font, int packedLight, List<IMobDisplayRenderer> rows,
                                       int yStart) {
-        int rowGap = ConfigManager.getConfig().entityAddons.rowGap;
         int totalIconW = 0;
         for (IMobDisplayRenderer r : rows) totalIconW += r.getPlaqueWidth(font, snap) + 2;
         int maxTextW = 0;
@@ -340,19 +380,15 @@ public final class MobDisplayRenderer {
         int totalW = totalIconW + maxTextW;
 
         int rowX = -totalW / 2;
-        int rowY = yStart;
-        int i = 0;
         for (IMobDisplayRenderer r : rows) {
-            if (i > 0) rowY += rowGap;
-            r.renderPlaque(poseStack, buffer, snap, rowX, rowY, font, packedLight, alpha, ADDON_ROW_SCALE);
+            r.renderPlaque(poseStack, buffer, snap, rowX, yStart, font, packedLight, alpha, ADDON_ROW_SCALE);
             String text = r.getValueText(snap);
             if (text != null) {
                 int color = ColorHelper.modifyAlpha(r.getValueColor(snap), (int) (alpha * 255));
-                font.drawInBatch(text, rowX + r.getPlaqueWidth(font, snap) + 2, rowY + 1, color, false,
+                font.drawInBatch(text, rowX + r.getPlaqueWidth(font, snap) + 2, yStart + 1, color, false,
                         poseStack.last().pose(), buffer, Font.DisplayMode.SEE_THROUGH, 0, 0xF000F0);
             }
-            rowX += r.getPlaqueWidth(font, snap) + 2;
-            i++;
+            rowX += r.getPlaqueWidth(font, snap) + 2; // 同一行内继续右排（不再下移）
         }
     }
 
@@ -362,21 +398,21 @@ public final class MobDisplayRenderer {
      * 此处只按 {@code pxInBlocks}（调用方位姿下 1 像素 = 多少方块）换算到紧凑行尺度,
      * 不施加任何旋转/镜像;条像素偏移由调用方在自身像素空间内 translate。
      *
-     * @param yStart     行组顶部（调用方像素）
-     * @param pxInBlocks 调用方位姿的像素当量（世界名牌 0.025*scale,预览按各样式换算）
+     * @param yStartRowPx 行组顶部（**紧凑行像素**,= entityAddons.rowGap 的同一单位）
+     * @param pxInBlocks  调用方位姿的像素当量（世界名牌 0.025*scale,预览按各样式换算）
      */
     public static void drawAddonRowsPreview(EntityStatusSnapshot snap, PoseStack poseStack, MultiBufferSource buffer,
-                                            Font font, float alpha, int packedLight, int yStart, float pxInBlocks) {
+                                            Font font, float alpha, int packedLight, int yStartRowPx, float pxInBlocks) {
         List<IMobDisplayRenderer> rows = collectAddonRows(snap);
         if (rows.isEmpty()) return;
         float f = pxInBlocks > 1e-6f ? ADDON_ROW_SCALE / pxInBlocks : 1f; // 紧凑行像素 → 调用方像素
         if (Math.abs(f - 1f) < 1e-4f) {
-            drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, yStart);
+            drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, yStartRowPx);
             return;
         }
         poseStack.pushPose();
         poseStack.scale(f, f, 1f);
-        drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, Math.round(yStart / f));
+        drawAddonRows(snap, poseStack, buffer, alpha, font, packedLight, rows, yStartRowPx);
         poseStack.popPose();
     }
 

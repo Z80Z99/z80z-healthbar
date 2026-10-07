@@ -627,6 +627,6 @@
   "z80zhealthbar.option.styleA.scaleBarHeight.label": "Height stretch",
   "z80zhealthbar.option.styleA.scaleBarHeight.tooltip": "Stretch the bar vertically only; leaves width and text untouched; the value text follows the bar-bottom. 100% = original height.",
   "z80zhealthbar.option.addons.note": "These three apply to both style 1 and style 3 (bar styles). Style 2 (plaques) has its own three row switches on the Plaques page.",
-  "z80zhealthbar.option.addons.rowGap": "Addon row gap",
-  "z80zhealthbar.option.addons.rowGap.tooltip": "Pixel gap between multiple addon rows (no effect with a single row)."
+  "z80zhealthbar.option.addons.rowGap": "Addon line gap from bar",
+  "z80zhealthbar.option.addons.rowGap.tooltip": "Pixel gap between the bar (including its value line) and the addon row."
 }

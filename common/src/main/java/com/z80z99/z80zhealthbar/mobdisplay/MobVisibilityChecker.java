@@ -79,6 +79,31 @@ public final class MobVisibilityChecker {
         return check(entity, player, distanceSqr) == 0;
     }
 
+    /** 跳过原因码 → 可读名（F3 诊断用：直接看出"血条为什么没显示"） */
+    public static String reasonName(int reason) {
+        return switch (reason) {
+            case 0 -> "visible";
+            case 1 -> "removed/dead";
+            case 2 -> "over maxDistance";
+            case 3, 4 -> "invisible";
+            case 5 -> "self (showOnSelf=false)";
+            case 6 -> "other player (showOnPlayers=false)";
+            case 7 -> "boss (showOnBoss=false)";
+            case 8, 9 -> "full-health rule";
+            case 10 -> "blacklisted";
+            case 11 -> "armor stand";
+            case 12 -> "selector not allowed";
+            case 13 -> "spectator";
+            case 14 -> "hostile filtered";
+            case 15 -> "passive filtered";
+            case 16 -> "showDamaged-only";
+            case 17 -> "showOnAggro-only";
+            case 18 -> "showHoveredMob-only";
+            case 19 -> "no line of sight";
+            default -> "code " + reason;
+        };
+    }
+
     private static boolean isBoss(LivingEntity entity) {
         return entity.getMaxHealth() >= 100;
     }

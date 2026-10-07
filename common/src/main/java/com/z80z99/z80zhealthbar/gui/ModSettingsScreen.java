@@ -1238,7 +1238,8 @@ public final class ModSettingsScreen extends Screen {
                 // 附加行：跟随条像素偏移（与世界路径同语义）,条底（y=0）下方 2px 起
                 pose.pushPose();
                 pose.translate(cfg.barStyle.barPixelOffsetX, cfg.barStyle.barPixelOffsetY, 0);
-                MobDisplayRenderer.drawAddonRowsPreview(snap, pose, buffer, font, 1.0f, 0xF000F0, 2,
+                MobDisplayRenderer.drawAddonRowsPreview(snap, pose, buffer, font, 1.0f, 0xF000F0,
+                        Math.max(1, cfg.entityAddons.rowGap),
                         0.025f * (float) cfg.barStyle.barScale); // 本位姿 1 像素 = 0.025*barScale 方块
                 pose.popPose();
                 pose.popPose();

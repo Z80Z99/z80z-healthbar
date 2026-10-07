@@ -51,22 +51,16 @@ public class ToughnessDisplayRenderer implements IMobDisplayRenderer {
                               Font font, int packedLight, float alpha, float worldScale) {
         if (snap.armorToughness <= 0) return;
         int curSlots = (int) Math.min(MAX_SLOTS, Math.ceil(snap.armorToughness / 4.0));
+        if (curSlots <= 0) return;
 
         Matrix4f matrix = poseStack.last().pose();
         // 原版 icons.png 无韧性专属图标：沿用护甲图标但整体染青蓝色，与护甲行明确区分
         VertexConsumer builder = buffer.getBuffer(ModRenderType.tintedIcon(ICONS));
 
-        for (int i = 0; i < MAX_SLOTS; i++) {
-            ArmorDisplayRenderer.iconTinted(builder, matrix, x + i * 9, y, 16, 9, 0xFF3A5A78);
-        }
-        if (curSlots > 0) {
-            poseStack.pushPose();
-            poseStack.translate(0, 0, -0.02f / Math.max(1e-5f, worldScale));
-            Matrix4f mFill = poseStack.last().pose();
-            for (int i = 0; i < curSlots; i++) {
-                ArmorDisplayRenderer.iconTinted(builder, mFill, x + i * 9, y, 34, 9, 0xFF7FD4F0);
-            }
-            poseStack.popPose();
+        // 只画实际存在的图标——不再铺 10 格深蓝空槽底（与护甲/氧气行同一处理,
+        // 空槽排会挤出一长条无意义图标并把数值顶到很远）
+        for (int i = 0; i < curSlots; i++) {
+            ArmorDisplayRenderer.iconTinted(builder, matrix, x + i * 9, y, 34, 9, 0xFF7FD4F0);
         }
     }
 
@@ -74,7 +68,11 @@ public class ToughnessDisplayRenderer implements IMobDisplayRenderer {
         return Math.min(80, Math.max(20, (int) (snap.armorToughness * 2.5)));
     }
 
-    @Override public int getPlaqueWidth(Font f, EntityStatusSnapshot snap) { return MAX_SLOTS * 9; }
+    /** 行宽按实际图标数（与绘制一致） */
+    @Override public int getPlaqueWidth(Font f, EntityStatusSnapshot snap) {
+        int curSlots = (int) Math.min(MAX_SLOTS, Math.ceil(snap.armorToughness / 4.0));
+        return Math.max(9, curSlots * 9);
+    }
 
     @Override
     public String getValueText(EntityStatusSnapshot snap) { return String.valueOf(snap.armorToughness); }

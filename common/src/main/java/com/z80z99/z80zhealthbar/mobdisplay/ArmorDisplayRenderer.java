@@ -62,23 +62,16 @@ public class ArmorDisplayRenderer implements IMobDisplayRenderer {
                               EntityStatusSnapshot snap, int x, int y,
                               Font font, int packedLight, float alpha, float worldScale) {
         int curSlots = (int) Math.min(MAX_SLOTS, Math.ceil(snap.armor / 2.0));
+        if (curSlots <= 0) return;
 
         Matrix4f matrix = poseStack.last().pose();
         VertexConsumer builder = buffer.getBuffer(ModRenderType.plaqueIcon(ICONS));
-        float zu = 1f / Math.max(1e-5f, worldScale);
 
-        // container(空) armor (16,9)；filled armor (34,9) —— 填充层向相机 -0.02 世界格防排序翻转闪烁
-        for (int i = 0; i < MAX_SLOTS; i++) {
-            icon(builder, matrix, x + i * 9, y, 16, 9);
-        }
-        if (curSlots > 0) {
-            poseStack.pushPose();
-            poseStack.translate(0, 0, -0.02f * zu);
-            Matrix4f mFill = poseStack.last().pose();
-            for (int i = 0; i < curSlots; i++) {
-                icon(builder, mFill, x + i * 9, y, 34, 9);
-            }
-            poseStack.popPose();
+        // 只画实际存在的图标（filled armor (34,9)）——不再铺 10 格空槽底：
+        // 空槽是一长排无意义的灰图标，且会把数值文本顶到很右边（实测"排列那么奇怪"）；
+        // 与氧气行同一处理（按实际数量绘制）
+        for (int i = 0; i < curSlots; i++) {
+            icon(builder, matrix, x + i * 9, y, 34, 9);
         }
     }
 
@@ -104,7 +97,11 @@ public class ArmorDisplayRenderer implements IMobDisplayRenderer {
         return Math.min(80, Math.max(20, (int) (snap.armor * 2.0)));
     }
 
-    @Override public int getPlaqueWidth(Font font, EntityStatusSnapshot snap) { return MAX_SLOTS * 9; }
+    /** 行宽按实际图标数（与绘制一致）——固定 10 格宽会在图标与数值文本间留一大段空白 */
+    @Override public int getPlaqueWidth(Font font, EntityStatusSnapshot snap) {
+        int curSlots = (int) Math.min(MAX_SLOTS, Math.ceil(snap.armor / 2.0));
+        return Math.max(9, curSlots * 9);
+    }
 
     @Override
     public String getValueText(EntityStatusSnapshot snap) { return String.valueOf(snap.armor); }

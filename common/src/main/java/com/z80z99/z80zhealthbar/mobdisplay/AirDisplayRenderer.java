@@ -70,7 +70,13 @@ public class AirDisplayRenderer implements IMobDisplayRenderer {
     }
 
     @Override public int getBarWidth(EntityStatusSnapshot snap) { return 60; }
-    @Override public int getPlaqueWidth(Font font, EntityStatusSnapshot snap) { return MAX_BUBBLES * 9; }
+
+    /** 行宽按实际气泡数（与绘制一致）——固定 10 格宽会在气泡与数值文本间留一大段空白 */
+    @Override public int getPlaqueWidth(Font font, EntityStatusSnapshot snap) {
+        int[] counts = AirBubbleRow.counts(snap.airSupply, snap.maxAirSupply, MAX_BUBBLES);
+        int bubbles = Math.max(1, Math.min(MAX_BUBBLES, counts[0] + counts[1]));
+        return bubbles * 9;
+    }
 
     @Override
     public String getValueText(EntityStatusSnapshot snap) { return String.valueOf(snap.airSupply); }

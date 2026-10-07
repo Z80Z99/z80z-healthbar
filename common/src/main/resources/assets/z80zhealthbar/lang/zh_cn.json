@@ -627,6 +627,6 @@
   "z80zhealthbar.option.styleA.scaleBarHeight.label": "高度拉伸",
   "z80zhealthbar.option.styleA.scaleBarHeight.tooltip": "仅纵向拉伸血条，不影响宽度与文字；100%=原始高度，数值文本随条底移动。用于“只调高不调宽”。",
   "z80zhealthbar.option.addons.note": "这三项对样式1 与样式3 共用（同为条形类）；样式2（牌匾）的附加行由「牌匾」页的三个行开关单独控制。",
-  "z80zhealthbar.option.addons.rowGap": "附加行行距",
-  "z80zhealthbar.option.addons.rowGap.tooltip": "多个附加行之间的像素间距（只开一行时无效果）。"
+  "z80zhealthbar.option.addons.rowGap": "附加行与主条间距",
+  "z80zhealthbar.option.addons.rowGap.tooltip": "附加行图标行与血条（含数值行）之间的像素间距。"
 }
