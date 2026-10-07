@@ -3,6 +3,7 @@
   "minVersion": "0.8",
   "package": "com.z80z99.z80zhealthbar.mixin",
   "compatibilityLevel": "JAVA_17",
+  "refmap": "z80zhealthbar-common-common-refmap.json",
   "mixins": [
     "FoodDataMixin",
     "LivingEntityMixin"
