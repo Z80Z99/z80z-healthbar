@@ -965,12 +965,28 @@ public final class HudLayoutScreen extends Screen {
         // 类型过滤：无该部件的类型不显示入口（如经验无状态图标,compat 无文本无图标）
         String selType = HudLayoutConfig.typeOf(selected, c);
         if (selType.equals(HudLayoutConfig.COMPAT)) {
-            // compat 特判：显示数值文本开关 + 行文本模板（{name} {value} {max}）——参考其它组件形式
+            // compat 特判：多行动态行的文本部件参数（开关/模板/对齐/偏移/缩放;
+            // 行间距由上方"间距"行控制,渲染端已接入）
             panelEntries.add(toggle("z80zhealthbar.editor.show_text",
                     () -> c.showText, v -> c.showText = v));
             panelEntries.add(textInput("z80zhealthbar.editor.text_format",
                     () -> c.textFormat == null ? "" : c.textFormat, v -> c.textFormat = v));
             panelEntries.add(PEntry.note("z80zhealthbar.editor.compat_fmt_note"));
+            if (c.showText) {
+                panelEntries.add(cycler("z80zhealthbar.editor.text_align",
+                        () -> Component.translatable("z80zhealthbar.editor.align."
+                                + c.textAlignParsed().name().toLowerCase(Locale.ROOT)).getString(),
+                        () -> {
+                            var vals = HudLayoutConfig.TextAlign.values();
+                            c.textAlign = vals[(c.textAlignParsed().ordinal() + 1) % vals.length].name();
+                        }));
+                panelEntries.add(stepper("z80zhealthbar.editor.text_x",
+                        () -> c.textOffsetX, v -> c.textOffsetX = (int) Math.round(v), -999, 999, 1));
+                panelEntries.add(stepper("z80zhealthbar.editor.text_y",
+                        () -> c.textOffsetY, v -> c.textOffsetY = (int) Math.round(v), -999, 999, 1));
+                panelEntries.add(stepper1("z80zhealthbar.editor.text_scale",
+                        () -> c.textScale, v -> c.textScale = v, 0.25, 3.0, 0.1));
+            }
             panelEntries.add(backRow());
             return;
         }

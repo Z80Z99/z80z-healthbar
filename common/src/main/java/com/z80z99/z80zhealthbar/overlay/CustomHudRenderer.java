@@ -679,11 +679,13 @@ public final class CustomHudRenderer {
 
     // ============== 绘制原语（与 ASTEORBAR 模式同风格：卡片底/填充/图标/文本） ==============
 
-    /** 兼容状态组：thirst/stamina/exhaustion 等动态行（数据源 CompatAdapters） */
+    /** 兼容状态组：thirst/stamina/exhaustion 等动态行（数据源 CompatAdapters）。
+     *  组件配置全量接入：文本模板（{name}{value}{max}）/对齐/偏移/缩放/行间距（spacing） */
     private static void renderCompat(GuiGraphics g, Player p, ComponentLayout c) {
         var stats = com.z80z99.z80zhealthbar.compat.CompatAdapters.collect(p);
         if (stats.isEmpty()) return;
         int w = c.barWidth, h = barH(c);
+        int rowGap = Math.max(0, c.spacing);
         int y = 0;
         for (var stat : stats) {
             drawCard(g, 0, y, w, h);
@@ -694,12 +696,45 @@ public final class CustomHudRenderer {
             if (c.showText) {
                 String vs = stat.value() >= 100 ? String.valueOf(Math.round(stat.value()))
                         : String.format(java.util.Locale.ROOT, "%.1f", stat.value());
-                String text = net.minecraft.network.chat.Component.translatable(stat.langKey()).getString()
-                        + ": " + vs + (stat.max() == null ? "" : "/" + Math.round(stat.max()));
-                drawTextIn(g, Minecraft.getInstance().font, text, w, h, y, c);
+                String text;
+                if (c.textFormat != null && !c.textFormat.isBlank()) {
+                    // 模板（与长条管线同语义）:{name} 状态名 {value} 当前值 {max} 上限
+                    text = c.textFormat
+                            .replace("{name}", net.minecraft.network.chat.Component.translatable(
+                                    stat.langKey()).getString())
+                            .replace("{value}", vs)
+                            .replace("{max}", stat.max() == null ? "—" : String.valueOf(Math.round(stat.max())));
+                } else {
+                    text = net.minecraft.network.chat.Component.translatable(stat.langKey()).getString()
+                            + ": " + vs + (stat.max() == null ? "" : "/" + Math.round(stat.max()));
+                }
+                drawTextScaled(g, Minecraft.getInstance().font, text, w, h, y, c);
             }
-            y += h + 2;
+            y += h + rowGap;
         }
+    }
+
+    /** drawTextIn + 文本缩放（compat 行文本用;缩放以文本锚点为原点） */
+    private static void drawTextScaled(GuiGraphics g, Font font, String text, int barW, int barH,
+                                       int yBase, ComponentLayout c) {
+        float s = (float) Math.max(0.25, Math.min(3.0, c.textScale));
+        if (Math.abs(s - 1f) < 0.01f) {
+            drawTextIn(g, font, text, barW, barH, yBase, c);
+            return;
+        }
+        int tw = font.width(text);
+        int tx = switch (c.textAlignParsed()) {
+            case LEFT -> 4;
+            case RIGHT -> barW - tw - 4;
+            default -> (barW - tw) / 2;
+        };
+        tx += c.textOffsetX;
+        int ty = yBase + (barH - 8) / 2 + c.textOffsetY;
+        g.pose().pushPose();
+        g.pose().translate(tx, ty, 0);
+        g.pose().scale(s, s, 1f);
+        g.drawString(font, text, 0, 0, 0xFFFFFFFF, true);
+        g.pose().popPose();
     }
 
     private static int barH(ComponentLayout c) {
