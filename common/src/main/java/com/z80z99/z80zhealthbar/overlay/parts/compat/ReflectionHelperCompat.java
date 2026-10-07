@@ -54,4 +54,33 @@ public final class ReflectionHelperCompat {
         }
         return null;
     }
+
+    /**
+     * Forge Capability 反射读取：静态 Capability token 字段 → {@code player.getCapability(token)} →
+     * 能力实例上的无参方法 → Number。方法优先在 public 接口上解析（invoke 的可见性检查基于声明类，
+     * 非 public 实现类经由 public 接口方法调用是合法的）。
+     *
+     * <p>Thirst Was Taken 1.4.x 的玩家口渴数据即走此通道——其 ThirstHelper API 只有物品侧查询
+     * （getThirst(ItemStack)），玩家数据在 {@code ModCapabilities.PLAYER_THIRST} capability 里。
+     */
+    public static Float capabilityNumber(String tokenHolderClass, String tokenField,
+                                         String capabilityInterface, String[] valueMethods, Player player) {
+        try {
+            Object token = Class.forName(tokenHolderClass).getField(tokenField).get(null);
+            Method getCap = player.getClass().getMethod("getCapability", token.getClass());
+            Object cap = getCap.invoke(player, token);
+            if (cap == null) return null;
+            Class<?> itf = Class.forName(capabilityInterface);
+            for (String vm : valueMethods) {
+                try {
+                    Object r = itf.getMethod(vm).invoke(cap);
+                    if (r instanceof Number n) return n.floatValue();
+                } catch (NoSuchMethodException ignored) {
+                }
+            }
+        } catch (Throwable t) {
+            Z80ZHealthBar.LOGGER.debug("[Compat] capability unavailable: {}.{}", tokenHolderClass, tokenField);
+        }
+        return null;
+    }
 }

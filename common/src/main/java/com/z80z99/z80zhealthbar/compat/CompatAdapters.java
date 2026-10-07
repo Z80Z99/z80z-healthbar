@@ -142,6 +142,12 @@ public final class CompatAdapters {
     // ================= Thirst Was Taken =================
 
     static final class ThirstWasTakenAdapter implements CompatibilityAdapter {
+        /** 1.4.x 玩家口渴数据通道：Capability token 持有类 / 字段 / 数据接口（getThirst → 0..20） */
+        private static final String CAP_TOKEN_HOLDER = "dev.ghen.thirst.foundation.common.capability.ModCapabilities";
+        private static final String CAP_TOKEN_FIELD = "PLAYER_THIRST";
+        private static final String CAP_INTERFACE = "dev.ghen.thirst.foundation.common.capability.IThirst";
+        private static final String[] CAP_METHODS = {"getThirst"};
+        /** 旧版静态 API（ThirstHelper 在 1.4.x 只有物品侧查询,留作兜底） */
         private static final String[] CLASSES = {
                 "dev.ghen.thirst.api.thirst.ThirstHelper",
                 "dev.ghen.thirst.api.ThirstHelper",
@@ -153,8 +159,18 @@ public final class CompatAdapters {
             return PlatformService.get().isModLoaded("thirst")
                     || PlatformService.get().isModLoaded("thirstwasaken");
         }
+        private static boolean capabilityClassesPresent() {
+            try {
+                Class.forName(CAP_TOKEN_HOLDER);
+                Class.forName(CAP_INTERFACE);
+                return true;
+            } catch (ClassNotFoundException e) {
+                return false;
+            }
+        }
         @Override public boolean isCompatible() {
-            // 探测 API 类是否存在（MOD 装了但 API 变更 → 优雅降级为不显示）
+            // 优先玩家数据通道（Capability）;ThirstHelper 类仅证明 mod 存在（1.4.x 它只有物品侧 API）
+            if (capabilityClassesPresent()) return true;
             for (String c : CLASSES) {
                 try {
                     Class.forName(c);
@@ -170,6 +186,9 @@ public final class CompatAdapters {
         public Float readStat(String key) {
             var player = net.minecraft.client.Minecraft.getInstance().player;
             if (player == null || !key.equals("thirst")) return null;
+            Float v = com.z80z99.z80zhealthbar.overlay.parts.compat.ReflectionHelperCompat
+                    .capabilityNumber(CAP_TOKEN_HOLDER, CAP_TOKEN_FIELD, CAP_INTERFACE, CAP_METHODS, player);
+            if (v != null) return v;
             return com.z80z99.z80zhealthbar.overlay.parts.compat.ReflectionHelperCompat
                     .staticNumber(CLASSES, METHODS, player);
         }
