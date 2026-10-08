@@ -292,7 +292,7 @@
   "z80zhealthbar.option.visibility.showOnFullHealthWithoutAbsorption.tooltip": "Also show bars on entities at full health without absorption.",
   "z80zhealthbar.option.visibility.showOnFullHealthWithAbsorption.tooltip": "Also show bars on entities at full health that have absorption.",
   "z80zhealthbar.option.visibility.showDamaged.tooltip": "Show bars on entities that have taken damage at least once.",
-  "z80zhealthbar.option.visibility.showOnAggro.tooltip": "Only show bars on entities whose attack target is you.",
+  "z80zhealthbar.option.visibility.showOnAggro.tooltip": "Only show bars on entities in combat with you. Any of: the vanilla aggro flag (set by melee AI), it attacked you within 10s, or it took damage within 10s. Works with modded mobs too (custom attack AI is covered by the latter two).",
   "z80zhealthbar.option.visibility.showHoveredMob.tooltip": "Always show a bar for the entity under your crosshair, regardless of the rules above.",
   "z80zhealthbar.option.visibility.showOnlyWhenVisible.tooltip": "Line-of-sight check: only render entities you can actually see (small raycast cost).",
   "z80zhealthbar.option.visibility.maxDistance.tooltip": "Global max distance (blocks) for bars and popups. Style 2 has its own Plaque Distance cap; the nearer one applies.",

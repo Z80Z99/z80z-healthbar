@@ -17,6 +17,39 @@ import net.minecraft.world.entity.player.Player;
 public final class MobVisibilityChecker {
     private MobVisibilityChecker() {}
 
+    // ---- 仇恨检测记忆（2026-10-09:mod 生物修复）----
+    // Mob.isAggressive 只是同步标志位,仅原版 MeleeAttackGoal 会置位;mod 自定义攻击 AI 不置位,
+    // getTarget 又不同步（客户端恒 null）——此前"仅仇恨中"对 mod 生物完全失效。
+    // 客户端可用的三判据:①isAggressive 标志 ②本地玩家的 getLastHurtByMob(它最近打了我,本地权威)
+    // ③该实体血量最近下降(我/队友打过它,近似)。
+    private static final java.util.Map<Integer, float[]> AGGRO_HEALTH = new java.util.HashMap<>(); // {lastHealth}
+    private static final java.util.Map<Integer, Long> AGGRO_DAMAGED_AT = new java.util.HashMap<>();
+    /** 受击记忆窗口:血量下降后视为"交战中"的时长 */
+    private static final long AGGRO_MEMORY_MS = 10_000L;
+
+    /** 渲染管线每帧调用:记录实体血量下降时刻（仇恨判据③;来源不区分,近似"最近被攻击过"） */
+    public static void noteHealthForAggro(int entityId, float health, long nowMs) {
+        if (AGGRO_HEALTH.size() > 2048) { // 容量封顶:清掉过期记忆整体重建
+            AGGRO_HEALTH.entrySet().removeIf(e -> {
+                Long at = AGGRO_DAMAGED_AT.get(e.getKey());
+                return at == null || nowMs - at > AGGRO_MEMORY_MS * 3;
+            });
+            AGGRO_DAMAGED_AT.keySet().retainAll(AGGRO_HEALTH.keySet());
+        }
+        float[] st = AGGRO_HEALTH.computeIfAbsent(entityId, k -> new float[]{-1f});
+        if (st[0] >= 0f && health < st[0] - 1e-4f) AGGRO_DAMAGED_AT.put(entityId, nowMs);
+        st[0] = health;
+    }
+
+    /** 实体当前是否"与玩家交战"（客户端三判据,见字段注释） */
+    static boolean isAggroOnPlayer(Player player, LivingEntity entity, long nowMs) {
+        if (entity instanceof Mob mob && mob.isAggressive()) return true;
+        if (player.getLastHurtByMob() == entity
+                && player.tickCount - player.getLastHurtByMobTimestamp() < 200) return true;
+        Long at = AGGRO_DAMAGED_AT.get(entity.getId());
+        return at != null && nowMs - at < AGGRO_MEMORY_MS;
+    }
+
     public static int check(LivingEntity entity, Player player, double distanceSqr) {
         var cfg = ConfigManager.getConfig().visibility;
 
@@ -65,7 +98,7 @@ public final class MobVisibilityChecker {
 
         // 10b. 组合条件：仅受伤 / 仅仇恨 / 仅准星
         if (cfg.showDamaged && !(entity.getHealth() < entity.getMaxHealth())) return 16;
-        if (cfg.showOnAggro && !(entity instanceof Mob mob && mob.isAggressive())) return 17;
+        if (cfg.showOnAggro && !isAggroOnPlayer(player, entity, System.currentTimeMillis())) return 17;
         if (cfg.showHoveredMob) {
             Entity crosshair = Minecraft.getInstance().crosshairPickEntity;
             if (crosshair != entity) return 18;
@@ -107,7 +140,7 @@ public final class MobVisibilityChecker {
             case 14 -> "hostile filtered";
             case 15 -> "passive filtered";
             case 16 -> "showDamaged-only";
-            case 17 -> "showOnAggro-only";
+            case 17 -> "showOnAggro-only (no aggro: flag/lastHurt/recentDamage)";
             case 18 -> "showHoveredMob-only";
             case 19 -> "no line of sight";
             default -> "code " + reason;

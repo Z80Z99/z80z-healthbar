@@ -292,7 +292,7 @@
   "z80zhealthbar.option.visibility.showOnFullHealthWithoutAbsorption.tooltip": "满血且没有吸收护盾的实体也显示血条。",
   "z80zhealthbar.option.visibility.showOnFullHealthWithAbsorption.tooltip": "满血但有吸收护盾的实体也显示血条。",
   "z80zhealthbar.option.visibility.showDamaged.tooltip": "受过伤害（血量曾低于上限）的实体显示血条。",
-  "z80zhealthbar.option.visibility.showOnAggro.tooltip": "仅对攻击目标指向玩家的实体显示血条。",
+  "z80zhealthbar.option.visibility.showOnAggro.tooltip": "仅对与玩家交战的实体显示血条。判据（任一）：①仇恨标志位（原版近战 AI 设置）②它最近 10 秒内攻击过你 ③它最近 10 秒内受过伤害。对 MOD 生物同样有效（自定义攻击 AI 不设标志位时由 ②/③ 兜底）。",
   "z80zhealthbar.option.visibility.showHoveredMob.tooltip": "准星指向的实体无视上述规则，始终显示血条。",
   "z80zhealthbar.option.visibility.showOnlyWhenVisible.tooltip": "视线检测：只显示玩家视线可达的实体（射线检测有少量性能开销）。",
   "z80zhealthbar.option.visibility.maxDistance.tooltip": "血条与跳字的全局最大显示距离（格）。样式2另有“牌匾距离”上限，两者取更近者。",

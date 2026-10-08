@@ -74,6 +74,8 @@ public final class MobDisplayRenderer {
         if (player == null || mc.level == null) return;
 
         double distSqr = entity.distanceToSqr(player);
+        // 仇恨记忆:每帧记录血量下降(判据③"最近被攻击过"——mod 生物自定义 AI 不置 isAggressive 的补偿)
+        MobVisibilityChecker.noteHealthForAggro(entity.getId(), entity.getHealth(), System.currentTimeMillis());
         int visReason = MobVisibilityChecker.check(entity, player, distSqr);
         if (barEnabled && visReason != 0) {
             barEnabled = false;
