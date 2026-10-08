@@ -16,6 +16,8 @@ public final class HudPreviewState {
     /** 预览消耗值 0..4（临近扣除预告演示） */
     public static float exhaustion;
     public static int air = 300, maxAir = 300;
+    /** 兼容变量预览模拟值（渴/体力）——设置页模板预览显示确定值 */
+    public static float thirst = 17f, thirstMax = 20f, stamina = 60f, staminaMax = 100f;
     public static int xpLevel = 7;
     public static float xpProgress;
 

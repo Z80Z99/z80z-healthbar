@@ -366,6 +366,20 @@ public final class CustomHudRenderer {
             mHp = mount.getHealth();
             mMax = Math.max(1, mount.getMaxHealth());
         }
+        // 兼容模组变量（用户需求:装了什么模组就用什么变量;未装/未启用 → "—"）。
+        // 数据源统一走 CompatAdapters（hook/兼容/安装三重门控）,预览时用模拟值
+        Float thirstV = null, thirstMaxV = null, staminaV = null, staminaMaxV = null;
+        if (pv) {
+            thirstV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.thirst;
+            thirstMaxV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.thirstMax;
+            staminaV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.stamina;
+            staminaMaxV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.staminaMax;
+        } else {
+            thirstV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readValue("thirst", "thirst");
+            if (thirstV != null) thirstMaxV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readMax("thirst", "thirst");
+            staminaV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readValue("parcool", "stamina");
+            if (staminaV != null) staminaMaxV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readMax("parcool", "stamina");
+        }
         return template
                 .replace("{health}", fmt(hp))
                 .replace("{max_health}", fmt(maxHp))
@@ -390,7 +404,12 @@ public final class CustomHudRenderer {
                 .replace("{y}", String.valueOf(p.blockPosition().getY()))
                 .replace("{z}", String.valueOf(p.blockPosition().getZ()))
                 .replace("{fps}", String.valueOf(Minecraft.getInstance().getFps()))
-                .replace("{xp_level}", String.valueOf(level));
+                .replace("{xp_level}", String.valueOf(level))
+                // 兼容模组变量（口渴/体力;未安装对应模组 → "—"）
+                .replace("{thirst}", thirstV == null ? "—" : fmt(thirstV))
+                .replace("{thirst_max}", thirstMaxV == null ? "—" : fmt(thirstMaxV))
+                .replace("{stamina}", staminaV == null ? "—" : fmt(staminaV))
+                .replace("{stamina_max}", staminaMaxV == null ? "—" : fmt(staminaMaxV));
     }
 
     /** 组件对应图标 UV（null = 无图标/当前不可用） */

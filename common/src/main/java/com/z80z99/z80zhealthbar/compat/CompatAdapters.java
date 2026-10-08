@@ -57,6 +57,26 @@ public final class CompatAdapters {
         return out;
     }
 
+    /**
+     * 模板变量用：读取单个兼容状态值。未安装/未启用 hook/通道不兼容 → null（调用方渲染 "—"）。
+     */
+    public static Float readValue(String adapterId, String statKey) {
+        CompatibilityAdapter a = byId(adapterId);
+        if (a == null || !a.isAvailable()) return null;
+        if (!com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().compat.isHookEnabled(adapterId)) return null;
+        if (!a.isCompatible()) return null;
+        return a.readStat(statKey);
+    }
+
+    /** 模板变量用：读取单个兼容状态的上限（未安装/未启用 → null） */
+    public static Float readMax(String adapterId, String statKey) {
+        CompatibilityAdapter a = byId(adapterId);
+        if (a == null || !a.isAvailable()) return null;
+        if (!com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().compat.isHookEnabled(adapterId)) return null;
+        Player player = net.minecraft.client.Minecraft.getInstance().player;
+        return player == null ? null : maxOf(a, statKey, player);
+    }
+
     private static Float maxOf(CompatibilityAdapter adapter, String key, Player player) {
         if (adapter instanceof ThirstWasTakenAdapter) return 20f;
         if (adapter instanceof ParCoolAdapter a) return a.readMax(player);

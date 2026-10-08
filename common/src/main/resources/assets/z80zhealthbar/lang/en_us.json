@@ -526,7 +526,7 @@
   "z80zhealthbar.editor.duplicate_component": "Duplicate",
   "z80zhealthbar.editor.delete_component": "Delete component",
   "z80zhealthbar.editor.text_format": "Text template",
-  "z80zhealthbar.editor.text_format.tooltip": "Empty = default format. Variables: {health} {max_health} {absorption} {food} {food_max} {air} {air_max} {armor} {toughness} {level} {xp_percent} {mount_health} {mount_max} {saturation} {exhaustion}",
+  "z80zhealthbar.editor.text_format.tooltip": "Empty = default format. Variables: {health} {max_health} {absorption} {food} {food_max} {air} {air_max} {armor} {toughness} {level} {xp_percent} {mount_health} {mount_max} {saturation} {exhaustion}; compat mods (available only when installed, otherwise -): {thirst} {thirst_max} (thirst) {stamina} {stamina_max} (stamina)",
   "z80zhealthbar.hud.component.health_text": "Health text",
   "z80zhealthbar.hud.component.food_text": "Hunger text",
   "z80zhealthbar.hud.component.air_text": "Air text",

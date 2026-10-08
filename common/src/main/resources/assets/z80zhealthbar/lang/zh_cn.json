@@ -526,7 +526,7 @@
   "z80zhealthbar.editor.duplicate_component": "复制此组件",
   "z80zhealthbar.editor.delete_component": "删除此组件",
   "z80zhealthbar.editor.text_format": "文本模板",
-  "z80zhealthbar.editor.text_format.tooltip": "留空=默认格式。变量：{health} {max_health} {absorption} {food} {food_max} {air} {air_max} {armor} {toughness} {level} {xp_percent} {mount_health} {mount_max} {saturation} {exhaustion}",
+  "z80zhealthbar.editor.text_format.tooltip": "留空=默认格式。变量：{health} {max_health} {absorption} {food} {food_max} {air} {air_max} {armor} {toughness} {level} {xp_percent} {mount_health} {mount_max} {saturation} {exhaustion}；兼容模组（装了才可用，否则显示 —）：{thirst} {thirst_max}（口渴） {stamina} {stamina_max}（体力）",
   "z80zhealthbar.hud.component.health_text": "生命值文本",
   "z80zhealthbar.hud.component.food_text": "饥饿值文本",
   "z80zhealthbar.hud.component.air_text": "氧气文本",
