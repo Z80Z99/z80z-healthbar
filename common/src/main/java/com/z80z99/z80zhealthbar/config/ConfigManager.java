@@ -80,6 +80,22 @@ public final class ConfigManager {
             cfg.configVersion = 3;
             migrated = true;
         }
+        if (cfg.configVersion < 4) {
+            // v4：兼容数据从"单一 compat 组"演进为"四个独立单行组件"（compat_thirst 等）。
+            // 升级配置可能同时保留两者 → 同一数据渲染两遍（实测"装 ThirstWasTaken 后两个口渴条"）。
+            // 两者并存时关闭旧组（可逆——编辑器里可重新开启）,拆分单行接管
+            var comps = cfg.hudLayout == null ? null : cfg.hudLayout.components;
+            if (comps != null && comps.containsKey("compat")) {
+                boolean anySplit = comps.keySet().stream().anyMatch(k ->
+                        k.startsWith("compat_") && !k.equals("compat"));
+                var group = comps.get("compat");
+                if (anySplit && group != null && group.modeParsed() != com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentMode.OFF) {
+                    group.mode = com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentMode.OFF.name();
+                }
+            }
+            cfg.configVersion = 4;
+            migrated = true;
+        }
         // 任何版本：遗留 mobDisplayMode 字段迁移后清除（Gson 输出时忽略 null 字段）
         if (cfg.mobDisplayMode != null) {
             if (cfg.entityStyle == null || cfg.entityStyle.isBlank()) {

@@ -5,7 +5,7 @@ import com.z80z99.z80zhealthbar.mobdisplay.EntityHealthStyle;
 import com.z80z99.z80zhealthbar.mobdisplay.MobDisplayMode;
 
 public class Z80ZHealthBarConfig {
-    public int configVersion = 3;
+    public int configVersion = 4;
 
     /**
      * 实体生命值样式（EntityHealthStyle 名称字符串）。

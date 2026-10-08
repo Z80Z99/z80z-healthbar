@@ -16,7 +16,7 @@ class ConfigMigrationTest {
         cfg.mobDisplayMode = MobDisplayMode.BARS;
         assertTrue(ConfigManager.migrate(cfg));
         assertEquals(EntityHealthStyle.ASTEORBAR.name(), cfg.entityStyle);
-        assertEquals(3, cfg.configVersion);
+        assertEquals(4, cfg.configVersion);
         assertNull(cfg.mobDisplayMode);
     }
 
@@ -27,6 +27,36 @@ class ConfigMigrationTest {
         // BOTH 属旧式重复绘制 → 迁移到 C（附加组件需玩家主动开启）
         assertEquals(EntityHealthStyle.ASTEORBAR, EntityHealthStyle.fromLegacy(MobDisplayMode.BOTH));
         assertEquals(EntityHealthStyle.ASTEORBAR, EntityHealthStyle.fromLegacy(null));
+    }
+
+    @Test
+    void v4DisablesLegacyCompatGroupWhenSplitRowsExist() {
+        Z80ZHealthBarConfig cfg = new Z80ZHealthBarConfig();
+        cfg.configVersion = 3;
+        // 升级场景:旧组 + 新拆分行并存（同一数据会画两遍）
+        var comps = cfg.hudLayout.components;
+        var group = new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout();
+        comps.put("compat", group);
+        var split = new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout();
+        split.type = "compat_thirst";
+        comps.put("compat_thirst", split);
+        assertTrue(ConfigManager.migrate(cfg));
+        assertEquals(4, cfg.configVersion);
+        assertEquals("OFF", comps.get("compat").mode, "legacy group must be turned off when split rows exist");
+        assertEquals("BAR", comps.get("compat_thirst").mode, "split row untouched");
+    }
+
+    @Test
+    void v4KeepsCompatGroupWhenNoSplitRows() {
+        Z80ZHealthBarConfig cfg = new Z80ZHealthBarConfig();
+        cfg.configVersion = 3;
+        var comps = cfg.hudLayout.components;
+        comps.clear();
+        var group = new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout();
+        comps.put("compat", group);
+        assertTrue(ConfigManager.migrate(cfg));
+        assertEquals(4, cfg.configVersion);
+        assertEquals("BAR", comps.get("compat").mode, "group-only setup keeps working");
     }
 
     @Test
