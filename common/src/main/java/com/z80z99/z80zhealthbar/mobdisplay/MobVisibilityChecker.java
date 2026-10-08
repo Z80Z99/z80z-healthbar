@@ -22,23 +22,23 @@ public final class MobVisibilityChecker {
     // getTarget 又不同步（客户端恒 null）——此前"仅仇恨中"对 mod 生物完全失效。
     // 客户端可用的三判据:①isAggressive 标志 ②本地玩家的 getLastHurtByMob(它最近打了我,本地权威)
     // ③该实体血量最近下降(我/队友打过它,近似)。
-    private static final java.util.Map<Integer, float[]> AGGRO_HEALTH = new java.util.HashMap<>(); // {lastHealth}
+    private static final java.util.Map<Integer, float[]> AGGRO_HEALTH = new java.util.HashMap<>(); // {lastHealth, lastSeenMs}
     private static final java.util.Map<Integer, Long> AGGRO_DAMAGED_AT = new java.util.HashMap<>();
     /** 受击记忆窗口:血量下降后视为"交战中"的时长 */
     private static final long AGGRO_MEMORY_MS = 10_000L;
 
     /** 渲染管线每帧调用:记录实体血量下降时刻（仇恨判据③;来源不区分,近似"最近被攻击过"） */
     public static void noteHealthForAggro(int entityId, float health, long nowMs) {
-        if (AGGRO_HEALTH.size() > 2048) { // 容量封顶:清掉过期记忆整体重建
-            AGGRO_HEALTH.entrySet().removeIf(e -> {
-                Long at = AGGRO_DAMAGED_AT.get(e.getKey());
-                return at == null || nowMs - at > AGGRO_MEMORY_MS * 3;
-            });
+        if (AGGRO_HEALTH.size() > 2048) { // 容量封顶:按 lastSeen 记龄清理(30s 未见)
+            // 注意不能按"无 DAMAGED_AT 即删"——刚见面/未受伤的实体会被删掉,下一帧又插回,
+            // 清理形同虚设且 DAMAGED_AT 与 HEALTH 互相牵连(1.0.118 引入,自查发现)
+            AGGRO_HEALTH.entrySet().removeIf(e -> nowMs - e.getValue()[1] > AGGRO_MEMORY_MS * 3);
             AGGRO_DAMAGED_AT.keySet().retainAll(AGGRO_HEALTH.keySet());
         }
-        float[] st = AGGRO_HEALTH.computeIfAbsent(entityId, k -> new float[]{-1f});
+        float[] st = AGGRO_HEALTH.computeIfAbsent(entityId, k -> new float[]{-1f, nowMs});
         if (st[0] >= 0f && health < st[0] - 1e-4f) AGGRO_DAMAGED_AT.put(entityId, nowMs);
         st[0] = health;
+        st[1] = nowMs;
     }
 
     /** 实体当前是否"与玩家交战"（客户端三判据,见字段注释） */

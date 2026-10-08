@@ -55,7 +55,7 @@ Minecraft 1.20.1 综合生命值与状态栏 MOD —— 整合 mobhealthbar / Mo
 ./gradlew build
 ```
 
-产物：`forge/build/libs/z80zhealthbar-forge-1.0.118-1.20.1.jar`、`fabric/build/libs/z80zhealthbar-fabric-1.0.118-1.20.1.jar`（含 sources）。测试：`./gradlew :common:test`。
+产物：`forge/build/libs/z80zhealthbar-forge-1.0.119-1.20.1.jar`、`fabric/build/libs/z80zhealthbar-fabric-1.0.119-1.20.1.jar`（含 sources）。测试：`./gradlew :common:test`。
 
 ## 项目结构
 

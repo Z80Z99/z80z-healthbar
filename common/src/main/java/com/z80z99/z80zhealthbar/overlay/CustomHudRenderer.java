@@ -368,17 +368,28 @@ public final class CustomHudRenderer {
         }
         // 兼容模组变量（用户需求:装了什么模组就用什么变量;未装/未启用 → "—"）。
         // 数据源统一走 CompatAdapters（hook/兼容/安装三重门控）,预览时用模拟值
+        // 兼容模组变量:**按需读取**——模板不含 {thirst*}/{stamina*} 时零反射（capability 反射
+        // 是每帧热路径,上一版无条件读取是无谓开销,自查修正）
+        boolean wantThirst = template.contains("{thirst");
+        boolean wantStamina = template.contains("{stamina");
         Float thirstV = null, thirstMaxV = null, staminaV = null, staminaMaxV = null;
-        if (pv) {
-            thirstV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.thirst;
-            thirstMaxV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.thirstMax;
-            staminaV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.stamina;
-            staminaMaxV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.staminaMax;
-        } else {
-            thirstV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readValue("thirst", "thirst");
-            if (thirstV != null) thirstMaxV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readMax("thirst", "thirst");
-            staminaV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readValue("parcool", "stamina");
-            if (staminaV != null) staminaMaxV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readMax("parcool", "stamina");
+        if (wantThirst) {
+            if (pv) {
+                thirstV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.thirst;
+                thirstMaxV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.thirstMax;
+            } else {
+                thirstV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readValue("thirst", "thirst");
+                if (thirstV != null) thirstMaxV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readMax("thirst", "thirst");
+            }
+        }
+        if (wantStamina) {
+            if (pv) {
+                staminaV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.stamina;
+                staminaMaxV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.staminaMax;
+            } else {
+                staminaV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readValue("parcool", "stamina");
+                if (staminaV != null) staminaMaxV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readMax("parcool", "stamina");
+            }
         }
         return template
                 .replace("{health}", fmt(hp))

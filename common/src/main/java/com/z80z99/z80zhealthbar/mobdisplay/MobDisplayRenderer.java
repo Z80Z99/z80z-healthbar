@@ -115,7 +115,7 @@ public final class MobDisplayRenderer {
             DamagePopupManager.onSnapshot(snap, rx, ry, rz);
         }
         // 遮挡采样门控:可见比例 ≥25% 才画血条(画则以无深度屏显方式完整可见);
-        // 完全躲在墙后(<25%)则整条隐藏。采样每 250ms 刷新一次并缓存
+        // 完全躲在墙后(<25%)则整条隐藏。采样每 100ms 刷新一次并缓存
         if (barEnabled && !occlusionGate(mc, entity)) {
             barEnabled = false;
             why = "occl=" + fmt2(lastVisibleRatio(entity.getId())) + " (<" + OCCLUSION_MIN_RATIO + ")";
@@ -316,7 +316,7 @@ public final class MobDisplayRenderer {
 
     // ================= 遮挡采样门控 =================
     // 语义:实体身体可见比例 ≥25% → 血条完整绘制(无深度屏显);
-    //      <25%(基本整只躲在墙后)→ 血条整条隐藏。采样结果缓存 250ms。
+    //      <25%(基本整只躲在墙后)→ 血条整条隐藏。采样结果缓存 100ms。
     // 开销控制:8 点采样(2×2×2) + 近距早退——采样是逐方块射线,是帧率的主要热点之一
 
     private static final Map<Integer, Boolean> OCCLUSION_CACHE = new HashMap<>();
