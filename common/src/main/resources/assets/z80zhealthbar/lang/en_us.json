@@ -708,5 +708,11 @@
   "z80zhealthbar.option.styleA.scaleName": "Name scale",
   "z80zhealthbar.option.styleA.scaleNums": "Value scale",
   "z80zhealthbar.option.styleA.numOffsetX": "Value offset X",
-  "z80zhealthbar.option.styleA.numOffsetY": "Value offset Y"
+  "z80zhealthbar.option.styleA.numOffsetY": "Value offset Y",
+  "z80zhealthbar.option.damagePopup.animRise.tooltip": "Rise distance for the custom animation (px): 0 = no rise; theme defaults are 16-34px.",
+  "z80zhealthbar.option.damagePopup.animPunch.tooltip": "Spawn punch strength (%): 0 = none; peak scale = 1 + value, then settles back to 1.",
+  "z80zhealthbar.option.damagePopup.animFadeStart.tooltip": "When fading starts as a percentage of lifetime (e.g. 70% = fully visible for the first 70%, fading over the rest).",
+  "z80zhealthbar.option.damagePopup.animTilt.tooltip": "Tilt angle of the whole number (degrees): negative = counter-clockwise; 0 = no tilt.",
+  "z80zhealthbar.option.damagePopup.animDrift.tooltip": "Horizontal random drift (px, ±) so consecutive popups spread out instead of overlapping.",
+  "z80zhealthbar.option.barfx.shakeMode.tooltip": "Shake amplitude curve: Off / Static (fixed 0-2px steps) / Smooth (sine, amplitude follows hit strength) / Dynamic (amplitude follows this hit damage)."
 }

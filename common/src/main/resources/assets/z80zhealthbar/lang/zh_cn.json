@@ -708,5 +708,11 @@
   "z80zhealthbar.option.styleA.scaleName": "名称缩放",
   "z80zhealthbar.option.styleA.scaleNums": "数值缩放",
   "z80zhealthbar.option.styleA.numOffsetX": "数值偏移 X",
-  "z80zhealthbar.option.styleA.numOffsetY": "数值偏移 Y"
+  "z80zhealthbar.option.styleA.numOffsetY": "数值偏移 Y",
+  "z80zhealthbar.option.damagePopup.animRise.tooltip": "自定义动画的上升距离（像素）：0=原地不上升；默认随主题（16~34px）。",
+  "z80zhealthbar.option.damagePopup.animPunch.tooltip": "出生瞬间的放大冲击强度（%）：0=无冲击；峰值缩放 = 1+该值，随后回落到 1。",
+  "z80zhealthbar.option.damagePopup.animFadeStart.tooltip": "从存活期的百分之几开始淡出（例：70%=前 70% 全亮，后 30% 渐隐）。",
+  "z80zhealthbar.option.damagePopup.animTilt.tooltip": "数字整体的倾斜角度（度）：负=逆时针；0=不倾斜。",
+  "z80zhealthbar.option.damagePopup.animDrift.tooltip": "水平随机散布幅度（像素，±）：让连续跳字左右错开不重叠。",
+  "z80zhealthbar.option.barfx.shakeMode.tooltip": "受击抖动的幅度曲线：关闭 / 静态（固定 0-2px 跳变）/ 平滑比例（正弦，幅度随受击强度）/ 动态（幅度随本次伤害量）。"
 }
