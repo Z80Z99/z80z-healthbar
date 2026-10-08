@@ -160,7 +160,7 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         //    per-entity 相位偏移防多根条同步。绘制于填充之上、刻度之下（2026-10-08 重做）
         if (fx.enabled && fx.sheen && fillW > 0) {
             double sheenPhase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
-                    snap.entityId, fillW, System.currentTimeMillis(), false);
+                    snap.entityId, fillW, System.currentTimeMillis(), fx.sheenAdaptive);
             int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(barWidth, fillW, sheenPhase);
             final int am = Math.max(0, Math.min(255, (int) (alphaMul * 255)));
             final int sheenX = x, sheenY = y, sheenH = barH;

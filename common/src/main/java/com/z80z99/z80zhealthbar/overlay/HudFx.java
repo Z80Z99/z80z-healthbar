@@ -17,8 +17,16 @@ public final class HudFx {
 
     /** 低血呼吸周期（ms/rad）：190 → 约 1.2s 一个完整呼吸（更快更醒目） */
     public static final double PULSE_PERIOD_MS = 190.0;
-    /** 扫光完整周期（ms） */
+    /** 扫光完整周期（ms）——仅作旧文档参考,速度模型已改为恒定像素速度（见 SHEEN_SPEED_PX_PER_SEC） */
     public static final long SHEEN_PERIOD_MS = 2600;
+    /**
+     * 扫光基准像素速度（px/s）——**恒定速度**设计:任何条宽/填充长度下像素速度一致
+     * （周期 = 距离/速度,条越长扫越久）。旧实现固定 2.6s 周期,距离=填充宽+带宽,
+     * 满血条比残血条快近 5 倍（实测反馈"速度不均匀"）。
+     */
+    public static final double SHEEN_SPEED_PX_PER_SEC = 56.0;
+    /** 自适应倍率（仅动态效果.sheenAdaptive 开启时生效:数值变化中短暂加速） */
+    private static final double SHEEN_ADAPTIVE_BOOST = 1.5;
     /** 抖动序列（与 SimpleBarOverlay.SHIFT 同款 0/1 伪随机,独立副本避免跨类耦合） */
     private static final int[] SHAKE = {0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1};
 
@@ -30,50 +38,51 @@ public final class HudFx {
     }
 
     /**
-     * 扫光带在填充内的区间（2026-10-08 重做,单调右行版）。
+     * 扫光带在填充内的区间（2026-10-08 重做,单调右行 + 恒定像素速度）。
      *
-     * <p>旧版"数据减少向左扫"的方向反转经 floorMod 回绕会在条的左右两端瞬移（视觉跳变）,
-     * 且整带为纯色方块。重做:相位只增不减（右行循环）,条带由渲染端按亮度切片绘制成
-     * 渐变（见 {@link #sheenStripAlpha}）;两端各有一小段完全出条区间,回绕不可见。
+     * <p>相位 = 累计行进距离（px,由 {@link #advanceSheen} 以 {@link #SHEEN_SPEED_PX_PER_SEC}
+     * 推进）;一趟扫完的距离 = fillW + bandW（两端各有一段完全出条）——所以周期随距离变化,
+     * 但**像素速度恒定**,不同条宽/血量下观感一致。
      *
      * @param innerW 条内宽（光晕带宽 = max(10, innerW/5)）
      * @param fillW 当前填充宽（扫光只在有血区域流动）
-     * @param phaseMs 累计相位（ms;速度由 {@link #advanceSheen} 调制）
+     * @param phasePx 累计像素相位（px）
      * @return {start, end} 相对填充左缘的像素区间;不在填充内（如 fillW=0）返回 null
      */
-    public static int[] sheenBandPhase(int innerW, int fillW, double phaseMs) {
+    public static int[] sheenBandPhase(int innerW, int fillW, double phasePx) {
         if (fillW <= 0) return null;
         int bandW = Math.max(10, innerW / 5);
-        double t = phaseMs / (double) SHEEN_PERIOD_MS;
+        double travel = fillW + bandW;
+        double t = phasePx / travel;
         double frac = t - Math.floor(t);
         // 从填充左侧外进入、右侧外离开:pos ∈ [-bandW, fillW]
-        int pos = (int) Math.round(-bandW + frac * (fillW + bandW));
+        int pos = (int) Math.round(-bandW + frac * travel);
         int start = Math.max(0, pos);
         int end = Math.min(fillW, pos + bandW);
         if (end - start <= 0) return null;
         return new int[]{start, end};
     }
 
-    /** 旧签名兼容（纯时间相位） */
+    /** 旧签名兼容（纯时间相位——按基准速度折算像素相位） */
     public static int[] sheenBand(int innerW, int fillW, long now, int phase) {
-        return sheenBandPhase(innerW, fillW, now + phase);
+        return sheenBandPhase(innerW, fillW, (now + phase) * SHEEN_SPEED_PX_PER_SEC / 1000.0);
     }
 
-    // ---- 自适应扫光（数值变化 1.0× 速、静止 0.5× 速,方向随数据增减） ----
+    // ---- 扫光相位推进（恒定像素速度;可选自适应加速） ----
     // int key（实体 ID / 固定组件编号）——此前 String key 每帧拼接（"mob."+id）且表无界增长
-    private static final Map<Integer, double[]> SHEEN = new java.util.HashMap<>(); // {phase, lastMs, lastFill}
+    private static final Map<Integer, double[]> SHEEN = new java.util.HashMap<>(); // {phasePx, lastMs, lastFill}
     private static final int SHEEN_STALE_MS = 10_000;
 
     /**
-     * 自适应扫光相位推进：静止 0.5× 速、数值变化 1.0× 速（单调右行——不再随增减反转方向）。
+     * 扫光相位推进（**恒定像素速度**,dt 以真实时间计,与帧率无关）。方向恒为右行。
      *
-     * @param key    相位跟踪键（实体 ID;玩家组件用负编号）
-     * @param fillW  当前填充宽（变化检测;==0 视为静止）
-     * @param now    时间戳
-     * @param changing 数据是否正在变化（如 BarFx display 与 target 差 > ε）
-     * @return 累计相位（ms）——直接喂 sheenBandPhase
+     * @param key     相位跟踪键（实体 ID;玩家组件用负编号:生命 -1 / 自定义 -2 / 经验 -3）
+     * @param fillW   当前填充宽（变化检测;供自适应加速判定）
+     * @param now     时间戳
+     * @param adaptive 是否启用自适应加速（dynamicFx.sheenAdaptive;变化中 ×1.5,静止恢复基准）
+     * @return 累计像素相位（px）——直接喂 {@link #sheenBandPhase}
      */
-    public static double advanceSheen(int key, int fillW, long now, boolean changing) {
+    public static double advanceSheen(int key, int fillW, long now, boolean adaptive) {
         double[] st = SHEEN.get(key);
         if (st == null) {
             if (SHEEN.size() > 256) { // 有界清理:整体重建（存活条目 << 256,代价可忽略）
@@ -87,8 +96,8 @@ public final class HudFx {
         double prevFill = st[2];
         boolean grew = fillW > prevFill + 0.5;
         boolean shrank = fillW < prevFill - 0.5;
-        double speed = (changing || grew || shrank) ? 1.0 : 0.5;
-        st[0] += dt * speed;
+        double speed = SHEEN_SPEED_PX_PER_SEC * (adaptive && (grew || shrank) ? SHEEN_ADAPTIVE_BOOST : 1.0);
+        st[0] += dt / 1000.0 * speed;
         st[1] = now;
         st[2] = fillW;
         return st[0];

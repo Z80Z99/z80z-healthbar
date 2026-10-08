@@ -103,8 +103,9 @@ public class ExperienceBarOverlay extends SimpleBarOverlay {
         var dxCfg = ConfigManager.getConfig().dynamicFx;
         if (!dxCfg.enabled || !dxCfg.sheen || fillW <= 0) return;
         int innerW = HudBarPainter.innerWidth(barWidth);
-        int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW,
-                System.currentTimeMillis());
+        double phase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(-3, // 经验条固定编号
+                fillW, System.currentTimeMillis(), dxCfg.sheenAdaptive);
+        int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW, phase);
         int y0 = HudBarPainter.fillTop(top, barH);
         int h = HudBarPainter.innerHeight(barH);
         if (h <= 0) return;

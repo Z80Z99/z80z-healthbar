@@ -152,7 +152,7 @@ public final class MobHealthBarStyle {
             // 扫光流动（与帧条/样式3 同款渐变光泽带）
             if (fxCfg.enabled && fxCfg.sheen) {
                 double sheenPhase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
-                        snap.entityId, fillW, System.currentTimeMillis(), false);
+                        snap.entityId, fillW, System.currentTimeMillis(), fxCfg.sheenAdaptive);
                 int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW, sheenPhase);
                 final int cx0 = x + insetX, cy0 = y + insetY, ch0 = fillH, cam = a;
                 com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, al) ->
@@ -245,7 +245,7 @@ public final class MobHealthBarStyle {
             // 5b) 扫光流动（渐变光泽带,切片;设置节宣称样式1/3 通用——此前样式1 缺失）
             if (fxCfg.enabled && fxCfg.sheen) {
                 double sheenPhase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
-                        snap.entityId, fillW, System.currentTimeMillis(), false);
+                        snap.entityId, fillW, System.currentTimeMillis(), fxCfg.sheenAdaptive);
                 int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(fillMaxW, fillW, sheenPhase);
                 final int sx0 = fillX, sy0 = fillY, sh0 = fillH, sam = a;
                 com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, al) ->

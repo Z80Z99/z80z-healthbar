@@ -675,6 +675,7 @@ public final class ModSettingsScreen extends Screen {
         // 第二层特效（HudFx 纯函数 + BarFx 现有状态,渲染层计算）
         rows.add(toggleRow("z80zhealthbar.option.barfx.lowHpPulse", fx.lowHpPulse, v -> fx.lowHpPulse = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.sheen", fx.sheen, v -> fx.sheen = v));
+        rows.add(toggleRow("z80zhealthbar.option.barfx.sheenAdaptive", fx.sheenAdaptive, v -> fx.sheenAdaptive = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.healGlow", fx.healGlow, v -> fx.healGlow = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.hitShake", fx.hitShake, v -> fx.hitShake = v));
         // 抖动方式：关/静态/平滑比例/动态（随伤害量增幅）
