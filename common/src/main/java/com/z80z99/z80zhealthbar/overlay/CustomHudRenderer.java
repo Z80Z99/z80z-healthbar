@@ -963,14 +963,18 @@ public final class CustomHudRenderer {
         int innerW = HudBarPainter.innerWidth(w);
         double phase = HudFx.advanceSheen(-2, // 自定义管线血条固定编号
                 innerW, fillW, System.currentTimeMillis(), dxCfg.sheenAdaptive);
-        int[] band = HudFx.sheenBandPhase(innerW, fillW, phase);
+        float[] band = HudFx.sheenBandPhase(innerW, fillW, phase);
         if (band == null) return;
         int y0 = HudBarPainter.fillTop(0, h);
         int ih = HudBarPainter.innerHeight(h);
         if (ih <= 0) return;
-        HudFx.drawSheen(band, (sx, sw, a) ->
-                g.fill(HudBarPainter.INSET + sx, y0, HudBarPainter.INSET + sx + sw, y0 + ih,
-                        (a << 24) | 0xFFFFFF));
+        var ps = g.pose(); // 子像素:GuiGraphics.fill 只收 int,经 pose 平移承载小数部分
+        HudFx.drawSheen(band, (sx, sw, a) -> {
+            ps.pushPose();
+            ps.translate(HudBarPainter.INSET + sx, 0, 0);
+            g.fill(0, y0, Math.max(1, Math.round(sw)), y0 + ih, (a << 24) | 0xFFFFFF);
+            ps.popPose();
+        });
     }
 
     /** 数值格式化：整数直接显示（20/20 而非 20.0/20.0），非整保留一位小数 */

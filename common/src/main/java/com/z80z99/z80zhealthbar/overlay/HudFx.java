@@ -53,20 +53,22 @@ public final class HudFx {
      * @param innerW 条内宽（光晕带宽 = max(10, innerW/5)）
      * @param fillW 当前填充宽（扫光只在有血区域流动）
      * @param posPx 光带起点相对填充左缘的位置（px,合法域 [-bandW, fillW)）
-     * @return {start, end} 裁剪到填充内的像素区间;不可见（如 fillW=0 或光带整体出条）返回 null
+     * @return {start, end} 裁剪到填充内的像素区间（float 子像素）;不可见（如 fillW=0 或光带整体出条）返回 null
      */
-    public static int[] sheenBandPhase(int innerW, int fillW, double posPx) {
+    public static float[] sheenBandPhase(int innerW, int fillW, double posPx) {
         if (fillW <= 0) return null;
         int bandW = Math.max(10, innerW / 5);
-        int pos = (int) Math.round(posPx);
-        int start = Math.max(0, pos);
-        int end = Math.min(fillW, pos + bandW);
-        if (end - start <= 0) return null;
-        return new int[]{start, end};
+        // float 不取整——慢速条(22px/s)每帧仅前进 ~0.4px,取整后"停2帧跳1px",
+        // GUI 缩放下次跳 2-3 屏幕像素,观感低帧率卡顿(实测"不连贯")。子像素交给渲染端
+        float pos = (float) posPx;
+        float start = Math.max(0f, pos);
+        float end = Math.min(fillW, pos + bandW);
+        if (end - start <= 0f) return null;
+        return new float[]{start, end};
     }
 
     /** 旧签名兼容（纯时间相位→位置;仅历史/测试调用,正式路径一律经 advanceSheen） */
-    public static int[] sheenBand(int innerW, int fillW, long now, int phase) {
+    public static float[] sheenBand(int innerW, int fillW, long now, int phase) {
         if (fillW <= 0) return null;
         int bandW = Math.max(10, innerW / 5);
         long travel = fillW + bandW;
@@ -148,22 +150,23 @@ public final class HudFx {
         return Math.min(0x66, a);
     }
 
-    /** 扫光切片绘制回调（各管线的 fill 原语签名不同——GuiGraphics.fill / VertexConsumer 矩形） */
+    /** 扫光切片绘制回调（各管线的 fill 原语签名不同——GuiGraphics.fill / VertexConsumer 矩形;x/w 浮点子像素） */
     public interface SheenStrip {
-        void fill(int x, int w, int alpha);
+        void fill(float x, float w, int alpha);
     }
 
     /**
      * 把扫光带按亮度切片交给渲染端绘制（x 相对填充左缘;alpha 为白色通道,未乘管线透明度）。
      * 切片步进 ≤ bandW/16,15-30px 的光带约 8-16 次 fill——渐变肉眼连续,开销可忽略。
      */
-    public static void drawSheen(int[] band, SheenStrip sink) {
+    public static void drawSheen(float[] band, SheenStrip sink) {
         if (band == null) return;
-        int bandW = band[1] - band[0];
-        int step = Math.max(1, bandW / 16);
-        for (int x = band[0]; x < band[1]; x += step) {
-            int w = Math.min(band[1], x + step) - x;
-            int a = sheenStripAlpha(x - band[0], w, bandW);
+        float bandW = band[1] - band[0];
+        if (bandW <= 0f) return;
+        float step = Math.max(1f, bandW / 16f);
+        for (float x = band[0]; x < band[1]; x += step) {
+            float w = Math.min(band[1], x + step) - x;
+            int a = sheenStripAlpha(Math.round(x - band[0]), Math.max(1, Math.round(w)), Math.round(bandW));
             if (a > 0) sink.fill(x, w, a);
         }
     }

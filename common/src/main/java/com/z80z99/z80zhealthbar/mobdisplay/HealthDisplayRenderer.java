@@ -161,7 +161,7 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         if (fx.enabled && fx.sheen && fillW > 0) {
             double sheenPos = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
                     snap.entityId, barWidth, fillW, System.currentTimeMillis(), fx.sheenAdaptive);
-            int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(barWidth, fillW, sheenPos);
+            float[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(barWidth, fillW, sheenPos);
             final int am = Math.max(0, Math.min(255, (int) (alphaMul * 255)));
             final int sheenX = x, sheenY = y, sheenH = barH;
             com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, a) ->
@@ -232,7 +232,7 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
         fillRect(vc, m, x + w, y + t, t, h - t, color);
     }
 
-    private void fillRect(VertexConsumer vc, Matrix4f m, int x, int y, int w, int h, int color) {
+    private void fillRect(VertexConsumer vc, Matrix4f m, float x, float y, float w, float h, int color) { // float:扫光子像素
         if (w <= 0 || h <= 0) return;
         vc.vertex(m, x, y, 0).color(color).endVertex();
         vc.vertex(m, x, y + h, 0).color(color).endVertex();

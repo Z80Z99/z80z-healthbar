@@ -153,7 +153,7 @@ public final class MobHealthBarStyle {
             if (fxCfg.enabled && fxCfg.sheen) {
                 double sheenPos = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
                         snap.entityId, innerW, fillW, System.currentTimeMillis(), fxCfg.sheenAdaptive);
-                int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW, sheenPos);
+                float[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW, sheenPos);
                 final int cx0 = x + insetX, cy0 = y + insetY, ch0 = fillH, cam = a;
                 com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, al) ->
                         fillQuad(vc, m, cx0 + sx, cy0, sw, ch0, (Math.min(255, al * cam / 255) << 24) | 0xFFFFFF));
@@ -171,7 +171,7 @@ public final class MobHealthBarStyle {
     }
 
     /** POSITION_COLOR 纯色矩形(barRect 批次) */
-    private static void fillQuad(VertexConsumer vc, Matrix4f m, int x, int y, int w, int h, int color) {
+    private static void fillQuad(VertexConsumer vc, Matrix4f m, float x, float y, float w, float h, int color) { // float:扫光子像素
         if (w <= 0 || h <= 0) return;
         vc.vertex(m, x, y, 0).color(color).endVertex();
         vc.vertex(m, x, y + h, 0).color(color).endVertex();
@@ -246,7 +246,7 @@ public final class MobHealthBarStyle {
             if (fxCfg.enabled && fxCfg.sheen) {
                 double sheenPos = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
                         snap.entityId, fillMaxW, fillW, System.currentTimeMillis(), fxCfg.sheenAdaptive);
-                int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(fillMaxW, fillW, sheenPos);
+                float[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(fillMaxW, fillW, sheenPos);
                 final int sx0 = fillX, sy0 = fillY, sh0 = fillH, sam = a;
                 com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, al) ->
                         fillQuad(vc, matrix, sx0 + sx, sy0, sw, sh0, (Math.min(255, al * sam / 255) << 24) | 0xFFFFFF));
