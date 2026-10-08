@@ -18,11 +18,9 @@ public final class HudBarPainter {
         return Math.max(0, width - INSET * 2);
     }
 
-    /** 垂直内缩：**已归零**——实测反馈"条填充没填满卡片"。历史版本上下各缩最多 2px
-     *  （9px 条填充仅 5px,顶部空带明显）;现填充画满卡片高,顶部高光/底部压暗仍作为
-     *  叠加层保留（drawFillWidth 内 innerH>=2/>=4 分支）,卡片视觉语言不变。 */
+    /** 垂直内缩自适应：矮条（如旧布局默认 5px）保留更多填充高度，高条固定 2px。 */
     public static int insetY(int height) {
-        return 0;
+        return Math.max(0, Math.min(2, height / 4));
     }
 
     public static int innerHeight(int height) {
