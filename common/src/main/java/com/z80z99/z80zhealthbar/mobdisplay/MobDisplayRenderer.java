@@ -496,7 +496,8 @@ public final class MobDisplayRenderer {
         float numScale = (float) (cfg.scaleNums * 0.7);
         float textTop = cfg.barType == 1 ? 2f : barBottom + 2f; // 与 renderTexts 的 ty 同式
         int rowGap = ConfigManager.getConfig().entityAddons.rowGap; // 与主条（含数值行）的间距
-        float below = (cfg.showHp ? textTop + 8f * numScale : barBottom) + rowGap;
+        // 条底贴基线后:条/名称在基线上方,附加行从数值底（基线下 2+8×numScale）或基线+rowGap 起
+        float below = (cfg.showHp ? 2f + 8f * numScale : 0f) + rowGap;
         // 与 MobHealthBarStyle 相同的 scaleBar 高度补偿（条下沉/上移时附加行同随）
         float compPx = cfg.scaleBar < 1.0 ? 1.5f * (1f - (float) cfg.scaleBar) / 0.025f
                 : cfg.scaleBar > 1.0 ? -((float) cfg.scaleBar - 1f) * 1.5f / 0.025f : 0f;
@@ -668,9 +669,13 @@ public final class MobDisplayRenderer {
         int totalRowsH = rows.size() * 13 - 2;
         int y = -3;
         if (plaqueCfg.renderBelowNameTag) {
+            // 旧版"名牌下方"模式：保留原语义（+23×(0.5/scale) 世界一致偏移）
             y += (int) (23 * pxToWorldComp);
         } else {
-            y -= (int) ((totalRowsH + 2) * pxToWorldComp);
+            // 统一基线锚定（三样式同 offset 同位）：底行背景盒底 = 基线（= 条形底边）。
+            // 原"名牌上方"公式含 0.5/scale 补偿,不同 plaqueScale 下条底位置漂移
+            // （实测 0.5 差 4px、1.0 差 2px）——直接锚定基线后任意缩放/距离均对齐。
+            y = -11 - (rows.size() - 1) * 13; // 每行步进 13,背景盒高 11（y-1..y+11）
         }
         // 垂直位置改用 yOffset（见上方 pose 平移，正值向下）；旧 heightOffset 由校验器迁移
 

@@ -108,7 +108,7 @@ public final class MobHealthBarStyle {
         int fillH = 7;
         int innerW = w - 2 * insetX;
 
-        int x = -w / 2, y = 0;
+        int x = -w / 2, y = -h; // 条底贴基线（三样式统一,同 offset 同位置）
         VertexConsumer vc = buffer.getBuffer(ModRenderType.barRect());
         Matrix4f m = poseStack.last().pose();
         int a = (int) (alpha * 255);
@@ -176,7 +176,7 @@ public final class MobHealthBarStyle {
                                        MultiBufferSource buffer, StyleAConfig cfg, float alpha) {
         Matrix4f matrix = poseStack.last().pose();
         int variant = Math.max(0, Math.min(3, cfg.colorVariant));
-        int x = -FRAME_W / 2, y = 0;
+        int x = -FRAME_W / 2, y = -FRAME_H; // 条底贴基线（三样式统一）
         // 死亡碎裂记录（帧条变体）
         ShatterFx.record(snap.entityId, x + FRAME_W / 2f, y + FRAME_H / 2f, FRAME_W, FRAME_H,
                 fillColor(snap, variant), (float) cfg.scaleBar * 0.025f,
@@ -332,7 +332,8 @@ public final class MobHealthBarStyle {
             float nameScale = (float) cfg.scaleName;
             // 心形排随高度拉伸时，名称跟随心排下缘移动（其余形状顶部锚定，不受影响）
             float hsN = cfg.scaleBarHeight > 0 ? (float) cfg.scaleBarHeight : 1f;
-            float ny = cfg.barType == 1 ? -13f * hsN + 1f : -12;
+            float ny = cfg.barType == 1 ? -13f * hsN + 1f
+                    : -((cfg.barType == 2 ? 11f : FRAME_H) * hsN) - 12f; // 条顶上方 12px（条底贴基线后条顶=-条高×拉伸）
             poseStack.pushPose();
             poseStack.scale(nameScale, nameScale, 1f);
             font.drawInBatch(snap.displayName,
@@ -363,7 +364,7 @@ public final class MobHealthBarStyle {
             // 心形排上移后锚点即其下缘；条形则挂在条底（随高度拉伸下移）
             float hsT = cfg.scaleBarHeight > 0 ? (float) cfg.scaleBarHeight : 1f;
             float barBottom = cfg.barType == 2 ? 11f : FRAME_H;
-            float ty = cfg.barType == 1 ? 2 : barBottom * hsT + 2;
+            float ty = 2; // 数值在基线（条底）下方 2px,与样式3 同语义
             poseStack.pushPose();
             poseStack.scale(numScale, numScale, 1f);
             float tyS = ty / numScale;

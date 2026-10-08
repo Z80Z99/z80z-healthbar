@@ -18,7 +18,7 @@ public class StyleAConfig {
     public int offsetX = 0;
     public int offsetY = 0;
     /** 血条整体高度偏移（方块），原 MOD 固定 +1.2 */
-    public double heightOffset = 1.2;
+    public double heightOffset = 0.5; // 与样式2(0.5)/样式3(barOffsetY 0.5)三样式统一:条底贴基线,同值同位
     public double scaleName = 1.0;
     public double scaleBar = 1.0;
     /** 独立宽度拉伸（仅横向；不影响高度与文字；≤0 视为 1.0 不拉伸） */
