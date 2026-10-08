@@ -973,6 +973,7 @@ public final class HudLayoutScreen extends Screen {
         // ---- 颜色（填充/文本/卡片底,轮盘编辑;空 = 继承全局/状态自动变色） ----
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.color", null, null));
         panelEntries.add(colorRow("z80zhealthbar.editor.color.fill", () -> c.colorFill, v -> c.colorFill = v));
+        panelEntries.add(colorRow("z80zhealthbar.editor.color.fill2", () -> c.colorFill2, v -> c.colorFill2 = v));
         panelEntries.add(colorRow("z80zhealthbar.editor.color.text", () -> c.colorText, v -> c.colorText = v));
         panelEntries.add(colorRow("z80zhealthbar.editor.color.card", () -> c.colorCard, v -> c.colorCard = v));
 
@@ -1047,6 +1048,7 @@ public final class HudLayoutScreen extends Screen {
                     () -> c.textFormat == null ? "" : c.textFormat, v -> c.textFormat = v));
             panelEntries.add(PEntry.note("z80zhealthbar.editor.compat_fmt_note"));
             panelEntries.add(colorRow("z80zhealthbar.editor.color.fill", () -> c.colorFill, v -> c.colorFill = v));
+        panelEntries.add(colorRow("z80zhealthbar.editor.color.fill2", () -> c.colorFill2, v -> c.colorFill2 = v));
             panelEntries.add(colorRow("z80zhealthbar.editor.color.text", () -> c.colorText, v -> c.colorText = v));
             panelEntries.add(colorRow("z80zhealthbar.editor.color.card", () -> c.colorCard, v -> c.colorCard = v));
             if (c.showText) {

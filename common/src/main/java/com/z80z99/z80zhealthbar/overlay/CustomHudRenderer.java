@@ -148,9 +148,14 @@ public final class CustomHudRenderer {
         return (v & 0x00FFFFFF) | (fallback & 0xFF000000);
     }
 
-    /** 条填充色覆盖（当前组件 colorFill） */
+    /** 条填充色覆盖（当前组件 colorFill;非空时替代状态自动变色） */
     private static int fillOf(ComponentLayout c, int fallback) {
         return c == null ? fallback : overrideRGB(c.colorFill, fallback);
+    }
+
+    /** 副填充段色覆盖（组件 colorFill2:生命吸收段/食物饱和度金段——与主填充色独立可调） */
+    private static int fill2Of(ComponentLayout c, int fallback) {
+        return c == null ? fallback : overrideRGB(c.colorFill2, fallback);
     }
 
     /** 数值文本色覆盖（当前组件 colorText） */
@@ -494,7 +499,7 @@ public final class CustomHudRenderer {
                 int absEnd = Math.min(innerW, Math.max(healthW,
                         Math.round((dispR * max + absDisp * max) / total * innerW)));
                 HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, absEnd,
-                        fillOf(c, ColorHelper.parseColor(colors.absorption)));
+                        fill2Of(c, ColorHelper.parseColor(colors.absorption)));
                 // 吸收残影：[金段终点, 消耗前终点] 白色渐隐（锚定当前填充右侧,随填充一起收缩）
                 if (dxFxCfg.enabled && dxFxCfg.ghost) {
                     float gA = Mth.clamp(absFx.ghostAlpha(), 0f, 1f);
@@ -590,7 +595,7 @@ public final class CustomHudRenderer {
             // 饱和度显示方式（组件级可选;0=覆盖 1=右侧追加(吸收式) 2=顶部细条 3=底部细条 4=关闭）
             int satMode = Math.max(0, Math.min(4, c.saturationMode));
             boolean satVisible = sat > 0.01f && satMode != 4;
-            int goldColor = fillOf(c, ColorHelper.parseColor(colors.saturation));
+            int goldColor = fill2Of(c, ColorHelper.parseColor(colors.saturation));
             int foodW = Math.round(foodDisp * innerW);
             if (satVisible && satMode == 1) {
                 // 右侧追加（与血条吸收段同几何）：容量扩展 total = max(上限, 饱食+饱和),
@@ -662,7 +667,7 @@ public final class CustomHudRenderer {
         if (c.showBar) {
             drawCard(g, 0, 0, w, h);
             HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                    Mth.clamp(sat / max, 0f, 1f), fillOf(c, ColorHelper.parseColor(colors.saturation)));
+                    Mth.clamp(sat / max, 0f, 1f), fill2Of(c, ColorHelper.parseColor(colors.saturation)));
         }
         if (c.showText && c.textAnchorParsed() == null) {
             String txt = c.textFormat != null && !c.textFormat.isBlank()

@@ -469,6 +469,7 @@
   "z80zhealthbar.editor.panel.drag": "drag to move",
   "z80zhealthbar.editor.section.color": "Colors",
   "z80zhealthbar.editor.color.fill": "Bar fill color",
+  "z80zhealthbar.editor.color.fill2": "Secondary fill color",
   "z80zhealthbar.editor.color.text": "Value text color",
   "z80zhealthbar.editor.color.card": "Card base color",
   "z80zhealthbar.editor.color.edit": "Edit...",

@@ -86,6 +86,8 @@ public class HudLayoutConfig {
         // alpha 仍由组件透明度参数统一控制;颜色轮盘编辑（实测反馈"各元素颜色,各组件独立设置"））
         /** 条填充色（覆盖状态自动变色——如生命中毒变绿;空 = 保持状态色） */
         public String colorFill = "";
+        /** 副填充段色（生命条=吸收段,食物条=饱和度金段;空 = 全局默认）。与主填充色独立 */
+        public String colorFill2 = "";
         /** 数值文本色 */
         public String colorText = "";
         /** 卡片底色 */
@@ -158,7 +160,8 @@ public class HudLayoutConfig {
             c.group = group; c.iconTexture = iconTexture;
             c.opacity = opacity; c.idleFadeSecs = idleFadeSecs; c.rotation = rotation;
             c.saturationMode = saturationMode;
-            c.colorFill = colorFill; c.colorText = colorText; c.colorCard = colorCard;
+            c.colorFill = colorFill; c.colorFill2 = colorFill2;
+            c.colorText = colorText; c.colorCard = colorCard;
             return c;
         }
     }

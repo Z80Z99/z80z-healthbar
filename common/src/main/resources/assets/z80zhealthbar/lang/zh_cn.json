@@ -469,6 +469,7 @@
   "z80zhealthbar.editor.panel.drag": "拖动移动",
   "z80zhealthbar.editor.section.color": "颜色",
   "z80zhealthbar.editor.color.fill": "条填充色",
+  "z80zhealthbar.editor.color.fill2": "副填充段色",
   "z80zhealthbar.editor.color.text": "数值文本色",
   "z80zhealthbar.editor.color.card": "卡片底色",
   "z80zhealthbar.editor.color.edit": "编辑…",
