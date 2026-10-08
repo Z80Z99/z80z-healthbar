@@ -45,6 +45,12 @@ public final class ConfigValidator {
     private static void validateDamagePopup(DamagePopupConfig c) {
         c.theme = c.themeParsed();
         c.motion = c.motionParsed();
+        c.spawnOrigin = c.spawnOriginParsed();
+        c.animRisePx = clamp(c.animRisePx, 0, 80);
+        c.animPunchPercent = clamp(c.animPunchPercent, 0, 150);
+        c.animFadeStartPercent = clamp(c.animFadeStartPercent, 30, 95);
+        c.animTiltDegrees = clamp(c.animTiltDegrees, -45, 45);
+        c.animDriftPx = clamp(c.animDriftPx, 0, 24);
         c.scale = clamp(c.scale, 0.5, 2.0);
         c.offsetY = clamp(c.offsetY, -2, 4);
         c.lifetimeTicks = clamp(c.lifetimeTicks, 10, 60);

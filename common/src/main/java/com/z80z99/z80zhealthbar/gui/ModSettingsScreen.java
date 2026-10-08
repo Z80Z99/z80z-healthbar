@@ -713,12 +713,31 @@ public final class ModSettingsScreen extends Screen {
                 dp::themeParsed, v -> dp.theme = v,
                 v -> Component.translatable("z80zhealthbar.damagePopup.theme." + v.toLowerCase(Locale.ROOT))));
         rows.add(cycleRow("z80zhealthbar.option.damagePopup.motion",
-                List.of("RISE", "ARC", "STACK", "CUMULATIVE"),
+                List.of("RISE", "ARC", "STACK", "CUMULATIVE", "BURST", "SWAY"),
                 dp::motionParsed, v -> dp.motion = v,
                 v -> Component.translatable("z80zhealthbar.damagePopup.motion." + v.toLowerCase(Locale.ROOT))));
         // 随机跳出偏角上限（仅 RISE/ARC 生效,0 = 垂直向上）
         rows.add(sliderRow("z80zhealthbar.option.damagePopup.launchAngle", 0, 180, (int) dp.launchAngleDegrees,
                 v -> dp.launchAngleDegrees = v, v -> v == 0 ? "—" : v + "°"));
+        // 生成锚点 + 自定义动画（2026-10-08 扩展:位置/冲击/淡出/倾斜/散布可覆盖主题默认）
+        rows.add(cycleRow("z80zhealthbar.option.damagePopup.spawnOrigin",
+                List.of("HEAD", "BAR", "CENTER", "FEET"),
+                dp::spawnOriginParsed, v -> dp.spawnOrigin = v,
+                v -> Component.translatable("z80zhealthbar.damagePopup.spawnOrigin." + v.toLowerCase(Locale.ROOT))));
+        rows.add(toggleRow("z80zhealthbar.option.damagePopup.animOverride", dp.animOverride,
+                v -> { dp.animOverride = v; rebuild(); }));
+        if (dp.animOverride) {
+            rows.add(sliderRow("z80zhealthbar.option.damagePopup.animRise", 0, 80, dp.animRisePx,
+                    v -> dp.animRisePx = v, String::valueOf));
+            rows.add(sliderRow("z80zhealthbar.option.damagePopup.animPunch", 0, 150, dp.animPunchPercent,
+                    v -> dp.animPunchPercent = v, v -> v + "%"));
+            rows.add(sliderRow("z80zhealthbar.option.damagePopup.animFadeStart", 30, 95, dp.animFadeStartPercent,
+                    v -> dp.animFadeStartPercent = v, v -> v + "%"));
+            rows.add(sliderRow("z80zhealthbar.option.damagePopup.animTilt", -45, 45, dp.animTiltDegrees,
+                    v -> dp.animTiltDegrees = v, v -> v + "°"));
+            rows.add(sliderRow("z80zhealthbar.option.damagePopup.animDrift", 0, 24, dp.animDriftPx,
+                    v -> dp.animDriftPx = v, String::valueOf));
+        }
         rows.add(toggleRow("z80zhealthbar.option.damagePopup.estimateWithoutServer",
                 dp.estimateWithoutServer, v -> dp.estimateWithoutServer = v));
         rows.add(sliderRow("z80zhealthbar.option.damagePopup.scale", 50, 200, (int) (dp.scale * 100),

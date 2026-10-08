@@ -27,6 +27,22 @@ public class DamagePopupConfig {
     /** N tick 内多段伤害合并为一条（求和 + ×n），0 = 关闭 */
     public int mergeWindowTicks = 0;
 
+    // ===== 生成位置与动画自定义（2026-10-08 扩展） =====
+    /** 生成锚点:HEAD=头顶 BAR=血条上方 CENTER=实体中心 FEET=脚部上方 */
+    public String spawnOrigin = "HEAD";
+    /** 自定义动画:开=以下 anim* 参数覆盖主题默认;关=主题默认运动 */
+    public boolean animOverride = false;
+    /** 上升距离（px,0=不上升） */
+    public int animRisePx = 16;
+    /** 出生冲击强度（%,0=无冲击） */
+    public int animPunchPercent = 45;
+    /** 淡出起点（% 存活期,后半淡出） */
+    public int animFadeStartPercent = 70;
+    /** 倾斜角（度,负=逆时针） */
+    public int animTiltDegrees = 0;
+    /** 水平随机散布幅度（px,±） */
+    public int animDriftPx = 0;
+
     /** 按伤害类型显示的开关 */
     public boolean showPhysical = true;
     public boolean showProjectile = true;
@@ -60,11 +76,20 @@ public class DamagePopupConfig {
         };
     }
 
+    /** 解析生成锚点（非法值回退 HEAD） */
+    public String spawnOriginParsed() {
+        String o = spawnOrigin == null ? "" : spawnOrigin.toUpperCase(Locale.ROOT);
+        return switch (o) {
+            case "HEAD", "BAR", "CENTER", "FEET" -> o;
+            default -> "HEAD";
+        };
+    }
+
     /** 解析运动方式（非法值回退 RISE） */
     public String motionParsed() {
         String m = motion == null ? "" : motion.toUpperCase(Locale.ROOT);
         return switch (m) {
-            case "RISE", "ARC", "STACK", "CUMULATIVE" -> m;
+            case "RISE", "ARC", "STACK", "CUMULATIVE", "BURST", "SWAY" -> m;
             default -> "RISE";
         };
     }

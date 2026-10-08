@@ -109,13 +109,16 @@ public final class DamagePopupRenderer {
                 if (t >= 1f) continue; // 存活期满即刻跳过:淡出完成帧与移除帧原子一致,无尾帧窗口
                 boolean killed = (p.flags() & DamagePopupPacket.FLAG_KILLED) != 0;
                 float rise = 1f - (1f - t) * (1f - t); // easeOutQuad
+                float riseAmt = com.z80z99.z80zhealthbar.util.PopupFx.risePx(theme, cfg.animOverride, cfg.animRisePx);
                 float punchPhase = Mth.clamp((now - p.birthMillis()) / (float) PUNCH_MS, 0f, 1f);
-                float punch = 1f + 0.45f * (float) Math.sin(punchPhase * Math.PI);
+                float punchStrength = cfg.animOverride ? cfg.animPunchPercent / 100f
+                        : (motion.equals("BURST") ? 0.85f : 0.45f);
+                float punch = com.z80z99.z80zhealthbar.util.PopupFx.punchScale(punchStrength, punchPhase);
                 float s = 0.025f * (float) cfg.scale * baseScale(theme, killed, p) * punch;
 
                 // 随机角度跳出:种子确定性推导相对正上方的偏角(0°=垂直向上=旧行为),仅 RISE/ARC 生效
                 float launchSin = 0f, launchCos = 1f;
-                if (launchConeDeg > 0f && (motion.equals("RISE") || motion.equals("ARC"))) {
+                if (launchConeDeg > 0f && (motion.equals("RISE") || motion.equals("ARC") || motion.equals("SWAY"))) {
                     float launchRad = (float) Math.toRadians(
                             (seedToUnit(p.seed()) * 2f - 1f) * launchConeDeg);
                     launchSin = Mth.sin(launchRad);
@@ -132,30 +135,36 @@ public final class DamagePopupRenderer {
                         // 发射向量绕锚点旋转:垂直分量随偏角收缩,水平分量随全程 easeOut 展开
                         float riseUp = Mth.sin(Math.min(1f, t * 1.8f) * (float) (Math.PI / 2));
                         float fall = Mth.clamp((t - 0.45f) / 0.55f, 0f, 1f);
-                        yPx = -risePx(theme) * riseUp * launchCos;
-                        xPx = launchSin * risePx(theme) * rise;
+                        yPx = -riseAmt * riseUp * launchCos;
+                        xPx = launchSin * riseAmt * rise;
                         worldDy = -(float) ((p.headY() - p.feetY() + 0.1) * fall * fall);
                     }
                     case "STACK" -> yPx = -stack * 12; // 塔式堆叠:静止分层,顶旧底新
-                    case "CUMULATIVE" -> yPx = 0;
+                    case "CUMULATIVE", "BURST" -> yPx = 0; // BURST:冲击放大后原地淡出(不上升)
+                    case "SWAY" -> { // 上升 + 水平正弦摆动(全程 1.5 周期,种子错相)
+                        yPx = -riseAmt * rise * launchCos;
+                        xPx = launchSin * riseAmt * rise + com.z80z99.z80zhealthbar.util.PopupFx.swayX(t, p.seed());
+                    }
                     default -> { // RISE:沿发射方向的直线漂浮
-                        yPx = -risePx(theme) * rise * launchCos;
-                        xPx = launchSin * risePx(theme) * rise;
+                        yPx = -riseAmt * rise * launchCos;
+                        xPx = launchSin * riseAmt * rise;
                     }
                 }
 
                 pose.pushPose();
                 // 世界空间锚点（方块单位）
-                pose.translate((float) (p.x() - camPos.x), (float) (p.headY() - camPos.y + cfg.offsetY + worldDy),
+                double anchorY = com.z80z99.z80zhealthbar.util.PopupFx.originY(cfg.spawnOriginParsed(), p.headY(), p.feetY());
+                pose.translate((float) (p.x() - camPos.x), (float) (anchorY - camPos.y + cfg.offsetY + worldDy),
                         (float) (p.z() - camPos.z));
                 pose.mulPose(camera.rotation()); // billboard
                 pose.scale(-s, -s, s); // 名牌空间约定：此后为像素单位（+y 向下、+x 屏幕右）
                 // 上漂/散布/堆叠必须在缩放之后（像素单位）——放在缩放前会变成 16~34 方块的位移
-                float drift = (motion.equals("RISE") || motion.equals("ARC")) ? driftX(theme, p.seed()) * rise : 0f;
+                float driftAmp = cfg.animOverride ? cfg.animDriftPx : (theme.equals("TACTICAL") ? 6f : 0f);
+                float drift = (motion.equals("RISE") || motion.equals("ARC") || motion.equals("SWAY"))
+                        ? com.z80z99.z80zhealthbar.util.PopupFx.driftX(p.seed(), driftAmp) * rise : 0f;
                 pose.translate(drift + xPx, yPx, 0);
-                if (theme.equals("WARFRAME")) {
-                    pose.mulPose(Axis.ZP.rotationDegrees(-6f));
-                }
+                float tilt = com.z80z99.z80zhealthbar.util.PopupFx.tiltDeg(theme, cfg.animOverride, cfg.animTiltDegrees);
+                if (tilt != 0f) pose.mulPose(Axis.ZP.rotationDegrees(tilt));
                 drawPopup(font, pose, buffer, cfg, theme, p, killed, t, s);
                 pose.popPose();
             }
@@ -165,8 +174,8 @@ public final class DamagePopupRenderer {
     private static void drawPopup(Font font, PoseStack poseStack, MultiBufferSource buffer,
                                   DamagePopupConfig cfg, String theme, DamagePopupManager.Popup p,
                                   boolean killed, float t, float s) {
-        float alpha = t < 0.7f ? 1f : 1f - (t - 0.7f) / 0.3f;
-        alpha = Mth.clamp(alpha, 0f, 1f);
+        float fadeStart = cfg.animOverride ? cfg.animFadeStartPercent / 100f : 0.7f;
+        float alpha = Mth.clamp(com.z80z99.z80zhealthbar.util.PopupFx.fadeAlpha(t, fadeStart), 0f, 1f);
         int a255 = (int) (255 * alpha);
         if (a255 <= 0) return; // 淡尽即停:存活期后 200ms 保留窗口内不再绘制任何顶点
         boolean outline = theme.equals("TACTICAL") || theme.equals("CLASSIC");
@@ -254,21 +263,6 @@ public final class DamagePopupRenderer {
             default -> 1.0f;
         };
         return killed ? base * 1.35f : base;
-    }
-
-    private static float risePx(String theme) {
-        return switch (theme) {
-            case "APEX" -> 16f;
-            case "TACTICAL" -> 24f;
-            case "WARFRAME" -> 34f;
-            case "MINIMAL" -> 12f;
-            default -> 20f;
-        };
-    }
-
-    private static float driftX(String theme, int seed) {
-        if (!theme.equals("TACTICAL")) return 0f;
-        return ((seed % 13) / 13f - 0.5f) * 2f * 6f; // ±6px 确定性散布
     }
 
     /** 种子 → [0,1) 确定性均匀散列（splitmix 风格）;公开供设置页预览与真实渲染保持同角度公式 */
