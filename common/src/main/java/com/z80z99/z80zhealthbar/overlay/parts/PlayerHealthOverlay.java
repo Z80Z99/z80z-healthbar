@@ -250,7 +250,7 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
         if (!dxCfg.enabled || !dxCfg.sheen || fillW <= 0) return;
         int innerW = HudBarPainter.innerWidth(barWidth);
         double phase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(-1, // 玩家长条血条固定编号
-                fillW, System.currentTimeMillis(), dxCfg.sheenAdaptive);
+                innerW, fillW, System.currentTimeMillis(), dxCfg.sheenAdaptive);
         int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW, phase);
         if (band == null) return;
         int y0 = HudBarPainter.fillTop(top, barH);

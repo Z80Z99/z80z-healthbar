@@ -962,7 +962,7 @@ public final class CustomHudRenderer {
         if (!dxCfg.enabled || !dxCfg.sheen || fillW <= 0) return;
         int innerW = HudBarPainter.innerWidth(w);
         double phase = HudFx.advanceSheen(-2, // 自定义管线血条固定编号
-                fillW, System.currentTimeMillis(), dxCfg.sheenAdaptive);
+                innerW, fillW, System.currentTimeMillis(), dxCfg.sheenAdaptive);
         int[] band = HudFx.sheenBandPhase(innerW, fillW, phase);
         if (band == null) return;
         int y0 = HudBarPainter.fillTop(0, h);

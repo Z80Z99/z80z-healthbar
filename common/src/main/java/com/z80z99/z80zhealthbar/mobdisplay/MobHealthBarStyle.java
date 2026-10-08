@@ -151,9 +151,9 @@ public final class MobHealthBarStyle {
             fillQuad(vc, m, x + insetX, y + insetY, fillW, fillH, fill);
             // 扫光流动（与帧条/样式3 同款渐变光泽带）
             if (fxCfg.enabled && fxCfg.sheen) {
-                double sheenPhase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
-                        snap.entityId, fillW, System.currentTimeMillis(), fxCfg.sheenAdaptive);
-                int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW, sheenPhase);
+                double sheenPos = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
+                        snap.entityId, innerW, fillW, System.currentTimeMillis(), fxCfg.sheenAdaptive);
+                int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW, sheenPos);
                 final int cx0 = x + insetX, cy0 = y + insetY, ch0 = fillH, cam = a;
                 com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, al) ->
                         fillQuad(vc, m, cx0 + sx, cy0, sw, ch0, (Math.min(255, al * cam / 255) << 24) | 0xFFFFFF));
@@ -244,9 +244,9 @@ public final class MobHealthBarStyle {
             fillQuad(vc, matrix, fillX, fillY, fillW, fillH, fillColor);
             // 5b) 扫光流动（渐变光泽带,切片;设置节宣称样式1/3 通用——此前样式1 缺失）
             if (fxCfg.enabled && fxCfg.sheen) {
-                double sheenPhase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
-                        snap.entityId, fillW, System.currentTimeMillis(), fxCfg.sheenAdaptive);
-                int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(fillMaxW, fillW, sheenPhase);
+                double sheenPos = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
+                        snap.entityId, fillMaxW, fillW, System.currentTimeMillis(), fxCfg.sheenAdaptive);
+                int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(fillMaxW, fillW, sheenPos);
                 final int sx0 = fillX, sy0 = fillY, sh0 = fillH, sam = a;
                 com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, al) ->
                         fillQuad(vc, matrix, sx0 + sx, sy0, sw, sh0, (Math.min(255, al * sam / 255) << 24) | 0xFFFFFF));

@@ -38,59 +38,65 @@ public final class HudFx {
     }
 
     /**
-     * 扫光带在填充内的区间（2026-10-08 重做,单调右行 + 恒定像素速度）。
+     * 扫光带的可见区间（光带起点 = {@link #advanceSheen} 维护的当前位置）。
      *
-     * <p>相位 = 累计行进距离（px,由 {@link #advanceSheen} 以 {@link #SHEEN_SPEED_PX_PER_SEC}
-     * 推进）;一趟扫完的距离 = fillW + bandW（两端各有一段完全出条）——所以周期随距离变化,
-     * 但**像素速度恒定**,不同条宽/血量下观感一致。
+     * <p>2026-10-08 二次修正:位置**直接累加**、与扫一趟的距离（travel = fillW + bandW）解耦——
+     * 旧实现 pos = phase mod travel,填充宽变化时取模回绕把"填充变化速度 × 已完成圈数"乘进
+     * 光带速度（实测复现:60s 运行时掉血动画期间 ±3000~4400px/s,基准仅 56px/s）,血量变化时观感"飞快"。
      *
      * @param innerW 条内宽（光晕带宽 = max(10, innerW/5)）
      * @param fillW 当前填充宽（扫光只在有血区域流动）
-     * @param phasePx 累计像素相位（px）
-     * @return {start, end} 相对填充左缘的像素区间;不在填充内（如 fillW=0）返回 null
+     * @param posPx 光带起点相对填充左缘的位置（px,合法域 [-bandW, fillW)）
+     * @return {start, end} 裁剪到填充内的像素区间;不可见（如 fillW=0 或光带整体出条）返回 null
      */
-    public static int[] sheenBandPhase(int innerW, int fillW, double phasePx) {
+    public static int[] sheenBandPhase(int innerW, int fillW, double posPx) {
         if (fillW <= 0) return null;
         int bandW = Math.max(10, innerW / 5);
-        double travel = fillW + bandW;
-        double t = phasePx / travel;
-        double frac = t - Math.floor(t);
-        // 从填充左侧外进入、右侧外离开:pos ∈ [-bandW, fillW]
-        int pos = (int) Math.round(-bandW + frac * travel);
+        int pos = (int) Math.round(posPx);
         int start = Math.max(0, pos);
         int end = Math.min(fillW, pos + bandW);
         if (end - start <= 0) return null;
         return new int[]{start, end};
     }
 
-    /** 旧签名兼容（纯时间相位——按基准速度折算像素相位） */
+    /** 旧签名兼容（纯时间相位→位置;仅历史/测试调用,正式路径一律经 advanceSheen） */
     public static int[] sheenBand(int innerW, int fillW, long now, int phase) {
-        return sheenBandPhase(innerW, fillW, (now + phase) * SHEEN_SPEED_PX_PER_SEC / 1000.0);
+        if (fillW <= 0) return null;
+        int bandW = Math.max(10, innerW / 5);
+        long travel = fillW + bandW;
+        double pos = -bandW + Math.floorMod((long) ((now + phase) * SHEEN_SPEED_PX_PER_SEC / 1000.0), travel);
+        return sheenBandPhase(innerW, fillW, pos);
     }
 
-    // ---- 扫光相位推进（恒定像素速度;可选自适应加速） ----
+    // ---- 扫光位置推进（恒定像素速度;可选自适应加速） ----
     // int key（实体 ID / 固定组件编号）——此前 String key 每帧拼接（"mob."+id）且表无界增长
-    private static final Map<Integer, double[]> SHEEN = new java.util.HashMap<>(); // {phasePx, lastMs, lastFill}
+    private static final Map<Integer, double[]> SHEEN = new java.util.HashMap<>(); // {posPx, lastMs, lastFill}
     private static final int SHEEN_STALE_MS = 10_000;
 
     /**
-     * 扫光相位推进（**恒定像素速度**,dt 以真实时间计,与帧率无关）。方向恒为右行。
+     * 扫光位置推进（**恒定像素速度**,dt 以真实时间计,与帧率无关）。方向恒为右行。
      *
-     * @param key     相位跟踪键（实体 ID;玩家组件用负编号:生命 -1 / 自定义 -2 / 经验 -3）
+     * <p>位置与 travel 解耦:填充宽怎样变化（掉血/回血动画）都不影响光带速度;
+     * 出右缘（pos ≥ fillW,整体不可见）即回绕到左外,周期 = travel/速度
+     * （随条长自适应,像素速度全局一致）。
+     *
+     * @param key     位置跟踪键（实体 ID;玩家组件用负编号:生命 -1 / 自定义 -2 / 经验 -3）
+     * @param innerW  条内宽（决定光带宽 = max(10, innerW/5),回绕起点用）
      * @param fillW   当前填充宽（变化检测;供自适应加速判定）
      * @param now     时间戳
      * @param adaptive 是否启用自适应加速（dynamicFx.sheenAdaptive;变化中 ×1.5,静止恢复基准）
-     * @return 累计像素相位（px）——直接喂 {@link #sheenBandPhase}
+     * @return 光带起点位置（px,相对填充左缘）——直接喂 {@link #sheenBandPhase}
      */
-    public static double advanceSheen(int key, int fillW, long now, boolean adaptive) {
+    public static double advanceSheen(int key, int innerW, int fillW, long now, boolean adaptive) {
+        int bandW = Math.max(10, innerW / 5);
         double[] st = SHEEN.get(key);
         if (st == null) {
             if (SHEEN.size() > 256) { // 有界清理:整体重建（存活条目 << 256,代价可忽略）
                 SHEEN.entrySet().removeIf(e -> now - e.getValue()[1] > SHEEN_STALE_MS);
             }
-            st = new double[]{0.0, now, fillW};
+            st = new double[]{-bandW, now, fillW};
             SHEEN.put(key, st);
-            return 0.0;
+            return st[0];
         }
         long dt = Math.max(0, Math.min(100, now - (long) st[1]));
         double prevFill = st[2];
@@ -98,6 +104,11 @@ public final class HudFx {
         boolean shrank = fillW < prevFill - 0.5;
         double speed = SHEEN_SPEED_PX_PER_SEC * (adaptive && (grew || shrank) ? SHEEN_ADAPTIVE_BOOST : 1.0);
         st[0] += dt / 1000.0 * speed;
+        double over = st[0] - fillW; // 越界量（>=0 即出右缘）
+        if (over >= 0) {
+            // 回绕至左外;保留越界量（限速内）使速度严格连续,填充骤缩时越界量大也不许弹回条内
+            st[0] = -bandW + Math.min(over, speed * dt / 1000.0);
+        }
         st[1] = now;
         st[2] = fillW;
         return st[0];
