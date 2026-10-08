@@ -192,18 +192,19 @@ public final class MobHealthBarStyle {
 
         // 动态效果（平滑/残影/闪白）
         var f = barFx(snap);
-        int fillW = Mth.floor(f.disp * INNER_W);
+        float disp = f.disp >= 1f - 1e-3f ? 1f : f.disp; // 满血钳制:平滑浮点停于 0.9999x 时 floor 会把满值裁掉 1px
+        int fillW = Mth.floor(disp * INNER_W);
 
         // 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐（透明度随时间衰减）
-        int preHitW = Mth.floor(f.preHit * INNER_W);
+        int preHitW = Mth.floor((f.preHit >= 1f - 1e-3f ? 1f : f.preHit) * INNER_W);
         int ghostA = (int) (f.ghostAlpha * alpha * 255);
         if (preHitW > fillW && ghostA > 0) {
             int ghostColor = ColorHelper.modifyAlpha(
                     ColorHelper.parseColor(ConfigManager.getConfig().dynamicFx.ghostColor),
                     ghostA);
             float gu1 = (variant * FRAME_W + FILL_INSET_X) / 512f, gv1 = 16f / 40f;
-            quadColor(empty, matrix, x + FILL_INSET_X + fillW, y + FILL_INSET_Y,
-                    x + FILL_INSET_X + preHitW, y + FILL_INSET_Y + FILL_H,
+            quadColor(empty, matrix, x + FILL_INSET_X + fillW, y + FILL_INSET_Y - 2,
+                    x + FILL_INSET_X + preHitW, y + FILL_INSET_Y + FILL_H + 2,
                     gu1 + fillW / 512f, gv1, gu1 + preHitW / 512f, gv1 + FILL_H / 40f, ghostColor);
         }
 
@@ -226,8 +227,8 @@ public final class MobHealthBarStyle {
             }
             int fillColor = ColorHelper.modifyAlpha(baseColor, (int) (alpha * 255));
             float tu1 = (variant * FRAME_W + FILL_INSET_X) / 512f, tv1 = 16f / 40f;
-            quadColor(empty, matrix, x + FILL_INSET_X, y + FILL_INSET_Y,
-                    x + FILL_INSET_X + fillW, y + FILL_INSET_Y + FILL_H,
+            quadColor(empty, matrix, x + FILL_INSET_X, y + FILL_INSET_Y - 2,
+                    x + FILL_INSET_X + fillW, y + FILL_INSET_Y + FILL_H + 2,
                     tu1, tv1, tu1 + fillW / 512f, tv1 + FILL_H / 40f, fillColor);
         }
 
@@ -237,8 +238,8 @@ public final class MobHealthBarStyle {
             if (absW > 0) {
                 int absColor = ColorHelper.modifyAlpha(0xFFFFE173, (int) (alpha * 255));
                 float au1 = (variant * FRAME_W + FILL_INSET_X) / 512f, av1 = 16f / 40f;
-                quadColor(empty, matrix, x + FILL_INSET_X + fillW, y + FILL_INSET_Y,
-                        x + FILL_INSET_X + fillW + absW, y + FILL_INSET_Y + FILL_H,
+                quadColor(empty, matrix, x + FILL_INSET_X + fillW, y + FILL_INSET_Y - 2,
+                        x + FILL_INSET_X + fillW + absW, y + FILL_INSET_Y + FILL_H + 2,
                         au1, av1, au1 + absW / 512f, av1 + FILL_H / 40f, absColor);
             }
         }
