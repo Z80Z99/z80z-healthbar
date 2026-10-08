@@ -82,6 +82,14 @@ public class HudLayoutConfig {
         public int rotation = 0;
         /** 饱和度显示方式（仅饱食度类组件）：0=覆盖 1=右侧追加(吸收式) 2=顶部细条 3=底部细条 4=关闭 */
         public int saturationMode = 0;
+        // ===== 组件自定义颜色（#RRGGBBAA;空串 = 继承全局默认/状态自动变色）。RGB 生效,
+        // alpha 仍由组件透明度参数统一控制;颜色轮盘编辑（实测反馈"各元素颜色,各组件独立设置"））
+        /** 条填充色（覆盖状态自动变色——如生命中毒变绿;空 = 保持状态色） */
+        public String colorFill = "";
+        /** 数值文本色 */
+        public String colorText = "";
+        /** 卡片底色 */
+        public String colorCard = "";
 
         public ComponentMode modeParsed() {
             try {
@@ -150,6 +158,7 @@ public class HudLayoutConfig {
             c.group = group; c.iconTexture = iconTexture;
             c.opacity = opacity; c.idleFadeSecs = idleFadeSecs; c.rotation = rotation;
             c.saturationMode = saturationMode;
+            c.colorFill = colorFill; c.colorText = colorText; c.colorCard = colorCard;
             return c;
         }
     }
@@ -169,6 +178,8 @@ public class HudLayoutConfig {
     /** 编辑器悬浮属性面板位置（GUI 坐标；-1 = 默认右上） */
     public int panelX = -1;
     public int panelY = -1;
+    /** 编辑器属性面板折叠（只留标题条;实测反馈"缩小面板只留个标题"） */
+    public boolean panelCollapsed = false;
 
     /** 预设布局标识（编辑器内选择并一键应用） */
     public static final List<String> PRESETS = List.of("MODERN", "CLASSIC", "MINIMAL", "SIDE");
@@ -217,14 +228,24 @@ public class HudLayoutConfig {
         Map<String, ComponentLayout> m = new LinkedHashMap<>();
         String p = preset == null ? "" : preset;
 
-        // 各预设的堆叠顺序（自上而下）
+        // 各预设的堆叠顺序（自上而下;底部锚点组自底向上堆,先出现者贴物品栏）。
+        // 兼容数据默认**拆分为四个独立单行组件**（thirst/saturation/exhaustion/stamina,各自可开关
+        // 摆放）——此前默认只有 compat 组组件,全部兼容数据挤在一处无法分别控制（实测反馈拆分）
         String[] order = switch (p) {
-            case "CLASSIC" -> new String[]{ARMOR, HEALTH, AIR, FOOD, EXPERIENCE, MOUNT, COMPAT};
-            case "MINIMAL" -> new String[]{FOOD, HEALTH, AIR, EXPERIENCE, ARMOR, MOUNT, COMPAT};
-            case "SIDE" -> new String[]{HEALTH, FOOD, AIR, ARMOR, MOUNT, COMPAT, EXPERIENCE};
-            default -> new String[]{MOUNT, HEALTH, EXPERIENCE, COMPAT, AIR, FOOD, ARMOR};
+            case "CLASSIC" -> new String[]{ARMOR, HEALTH, AIR, FOOD, EXPERIENCE, MOUNT,
+                    "compat_thirst", "compat_saturation", "compat_exhaustion", "compat_stamina"};
+            case "MINIMAL" -> new String[]{FOOD, HEALTH, AIR, EXPERIENCE, ARMOR, MOUNT,
+                    "compat_thirst", "compat_saturation", "compat_exhaustion", "compat_stamina"};
+            case "SIDE" -> new String[]{HEALTH, FOOD, AIR, ARMOR, MOUNT,
+                    "compat_thirst", "compat_saturation", "compat_exhaustion", "compat_stamina", EXPERIENCE};
+            default -> new String[]{MOUNT, HEALTH, EXPERIENCE, ARMOR, FOOD, AIR,
+                    "compat_thirst", "compat_saturation", "compat_exhaustion", "compat_stamina"};
         };
-        for (String key : order) m.put(key, new ComponentLayout());
+        for (String key : order) {
+            ComponentLayout c = new ComponentLayout();
+            if (key.startsWith("compat_")) c.type = key; // 显式 type:渲染分发不依赖键名解析
+            m.put(key, c);
+        }
 
         switch (p) {
             case "CLASSIC" -> {
@@ -240,7 +261,13 @@ public class HudLayoutConfig {
                 m.get(EXPERIENCE).barHeight = 5;
                 m.get(EXPERIENCE).showText = false;
                 m.get(MOUNT).barWidth = 140;
-                m.get(COMPAT).barWidth = 120;
+                // 兼容四行：右列氧气上方纵向堆叠（条形）
+                for (String key : new String[]{"compat_thirst", "compat_saturation",
+                        "compat_exhaustion", "compat_stamina"}) {
+                    m.get(key).anchor = HudAnchor.BOTTOM_RIGHT.name();
+                    m.get(key).barWidth = 120;
+                    m.get(key).stack = true;
+                }
             }
             case "MINIMAL" -> {
                 for (String key : new String[]{HEALTH, FOOD}) {
@@ -251,33 +278,52 @@ public class HudLayoutConfig {
                 m.get(EXPERIENCE).mode = ComponentMode.OFF.name();
                 m.get(AIR).mode = ComponentMode.OFF.name();
                 m.get(ARMOR).mode = ComponentMode.OFF.name();
-                m.get(COMPAT).mode = ComponentMode.OFF.name();
+                for (String key : new String[]{"compat_thirst", "compat_saturation",
+                        "compat_exhaustion", "compat_stamina"}) {
+                    m.get(key).mode = ComponentMode.OFF.name();
+                }
                 m.get(MOUNT).barWidth = 182;
                 m.get(MOUNT).barHeight = 5;
                 m.get(MOUNT).showText = false;
             }
             case "SIDE" -> {
-                for (String key : new String[]{HEALTH, FOOD, AIR, ARMOR, MOUNT, COMPAT}) {
+                for (String key : new String[]{HEALTH, FOOD, AIR, ARMOR, MOUNT,
+                        "compat_thirst", "compat_saturation", "compat_exhaustion", "compat_stamina"}) {
                     m.get(key).anchor = HudAnchor.TOP_LEFT.name();
                     m.get(key).barWidth = 120;
+                    m.get(key).stack = true;
                 }
                 m.get(EXPERIENCE).barWidth = 182;
                 m.get(EXPERIENCE).barHeight = 5;
                 m.get(EXPERIENCE).showText = false;
             }
             default -> {
-                m.get(HEALTH).barWidth = 140;
+                // MODERN 重设计：三列分区（全部组内堆叠,不再同锚点同偏移互相重叠——旧默认
+                // BOTTOM_RIGHT 三组件 offset 全 0 直接叠在一起）。左列=坐骑/护甲（原版护甲分区）,
+                // 中列=生命主视觉+经验细条（贴原版垂直次序）,右列=饥饿/氧气/兼容四行（原版饥饿分区延伸）。
+                m.get(HEALTH).barWidth = 182;
+                m.get(HEALTH).stack = true;
                 m.get(EXPERIENCE).barWidth = 182;
                 m.get(EXPERIENCE).barHeight = 5;
-                m.get(FOOD).anchor = HudAnchor.BOTTOM_RIGHT.name();
-                m.get(FOOD).barWidth = 81;
-                m.get(AIR).anchor = HudAnchor.BOTTOM_RIGHT.name();
-                m.get(AIR).barWidth = 81;
+                m.get(EXPERIENCE).stack = true;
                 m.get(ARMOR).anchor = HudAnchor.BOTTOM_LEFT.name();
                 m.get(ARMOR).barWidth = 81;
-                m.get(MOUNT).barWidth = 140;
-                m.get(COMPAT).anchor = HudAnchor.BOTTOM_RIGHT.name();
-                m.get(COMPAT).barWidth = 81;
+                m.get(ARMOR).stack = true;
+                m.get(MOUNT).anchor = HudAnchor.BOTTOM_LEFT.name();
+                m.get(MOUNT).barWidth = 81;
+                m.get(MOUNT).stack = true;
+                m.get(FOOD).anchor = HudAnchor.BOTTOM_RIGHT.name();
+                m.get(FOOD).barWidth = 81;
+                m.get(FOOD).stack = true;
+                m.get(AIR).anchor = HudAnchor.BOTTOM_RIGHT.name();
+                m.get(AIR).barWidth = 81;
+                m.get(AIR).stack = true;
+                for (String key : new String[]{"compat_thirst", "compat_saturation",
+                        "compat_exhaustion", "compat_stamina"}) {
+                    m.get(key).anchor = HudAnchor.BOTTOM_RIGHT.name();
+                    m.get(key).barWidth = 81;
+                    m.get(key).stack = true;
+                }
             }
         }
         return m;

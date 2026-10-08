@@ -63,6 +63,7 @@ public final class CustomHudRenderer {
             boolean isIcon = key.endsWith(".icon");
             String base = (isText || isIcon) ? key.substring(0, key.lastIndexOf('.')) : key;
             ComponentLayout c = layout.get(base);
+            CUR.set(c); // 颜色覆盖上下文（drawCard/drawTextIn/各填充点经 fillOf/textOf/cardOf 读取）
 
             // 组件级透明度（opacity）× 动态 HUD（idleFadeSecs：数值无变化淡出/变化淡入）
             float compAlpha = (c.opacity / 100f) * idleFadeAlpha(key, base, player, c);
@@ -130,8 +131,31 @@ public final class CustomHudRenderer {
             } finally {
                 if (tinted) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
                 graphics.pose().popPose();
+                CUR.remove();
             }
         }
+    }
+
+    /** 当前正在渲染的组件（颜色覆盖上下文;渲染单线程,渲染前 set/finally remove） */
+    private static final ThreadLocal<ComponentLayout> CUR = new ThreadLocal<>();
+
+    /** 组件自定义色覆盖：非空则替换 fallback 的 RGB——**alpha 保留 fallback 通道**
+     *  （组件透明度/淡入淡出动画统一走 alpha,自定义色只管色相） */
+    private static int overrideRGB(String custom, int fallback) {
+        if (custom == null || custom.isBlank()) return fallback;
+        int v = ColorHelper.parseColor(custom);
+        if (v == 0) return fallback;
+        return (v & 0x00FFFFFF) | (fallback & 0xFF000000);
+    }
+
+    /** 条填充色覆盖（当前组件 colorFill） */
+    private static int fillOf(ComponentLayout c, int fallback) {
+        return c == null ? fallback : overrideRGB(c.colorFill, fallback);
+    }
+
+    /** 数值文本色覆盖（当前组件 colorText） */
+    private static int textOf(ComponentLayout c, int fallback) {
+        return c == null ? fallback : overrideRGB(c.colorText, fallback);
     }
 
     /** 动态 HUD 跟踪器（key → 上次数值/变化时间;数值=组件当前显示文本,空视为不变） */
@@ -390,6 +414,7 @@ public final class CustomHudRenderer {
         if (p.hasEffect(MobEffects.POISON)) color = ColorHelper.parseColor(colors.healthPoison);
         else if (p.hasEffect(MobEffects.WITHER)) color = ColorHelper.parseColor(colors.healthWither);
         else if (p.getTicksFrozen() > 0) color = ColorHelper.parseColor(colors.healthFrozen);
+        color = fillOf(c, color); // 组件自定义填充色覆盖（非空时替代状态自动变色）
 
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
             int hearts = (int) Math.ceil(max / 2f);
@@ -469,7 +494,7 @@ public final class CustomHudRenderer {
                 int absEnd = Math.min(innerW, Math.max(healthW,
                         Math.round((dispR * max + absDisp * max) / total * innerW)));
                 HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, absEnd,
-                        ColorHelper.parseColor(colors.absorption));
+                        fillOf(c, ColorHelper.parseColor(colors.absorption)));
                 // 吸收残影：[金段终点, 消耗前终点] 白色渐隐（锚定当前填充右侧,随填充一起收缩）
                 if (dxFxCfg.enabled && dxFxCfg.ghost) {
                     float gA = Mth.clamp(absFx.ghostAlpha(), 0f, 1f);
@@ -560,11 +585,12 @@ public final class CustomHudRenderer {
             int color = p.hasEffect(MobEffects.HUNGER)
                     ? ColorHelper.parseColor(colors.foodHunger)
                     : ColorHelper.parseColor(colors.foodNormal);
+    color = fillOf(c, color); // 组件自定义填充色
             int innerW = HudBarPainter.innerWidth(w);
             // 饱和度显示方式（组件级可选;0=覆盖 1=右侧追加(吸收式) 2=顶部细条 3=底部细条 4=关闭）
             int satMode = Math.max(0, Math.min(4, c.saturationMode));
             boolean satVisible = sat > 0.01f && satMode != 4;
-            int goldColor = ColorHelper.parseColor(colors.saturation);
+            int goldColor = fillOf(c, ColorHelper.parseColor(colors.saturation));
             int foodW = Math.round(foodDisp * innerW);
             if (satVisible && satMode == 1) {
                 // 右侧追加（与血条吸收段同几何）：容量扩展 total = max(上限, 饱食+饱和),
@@ -636,7 +662,7 @@ public final class CustomHudRenderer {
         if (c.showBar) {
             drawCard(g, 0, 0, w, h);
             HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                    Mth.clamp(sat / max, 0f, 1f), ColorHelper.parseColor(colors.saturation));
+                    Mth.clamp(sat / max, 0f, 1f), fillOf(c, ColorHelper.parseColor(colors.saturation)));
         }
         if (c.showText && c.textAnchorParsed() == null) {
             String txt = c.textFormat != null && !c.textFormat.isBlank()
@@ -676,7 +702,7 @@ public final class CustomHudRenderer {
         if (c.showBar) {
             drawCard(g, 0, 0, w, h);
             HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                    Mth.clamp(air / (float) maxAir, 0, 1), ColorHelper.parseColor(colors.air));
+                    Mth.clamp(air / (float) maxAir, 0, 1), fillOf(c, ColorHelper.parseColor(colors.air)));
         }
         if (c.showIcon && c.iconAnchorParsed() == null) {
             drawComponentIcon(g, c, iconX(c, w), 0, h, 16, 18);
@@ -704,7 +730,7 @@ public final class CustomHudRenderer {
             // 居中于组件测量框（ICON 模式 = {54,9},与 HudLayoutSolver.measure 同源,编辑器框内对齐）
             int[] ms = com.z80z99.z80zhealthbar.layout.HudLayoutSolver.measure(c);
             g.drawCenteredString(mc.font, text, ms[0] / 2, Math.max(0, (ms[1] - 8) / 2),
-                    ColorHelper.parseColor(colors.experience));
+                    fillOf(c, ColorHelper.parseColor(colors.experience)));
             return;
         }
 
@@ -712,7 +738,7 @@ public final class CustomHudRenderer {
         if (c.showBar) {
             drawCard(g, 0, 0, w, h);
             HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                    Mth.clamp(progress, 0, 1), ColorHelper.parseColor(colors.experience));
+                    Mth.clamp(progress, 0, 1), fillOf(c, ColorHelper.parseColor(colors.experience)));
         }
         if (c.showText && c.textAnchorParsed() == null) {
             String def = level > 0 ? ("Lv." + level) : String.valueOf(Math.round(progress * 100)) + "%";
@@ -742,7 +768,7 @@ public final class CustomHudRenderer {
         if (c.showBar) {
             drawCard(g, 0, 0, w, h);
             HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                    Mth.clamp(armor / (float) max, 0, 1), ColorHelper.parseColor(colors.armor));
+                    Mth.clamp(armor / (float) max, 0, 1), fillOf(c, ColorHelper.parseColor(colors.armor)));
         }
         if (c.showIcon && c.iconAnchorParsed() == null) {
             drawComponentIcon(g, c, iconX(c, w), 0, h, 34, 9);
@@ -764,7 +790,7 @@ public final class CustomHudRenderer {
         if (c.showBar) {
             drawCard(g, 0, 0, w, h);
             HudBarPainter.drawRatioFill(g, 0, 0, w, h,
-                    Mth.clamp(health / max, 0, 1), ColorHelper.parseColor(colors.mountHealth));
+                    Mth.clamp(health / max, 0, 1), fillOf(c, ColorHelper.parseColor(colors.mountHealth)));
         }
         if (c.showIcon && c.iconAnchorParsed() == null) {
             drawComponentIcon(g, c, iconX(c, w), 0, h, 52, 0);
@@ -801,7 +827,7 @@ public final class CustomHudRenderer {
                 drawCard(g, 0, y, w, h);
                 if (stat.max() != null && stat.max() > 0) {
                     HudBarPainter.drawRatioFill(g, 0, y, w, h,
-                            (float) Math.max(0d, Math.min(1d, stat.value() / stat.max())), stat.color());
+                            (float) Math.max(0d, Math.min(1d, stat.value() / stat.max())), fillOf(c, stat.color()));
                 }
             }
             if (c.showText) {
@@ -859,6 +885,16 @@ public final class CustomHudRenderer {
     }
 
     private static void drawCard(GuiGraphics g, int x, int y, int w, int h) {
+        ComponentLayout c = CUR.get();
+        if (c != null && c.colorCard != null && !c.colorCard.isBlank()) {
+            int v = ColorHelper.parseColor(c.colorCard);
+            if (v != 0) {
+                // 自定义卡片底：纯色平铺（保留原版卡片的 alpha 感）+ 顶 1px 微高光
+                fill(g, x, y, w, h, v);
+                fill(g, x, y, w, 1, 0x30FFFFFF);
+                return;
+            }
+        }
         HudBarPainter.drawCard(g, x, y, w, h);
     }
 
@@ -898,7 +934,7 @@ public final class CustomHudRenderer {
 
     private static void drawTextIn(GuiGraphics g, Font font, String text, int barW, int barH,
                                    int yBase, ComponentLayout c) {
-        drawTextIn(g, font, text, barW, barH, yBase, c, 0xFFFFFFFF);
+        drawTextIn(g, font, text, barW, barH, yBase, c, textOf(c, 0xFFFFFFFF));
     }
 
     /** 文本绘制（带颜色——受伤红/治疗绿等数字动效用） */

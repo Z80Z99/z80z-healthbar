@@ -397,6 +397,19 @@ public final class HudLayoutScreen extends Screen {
         return e;
     }
 
+    /** 颜色行：显示当前值（空 = 继承默认）,点击"编辑"打开颜色轮盘;写回即持久化 */
+    private PEntry colorRow(String labelKey, Supplier<String> get, java.util.function.Consumer<String> set) {
+        PEntry e = listRow(() -> Component.translatable(labelKey).getString()
+                        + ": " + (get.get() == null || get.get().isBlank() ? "-"
+                        : get.get()),
+                "z80zhealthbar.editor.color.edit", () -> minecraft.setScreen(new ColorWheelScreen(this,
+                        Component.translatable(labelKey).getString(), get.get(), v -> {
+                            set.accept(v);
+                            markDirty();
+                        })));
+        return e;
+    }
+
     private PEntry doneRow() {
         return cycler("z80zhealthbar.editor.done",
                 () -> Component.translatable("z80zhealthbar.editor.done").getString(),
@@ -957,6 +970,12 @@ public final class HudLayoutScreen extends Screen {
                     rebuildWidgets();
                 }));
 
+        // ---- 颜色（填充/文本/卡片底,轮盘编辑;空 = 继承全局/状态自动变色） ----
+        panelEntries.add(new PEntry("z80zhealthbar.editor.section.color", null, null));
+        panelEntries.add(colorRow("z80zhealthbar.editor.color.fill", () -> c.colorFill, v -> c.colorFill = v));
+        panelEntries.add(colorRow("z80zhealthbar.editor.color.text", () -> c.colorText, v -> c.colorText = v));
+        panelEntries.add(colorRow("z80zhealthbar.editor.color.card", () -> c.colorCard, v -> c.colorCard = v));
+
         // ---- 组件（位置/缩放/间距:所有显示形式通用;原先散在底栏,现集中入面板） ----
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.component", null, null));
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.BAR) {
@@ -1027,6 +1046,9 @@ public final class HudLayoutScreen extends Screen {
             panelEntries.add(textInput("z80zhealthbar.editor.text_format",
                     () -> c.textFormat == null ? "" : c.textFormat, v -> c.textFormat = v));
             panelEntries.add(PEntry.note("z80zhealthbar.editor.compat_fmt_note"));
+            panelEntries.add(colorRow("z80zhealthbar.editor.color.fill", () -> c.colorFill, v -> c.colorFill = v));
+            panelEntries.add(colorRow("z80zhealthbar.editor.color.text", () -> c.colorText, v -> c.colorText = v));
+            panelEntries.add(colorRow("z80zhealthbar.editor.color.card", () -> c.colorCard, v -> c.colorCard = v));
             if (c.showText) {
                 panelEntries.add(cycler("z80zhealthbar.editor.text_align",
                         () -> Component.translatable("z80zhealthbar.editor.align."
@@ -1263,6 +1285,20 @@ public final class HudLayoutScreen extends Screen {
 
     /** 按面板原点更新全部控件位置，并计算面板高度（内容超高时启用滚动,行按滚动物画出裁剪） */
     private void layoutPanel() {
+        // 折叠态：面板只留标题条——内容不定位、控件全隐藏并挪出屏幕（isMouseOver 只查坐标,
+        // 仅 visible=false 仍会命中 overAnyWidget）
+        if (layout().panelCollapsed) {
+            panelH = TITLE_H;
+            panelScroll = 0;
+            panelScrollTarget = 0;
+            for (PEntry e : panelEntries) {
+                for (PW pw : e.widgets) {
+                    pw.widget().visible = false;
+                    pw.widget().setY(-9999);
+                }
+            }
+            return;
+        }
         // 1) 内容坐标（不含滚动）——同时得出内容总高。
         //    note 行（无值无节标题）按面板内宽换行,行数决定占高——此前固定单行高,长文案溢出面板
         int cursor = TITLE_H + 4;
@@ -1425,6 +1461,7 @@ public final class HudLayoutScreen extends Screen {
 
     /** 面板底板：投影 + 深色底 + 标题栏 + 青色描边 + 节分隔线 */
     private void renderPanelChrome(GuiGraphics g) {
+        boolean collapsed = layout().panelCollapsed;
         g.fill(panelX + 3, panelY + 3, panelX + PANEL_W + 3, panelY + panelH + 3, 0x50000000);
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, 0xE60E1218);
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + TITLE_H, 0xFF1B2836);
@@ -1433,8 +1470,14 @@ public final class HudLayoutScreen extends Screen {
 
         g.drawString(font, "\u2261 " + Component.translatable("z80zhealthbar.editor.panel.title").getString(),
                 panelX + 5, panelY + 3, 0xFFCFE6FF);
-        String drag = Component.translatable("z80zhealthbar.editor.panel.drag").getString();
-        g.drawString(font, drag, panelX + PANEL_W - 5 - font.width(drag), panelY + 3, 0x8088A0B8);
+        // 折叠按钮（标题栏右缘）："—"/"+"——折叠时只留标题条（实测反馈）
+        String fold = collapsed ? "+" : "\u2212";
+        g.drawString(font, fold, panelX + PANEL_W - 10, panelY + 3, 0xFFCFE6FF);
+        if (!collapsed) {
+            String drag = Component.translatable("z80zhealthbar.editor.panel.drag").getString();
+            g.drawString(font, drag, panelX + PANEL_W - 16 - font.width(drag), panelY + 3, 0x8088A0B8);
+        }
+        if (collapsed) return; // 折叠：无内容区
 
         int scroll = Math.round(panelScroll);
         for (PEntry e : panelEntries) {
@@ -1445,17 +1488,17 @@ public final class HudLayoutScreen extends Screen {
                     y + HEADER_H - 2, 0x20FFFFFF);
         }
 
-        // 内容超高时画滚动条（右缘 2px 轨道 + 青色滑块）
+        // 内容超高时画滚动条（右缘 4px 轨道 + 青色滑块——原 2px 太细,实测反馈加粗）
         int maxScroll = Math.max(0, panelContentH - panelH);
         if (maxScroll > 0) {
-            int trackX = panelX + PANEL_W - 4;
+            int trackX = panelX + PANEL_W - 6;
             int trackY0 = panelY + TITLE_H + 2, trackY1 = panelY + panelH - 3;
             int bodyView = Math.max(1, trackY1 - trackY0);
             int thumbH = Math.max(10, bodyView * panelH / panelContentH);
             thumbH = Math.min(thumbH, bodyView);
             int thumbY = trackY0 + (bodyView - thumbH) * (int) panelScroll / maxScroll;
-            g.fill(trackX, trackY0, trackX + 2, trackY1, 0x30FFFFFF);
-            g.fill(trackX, thumbY, trackX + 2, thumbY + thumbH, 0x907FD4FF);
+            g.fill(trackX, trackY0, trackX + 4, trackY1, 0x30FFFFFF);
+            g.fill(trackX, thumbY, trackX + 4, thumbY + thumbH, 0x907FD4FF);
         }
     }
 
@@ -1463,7 +1506,7 @@ public final class HudLayoutScreen extends Screen {
     private boolean panelScrollbarHit(double mx, double my) {
         int maxScroll = Math.max(0, panelContentH - panelH);
         if (maxScroll <= 0) return false;
-        return mx >= panelX + PANEL_W - 7 && mx <= panelX + PANEL_W
+        return mx >= panelX + PANEL_W - 8 && mx <= panelX + PANEL_W
                 && my >= panelY + TITLE_H && my <= panelY + panelH;
     }
 
@@ -1503,20 +1546,11 @@ public final class HudLayoutScreen extends Screen {
             String lbl = e.labelDyn != null ? e.labelDyn.get()
                     : (e.labelKey != null ? Component.translatable(e.labelKey).getString() : "");
             // (?) 说明标记：有译文的参数行才画;点击切换显示说明浮框。
-            // 标记必须落在控件区左缘之前（英文长标签会自动改放标签左侧）,否则会盖住循环/步进
-            // 按钮并抢走它的点击（helpHits 先于控件分发）
+            // 位置统一**固定前置列**（panelX+6,标签统一右移 12px 起点）——此前"后置优先、
+            // 空间不足才前置"导致长标签行与短标签行的问号一左一右参差（实测反馈"统一设置项问号位置"）
             String tk = e.labelDyn == null ? tooltipKeyFor(e.labelKey) : null;
-            int labelX = panelX + 6;
-            int qx = -1;
-            if (tk != null) {
-                int after = labelX + font.width(lbl) + 3;
-                if (after + 11 <= panelX + CONTROL_LEFT) {
-                    qx = after;
-                } else {
-                    qx = labelX;          // 空间不足 → 标记前置,标签右移让位
-                    labelX += 12;
-                }
-            }
+            int labelX = panelX + 18;
+            int qx = tk != null ? panelX + 6 : -1;
             g.drawString(font, lbl, labelX, y + (ROW_H - 8) / 2, 0xFFD0D8E0);
             if (tk != null) {
                 boolean hover = mouseX >= qx - 1 && mouseX <= qx + 9 && mouseY >= y && mouseY <= y + ROW_H;
@@ -1571,6 +1605,13 @@ public final class HudLayoutScreen extends Screen {
             }
         }
         helpKey = null;
+        // 0a) 面板折叠按钮（标题栏右缘）：切换折叠态并持久化
+        if (mouseX >= panelX + PANEL_W - 12 && mouseX <= panelX + PANEL_W - 2
+                && mouseY >= panelY && mouseY <= panelY + TITLE_H) {
+            layout().panelCollapsed = !layout().panelCollapsed;
+            layoutPanel();
+            return true;
+        }
         // 0b) 面板滚动条拖拽（优先于面板拖动）
         if (panelScrollbarHit(mouseX, mouseY)) {
             panelScrollbarDragging = true;

@@ -298,6 +298,8 @@ public final class ModSettingsScreen extends Screen {
     }
 
     private final List<Row> rows = new ArrayList<>();
+    /** 每帧文案刷新钩子（颜色设置行:标签带当前色值,值变化时按钮文案同步） */
+    private final List<Runnable> rowsRenderHooks = new ArrayList<>();
     private double scroll;
     /** 平滑滚动目标（滚轮/拖动设定，渲染时指数逼近） */
     private double scrollTarget;
@@ -685,6 +687,17 @@ public final class ModSettingsScreen extends Screen {
         rows.add(toggleRow("z80zhealthbar.option.barfx.deathShrink", fx.deathShrink, v -> fx.deathShrink = v));
         rows.add(toggleRow("z80zhealthbar.option.barfx.shatter", fx.shatter, v -> fx.shatter = v));
         rows.add(new TextRow("z80zhealthbar.option.barfx.note"));
+
+        // ---- 颜色（实体条全局色,轮盘编辑;HUD 组件级颜色在 HUD 编辑器的组件属性面板） ----
+        rows.add(new SectionRow("z80zhealthbar.settings.section.colors"));
+        var colors = cfg().colors;
+        rows.add(colorActionRow("z80zhealthbar.settings.color.health", () -> colors.healthNormal, v -> colors.healthNormal = v));
+        rows.add(colorActionRow("z80zhealthbar.settings.color.absorption", () -> colors.absorption, v -> colors.absorption = v));
+        rows.add(colorActionRow("z80zhealthbar.settings.color.food", () -> colors.foodNormal, v -> colors.foodNormal = v));
+        rows.add(colorActionRow("z80zhealthbar.settings.color.air", () -> colors.air, v -> colors.air = v));
+        rows.add(colorActionRow("z80zhealthbar.settings.color.experience", () -> colors.experience, v -> colors.experience = v));
+        rows.add(colorActionRow("z80zhealthbar.settings.color.armor", () -> colors.armor, v -> colors.armor = v));
+        rows.add(colorActionRow("z80zhealthbar.settings.color.mount", () -> colors.mountHealth, v -> colors.mountHealth = v));
     }
 
     /** 伤害跳字页 */
@@ -838,6 +851,24 @@ public final class ModSettingsScreen extends Screen {
                 .build(), key + ".tooltip");
     }
 
+    /** 颜色设置行：按钮文案 = 标签 + 当前值,点击打开颜色轮盘;写回即持久化（实体条全局色） */
+    private ActionRow colorActionRow(String labelKey, java.util.function.Supplier<String> get,
+                                     java.util.function.Consumer<String> set) {
+        var btn = net.minecraft.client.gui.components.Button.builder(
+                        Component.literal(""), b -> minecraft.setScreen(new ColorWheelScreen(this,
+                                Component.translatable(labelKey).getString(), get.get(), v -> {
+                                    set.accept(v);
+                                    ConfigManager.saveConfig();
+                                })))
+                .bounds(0, 0, WIDGET_W * 2, 18)
+                .build();
+        // 文案每帧刷新（render 时同步标签+当前色值）
+        rowsRenderHooks.add(() -> btn.setMessage(Component.literal(
+                Component.translatable(labelKey).getString() + ": "
+                        + (get.get() == null || get.get().isBlank() ? "-" : get.get()))));
+        return new ActionRow(btn, labelKey + ".tooltip");
+    }
+
     private CompatRow compatRow(String labelKey, String modId) {
         var c = cfg();
         var btn = CycleButton.onOffBuilder(c.compat.isHookEnabled(modId))
@@ -895,6 +926,7 @@ public final class ModSettingsScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        for (Runnable h : rowsRenderHooks) h.run();
         renderBackground(g);
 
         // 页眉横幅:大标题 + 灰色副标题(标签页下、内容面板上)
