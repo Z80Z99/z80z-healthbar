@@ -36,6 +36,8 @@
   "z80zhealthbar.settings.section.entity_visibility": "Entity Visibility Rules",
   "z80zhealthbar.settings.section.style_a": "Style 1 settings (textured bar)",
   "z80zhealthbar.settings.section.style_c": "Style 3 settings (dynamic bar)",
+  "z80zhealthbar.option.overlay.barInnerHeight": "Bar fill height",
+  "z80zhealthbar.option.overlay.barInnerHeight.tooltip": "Actual pixel height of the bar fill. Default 5 (vanilla-style thin bar) - the card frame wraps the fill automatically; raise it to make the fill span the full card.",
   "z80zhealthbar.settings.section.plaques": "Style 2 settings (icon plaques)",
   "z80zhealthbar.settings.section.addons": "Add-on Rows (for bar styles)",
   "z80zhealthbar.settings.section.hud_animations": "Animation & Feedback",
