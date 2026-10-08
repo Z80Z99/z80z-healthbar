@@ -169,6 +169,9 @@ public final class MobHealthBarStyle {
     }
 
     /** 变体 0：外框条——贴图外框（配色槽位）+ 按血量状态染色的填充 */
+    /** 帧条变体：**程序化重绘**（用户参考样式）——亮灰细描边 → 黑色粗框体 → 填充撑满黑框内
+     *  （上下左右各留 1px 黑线）。原贴图采样路径的槽区只占帧高 5/12 且与框线间有空隙,
+     *  实测反馈“没填满/超出框”反复不定,程序化几何完全确定。零贴图采样。 */
     private static void renderFrameBar(EntityStatusSnapshot snap, PoseStack poseStack,
                                        MultiBufferSource buffer, StyleAConfig cfg, float alpha) {
         Matrix4f matrix = poseStack.last().pose();
@@ -180,67 +183,61 @@ public final class MobHealthBarStyle {
                 (float) (snap.entityHeight + cfg.heightOffset)
                         - (y + FRAME_H / 2f) * (float) cfg.scaleBar * 0.025f);
 
-        // 外框：白色染色（内容不变），使不透明度可整体淡出
-        VertexConsumer frame = buffer.getBuffer(ModRenderType.tintedIcon(TEXTURE));
-        float fu1 = (variant * FRAME_W) / 512f, fv1 = 0f;
-        float fu2 = fu1 + FRAME_W / 512f, fv2 = FRAME_H / 40f;
-        quadColor(frame, matrix, x, y, x + FRAME_W, y + FRAME_H, fu1, fv1, fu2, fv2,
-                ColorHelper.modifyAlpha(0xFFFFFFFF, (int) (alpha * 255)));
+        VertexConsumer vc = buffer.getBuffer(ModRenderType.barRect());
+        int a = (int) (alpha * 255);
 
-        // 空槽底色已烘焙进外框贴图（变体槽底色不同，无需再画）
-        VertexConsumer empty = buffer.getBuffer(ModRenderType.tintedIcon(TEXTURE));
+        // 1) 亮灰细描边（最外 1px）
+        fillQuad(vc, matrix, x, y, FRAME_W, FRAME_H, ColorHelper.modifyAlpha(0xFFB8B8C4, a));
+        // 2) 黑色粗框体（描边内全部——填充的深色衬底即“上下各 1px 黑线”的来源）
+        fillQuad(vc, matrix, x + 1, y + 1, FRAME_W - 2, FRAME_H - 2,
+                ColorHelper.modifyAlpha(0xFF0B0B0D, a));
+
+        // 3) 填充区几何：黑框内上下左右各留 1px 黑线
+        int fillX = x + 2, fillY = y + 2;
+        int fillH = FRAME_H - 4;
+        int fillMaxW = FRAME_W - 4;
 
         // 动态效果（平滑/残影/闪白）
         var f = barFx(snap);
-        float disp = f.disp >= 1f - 1e-3f ? 1f : f.disp; // 满血钳制:平滑浮点停于 0.9999x 时 floor 会把满值裁掉 1px
-        int fillW = Mth.floor(disp * INNER_W);
-
-        // 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐（透明度随时间衰减）
-        int preHitW = Mth.floor((f.preHit >= 1f - 1e-3f ? 1f : f.preHit) * INNER_W);
+        float disp = f.disp >= 1f - 1e-3f ? 1f : f.disp; // 满血钳制:平滑浮点停于 0.9999x 时 floor 裁尾端
+        float preHitClamped = f.preHit >= 1f - 1e-3f ? 1f : f.preHit;
+        int fillW = Mth.floor(disp * fillMaxW);
+        int preHitW = Mth.floor(preHitClamped * fillMaxW);
         int ghostA = (int) (f.ghostAlpha * alpha * 255);
+
+        int baseColor = fillColor(snap, variant);
+        if (f.flash > 0.01f) {
+            baseColor = ColorHelper.lerp(baseColor, 0xFFFFFFFF, f.flash * 0.6f);
+        }
+        // 低血脉冲 / 治疗泛光（帧条变体）
+        var fxCfg = ConfigManager.getConfig().dynamicFx;
+        if (fxCfg.enabled) {
+            if (fxCfg.lowHpPulse && snap.plainHealthRatio() <= 0.3f) {
+                baseColor = ColorHelper.lerp(baseColor, 0xFFFFFFFF,
+                        com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.45f);
+            }
+            if (fxCfg.healGlow) {
+                baseColor = ColorHelper.lerp(baseColor, 0xFF50E080, f.heal * 0.45f);
+            }
+        }
+        int fillColor = ColorHelper.modifyAlpha(baseColor, (int) (alpha * 255));
+
+        // 4) 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐
         if (preHitW > fillW && ghostA > 0) {
             int ghostColor = ColorHelper.modifyAlpha(
-                    ColorHelper.parseColor(ConfigManager.getConfig().dynamicFx.ghostColor),
-                    ghostA);
-            float gu1 = (variant * FRAME_W + FILL_INSET_X) / 512f, gv1 = 16f / 40f;
-            quadColor(empty, matrix, x + FILL_INSET_X + fillW, y + FILL_INSET_Y - 2,
-                    x + FILL_INSET_X + preHitW, y + FILL_INSET_Y + FILL_H + 2,
-                    gu1 + fillW / 512f, gv1, gu1 + preHitW / 512f, gv1 + FILL_H / 40f, ghostColor);
+                    ColorHelper.parseColor(ConfigManager.getConfig().dynamicFx.ghostColor), ghostA);
+            fillQuad(vc, matrix, fillX + fillW, fillY, preHitW - fillW, fillH, ghostColor);
         }
-
-        // 填充（白色贴图 → 按血量状态染色；受伤时向白闪）
+        // 5) 主填充
         if (fillW > 0) {
-            int baseColor = fillColor(snap, variant);
-            if (f.flash > 0.01f) {
-                baseColor = ColorHelper.lerp(baseColor, 0xFFFFFFFF, f.flash * 0.6f);
-            }
-            // 低血脉冲 / 治疗泛光（帧条变体）
-            var fxCfg2 = ConfigManager.getConfig().dynamicFx;
-            if (fxCfg2.enabled) {
-                if (fxCfg2.lowHpPulse && snap.plainHealthRatio() <= 0.3f) {
-                    baseColor = ColorHelper.lerp(baseColor, 0xFFFFFFFF,
-                            com.z80z99.z80zhealthbar.overlay.HudFx.pulse(System.currentTimeMillis()) * 0.45f);
-                }
-                if (fxCfg2.healGlow) {
-                    baseColor = ColorHelper.lerp(baseColor, 0xFF50E080, f.heal * 0.45f);
-                }
-            }
-            int fillColor = ColorHelper.modifyAlpha(baseColor, (int) (alpha * 255));
-            float tu1 = (variant * FRAME_W + FILL_INSET_X) / 512f, tv1 = 16f / 40f;
-            quadColor(empty, matrix, x + FILL_INSET_X, y + FILL_INSET_Y - 2,
-                    x + FILL_INSET_X + fillW, y + FILL_INSET_Y + FILL_H + 2,
-                    tu1, tv1, tu1 + fillW / 512f, tv1 + FILL_H / 40f, fillColor);
+            fillQuad(vc, matrix, fillX, fillY, fillW, fillH, fillColor);
         }
-
-        // 吸收：在填充右侧追加金色小段（AsteorBar 式语义，吸收>0 时）
+        // 6) 吸收：金色小段追加在填充右侧（吸收>0 时）
         if (snap.absorption > 0) {
-            int absW = Mth.floor(Math.min(1f, snap.absorption / snap.maxHealth) * (INNER_W - fillW));
+            int absW = Mth.floor(Math.min(1f, snap.absorption / snap.maxHealth) * (fillMaxW - fillW));
             if (absW > 0) {
-                int absColor = ColorHelper.modifyAlpha(0xFFFFE173, (int) (alpha * 255));
-                float au1 = (variant * FRAME_W + FILL_INSET_X) / 512f, av1 = 16f / 40f;
-                quadColor(empty, matrix, x + FILL_INSET_X + fillW, y + FILL_INSET_Y - 2,
-                        x + FILL_INSET_X + fillW + absW, y + FILL_INSET_Y + FILL_H + 2,
-                        au1, av1, au1 + absW / 512f, av1 + FILL_H / 40f, absColor);
+                fillQuad(vc, matrix, fillX + fillW, fillY, absW, fillH,
+                        ColorHelper.modifyAlpha(0xFFFFE173, (int) (alpha * 255)));
             }
         }
     }
