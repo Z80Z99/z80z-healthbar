@@ -26,6 +26,9 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
     @Override
     public ResourceLocation getKey() { return KEY; }
 
+    /** TEMP barDiag:逐实体诊断节流（渲染几何排查用） */
+    private static final java.util.Map<Integer, Long> LAST_BAR_DIAG = new java.util.HashMap<>();
+
     @Override
     public boolean wantsToRender(EntityStatusSnapshot snap) {
         return true; // 满血/吸收规则由 MobVisibilityChecker 统一裁决
@@ -169,6 +172,13 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
                 fillRect(vc, m, x + band[0] + edge, y, band[1] - band[0] - edge, barH, a1);
                 fillRect(vc, m, x + band[0], y, Math.min(edge, band[1] - band[0]), barH, a2);
             }
+        }
+        long nowDiag = System.currentTimeMillis();
+        if (nowDiag - LAST_BAR_DIAG.getOrDefault(snap.entityId, 0L) > 3000) {
+            LAST_BAR_DIAG.put(snap.entityId, nowDiag);
+            com.z80z99.z80zhealthbar.Z80ZHealthBar.LOGGER.info(
+                    "[barDiag] id={} barH={} boundW={} x={} y={} barW={} fillW={} preHitW={} scale={}",
+                    snap.entityId, barH, boundW, x, y, barWidth, fillW, preHitW, worldScale);
         }
         // 8) 分格刻度线（变体 2）：叠加式 1px 纵向刻度,画在填充/残影之上——
         //    不再在填充里切缝,格边界整数化后不存在尾部缝隙与对位问题;格宽不足 2px（连 1px 刻度
