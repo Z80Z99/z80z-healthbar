@@ -767,7 +767,12 @@ public final class ModSettingsScreen extends Screen {
                 {"vampirism", "z80zhealthbar.compat.vampirism"},
                 {"feathers", "z80zhealthbar.compat.feathers"}}) {
             rows.add(compatRow(t[1], t[0]));
+            // 接管开关（仅对提供原版 HUD 的两个目标显示;开启后对方 HUD 被取消,由本模组组件接管）
+            if (t[0].equals("thirst") || t[0].equals("parcool")) {
+                rows.add(takeoverRow(t[0]));
+            }
         }
+        rows.add(new TextRow("z80zhealthbar.compat.takeover_note"));
         rows.add(new TextRow("z80zhealthbar.compat.server_note"));
     }
 
@@ -898,6 +903,23 @@ public final class ModSettingsScreen extends Screen {
                     ConfigManager.saveConfig();
                 });
         return new CompatRow(labelKey, modId, btn);
+    }
+
+    /** "接管原 HUD"开关行（thirst/parcool）:开启 = 取消对方 overlay,由本模组组件显示该数据 */
+    private CompatRow takeoverRow(String modId) {
+        var c = cfg();
+        boolean on = modId.equals("thirst") ? c.compat.takeoverThirst : c.compat.takeoverParcool;
+        var btn = CycleButton.onOffBuilder(on)
+                .displayOnlyValue()
+                .create(0, 0, WIDGET_W, 18, Component.empty(), (b, v) -> {
+                    if (modId.equals("thirst")) c.compat.takeoverThirst = v;
+                    else c.compat.takeoverParcool = v;
+                    ConfigManager.saveConfig();
+                    com.z80z99.z80zhealthbar.compat.CompatHudTakeover.onConfigReload(); // 立即生效（重建组件检查）
+                });
+        return new CompatRow(modId.equals("thirst")
+                ? "z80zhealthbar.compat.takeover_thirst"
+                : "z80zhealthbar.compat.takeover_parcool", modId, btn);
     }
 
     private static void setHook(Z80ZHealthBarConfig c, String modId, boolean value) {

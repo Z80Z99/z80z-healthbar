@@ -22,6 +22,14 @@ public class CompatConfig {
     public boolean hookMealApi = true;
     public boolean hookLegendarySurvivalOverhaul = true;
 
+    // --- 原版 HUD 接管（2026-10-08 用户需求:检测到 mod 则顶掉它的 HUD）---
+    // 开启后取消对方 overlay 渲染（Forge RenderGuiOverlayEvent.Pre）,由本模组的数据组件接管显示。
+    // 安全网:仅当本模组确实会绘制该数据（hook 开 + 数据通道兼容 + 当前 HUD 风格会显示）时才取消。
+    /** 接管 ThirstWasTaken 的水滴条 HUD */
+    public boolean takeoverThirst = false;
+    /** 接管 ParCool 的体力 HUD */
+    public boolean takeoverParcool = false;
+
     public boolean isHookEnabled(String modId) {
         return switch (modId) {
             case "toughasnails" -> hookToughAsNails;

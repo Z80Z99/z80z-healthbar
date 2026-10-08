@@ -19,6 +19,8 @@ public final class FabricEventHandlers {
             if (mc.player == null) return;
 
             KeyBindings.handleKeyPresses();
+            // 接管开关打开且自定义 HUD 时确保数据组件存在（跨平台逻辑;一次性检查后零开销）
+            com.z80z99.z80zhealthbar.compat.CompatHudTakeover.tickEnsure();
             HudRenderer.onPreRender(mc.gui);
             HudRenderer.render(graphics, tickDelta);
         });
