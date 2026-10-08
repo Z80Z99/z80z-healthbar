@@ -36,8 +36,6 @@
   "z80zhealthbar.settings.section.entity_visibility": "实体可见性规则",
   "z80zhealthbar.settings.section.style_a": "样式 1 设置（贴图血条）",
   "z80zhealthbar.settings.section.style_c": "样式 3 设置（动态长条）",
-  "z80zhealthbar.option.overlay.barInnerHeight": "条填充高度",
-  "z80zhealthbar.option.overlay.barInnerHeight.tooltip": "长条填充的实际像素高度。默认 5（贴原版细条）——卡片框自动包裹填充,调大后填充撑满卡片。",
   "z80zhealthbar.settings.section.plaques": "样式 2 设置（图标牌匾）",
   "z80zhealthbar.settings.section.addons": "附加行（条形样式用）",
   "z80zhealthbar.settings.section.hud_animations": "动画与反馈",

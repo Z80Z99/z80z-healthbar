@@ -599,8 +599,6 @@ public final class ModSettingsScreen extends Screen {
             }
             case ASTEORBAR -> {
                 rows.add(new SectionRow("z80zhealthbar.settings.section.style_c"));
-                rows.add(sliderRow("z80zhealthbar.option.overlay.barInnerHeight", 5, 16, c.overlay.overlayBarInnerHeight,
-                        v -> c.overlay.overlayBarInnerHeight = v, String::valueOf));
                 rows.add(cycleRow("z80zhealthbar.option.barStyle.barVariant", List.of(0, 1, 2, 3),
                         () -> c.barStyle.barVariant, v -> c.barStyle.barVariant = v,
                         v -> Component.translatable("z80zhealthbar.option.barStyle.barVariant." + v)));
