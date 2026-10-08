@@ -104,10 +104,8 @@ public final class MobHealthBarStyle {
         int w = 126;
         int h = 11;
         int insetX = 3;
-        // 填充撑满边框内（上下各留 1px 边框）——旧值 insetY=2/fillH=7 使填充仅占框内 7/9,
-        // 且顶部空 2px 底部空 1px 不对称（实测反馈"条填充没填满"）
-        int insetY = 1;
-        int fillH = h - 2;
+        int insetY = 2;
+        int fillH = 7;
         int innerW = w - 2 * insetX;
 
         int x = -w / 2, y = 0;
