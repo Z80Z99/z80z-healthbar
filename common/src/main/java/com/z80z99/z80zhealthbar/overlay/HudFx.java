@@ -27,6 +27,12 @@ public final class HudFx {
     public static final double SHEEN_SPEED_PX_PER_SEC = 56.0;
     /** 自适应倍率（仅动态效果.sheenAdaptive 开启时生效:数值变化中短暂加速） */
     private static final double SHEEN_ADAPTIVE_BOOST = 1.5;
+    /**
+     * 最小单趟时长（ms）——**节奏下限**。恒定像素速度下短条一趟距离极短（残血 20px 填充仅
+     * 0.6s/圈,像闪烁;实测反馈"太快,疑似和条长相关"）。速度取 min(基准像素速度, 距离/下限):
+     * 短条按恒定节奏走（都 ≥2.4s 一圈）,长条保持基准像素速度——没有任何条会比基准更快。
+     */
+    public static final long SHEEN_MIN_LAP_MS = 2400;
     /** 抖动序列（与 SimpleBarOverlay.SHIFT 同款 0/1 伪随机,独立副本避免跨类耦合） */
     private static final int[] SHAKE = {0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1};
 
@@ -77,8 +83,8 @@ public final class HudFx {
      * 扫光位置推进（**恒定像素速度**,dt 以真实时间计,与帧率无关）。方向恒为右行。
      *
      * <p>位置与 travel 解耦:填充宽怎样变化（掉血/回血动画）都不影响光带速度;
-     * 出右缘（pos ≥ fillW,整体不可见）即回绕到左外,周期 = travel/速度
-     * （随条长自适应,像素速度全局一致）。
+     * 出右缘（pos ≥ fillW,整体不可见）即回绕到左外。速度 = min(基准像素速度, travel/最小单趟):
+     * 长条恒定像素速度、短条恒定节奏（一圈 ≥{@link #SHEEN_MIN_LAP_MS}）——两者都不超过基准。
      *
      * @param key     位置跟踪键（实体 ID;玩家组件用负编号:生命 -1 / 自定义 -2 / 经验 -3）
      * @param innerW  条内宽（决定光带宽 = max(10, innerW/5),回绕起点用）
@@ -102,7 +108,9 @@ public final class HudFx {
         double prevFill = st[2];
         boolean grew = fillW > prevFill + 0.5;
         boolean shrank = fillW < prevFill - 0.5;
-        double speed = SHEEN_SPEED_PX_PER_SEC * (adaptive && (grew || shrank) ? SHEEN_ADAPTIVE_BOOST : 1.0);
+        double travel = fillW + bandW;
+        double speed = Math.min(SHEEN_SPEED_PX_PER_SEC, travel * 1000.0 / SHEEN_MIN_LAP_MS)
+                * (adaptive && (grew || shrank) ? SHEEN_ADAPTIVE_BOOST : 1.0);
         st[0] += dt / 1000.0 * speed;
         double over = st[0] - fillW; // 越界量（>=0 即出右缘）
         if (over >= 0) {
