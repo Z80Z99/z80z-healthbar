@@ -51,6 +51,8 @@ final class ShatterFx {
     private static final Map<Integer, Float> BOX_LIFT = new HashMap<>();
     /** 进行中的碎裂会话（含实体已离开管线的遗留碎片） */
     private static final Map<Integer, Session> ACTIVE = new HashMap<>();
+    /** 已完成碎裂的实体（死亡动画长于 LIFE_MS 时防止二次生成——实测双爆;死亡结束即清除,容量封顶） */
+    private static final java.util.Set<Integer> FINISHED = new java.util.HashSet<>();
 
     private ShatterFx() {}
 
@@ -81,10 +83,14 @@ final class ShatterFx {
 
         Session s = ACTIVE.get(entityId);
         if (s == null) {
-            if (!dying) return false;
+            if (!dying) { FINISHED.remove(entityId); return false; }
+            if (FINISHED.contains(entityId)) return true; // 本死亡已完成碎裂:余下帧继续接管（不重生）
+            if (FINISHED.size() > 512) FINISHED.clear();
             float[] box = BOX.get(entityId);
             if (box == null) return false;
             s = spawn(entityId, box, now);
+            com.z80z99.z80zhealthbar.Z80ZHealthBar.LOGGER.debug(
+                    "[shatter] entity={} shards spawned", entityId);
             // 存绝对世界坐标（遗留渲染时相机已移动,不能存相对相机的值）;锚点 = 实体脚部
             var cam = net.minecraft.client.Minecraft.getInstance()
                     .gameRenderer.getMainCamera().getPosition();
@@ -98,6 +104,7 @@ final class ShatterFx {
         float t = (now - s.born) / LIFE_MS;
         if (t >= 1f) {
             ACTIVE.remove(entityId);
+            FINISHED.add(entityId); // 防死亡动画尾段二次生成
             return true; // 寿命已尽:不画也不走原渲染（原实体早已消失/渐隐归零）
         }
 

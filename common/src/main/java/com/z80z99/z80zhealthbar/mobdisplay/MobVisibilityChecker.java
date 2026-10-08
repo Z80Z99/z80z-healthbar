@@ -20,9 +20,17 @@ public final class MobVisibilityChecker {
     public static int check(LivingEntity entity, Player player, double distanceSqr) {
         var cfg = ConfigManager.getConfig().visibility;
 
-        // 1. 旁观模式 / 实体死亡移除
+        // 1. 旁观模式 / 实体死亡移除。
+        // "死亡动画中"（血量 0 但未移除）**放行**——碎裂/死亡收缩/死亡渐隐全靠 dying 快照提交,
+        // 此前 !isAlive() 一律踢掉使这些效果全部失效（实测"死亡玻璃碎片不生效"的根因）。
+        // 仅当任一死亡效果可接管时才放行;全关时保持旧行为（立即消失）
         if (player.isSpectator()) return 13;
-        if (entity.isRemoved() || !entity.isAlive()) return 1;
+        if (entity.isRemoved()) return 1;
+        if (!entity.isAlive()) {
+            var fx = ConfigManager.getConfig().dynamicFx;
+            boolean deathFx = fx.enabled && (fx.shatter || fx.deathShrink);
+            if (!deathFx && !cfg.fadeOnDeath) return 1;
+        }
 
         // 2. 距离超限（全局统一规则）。水中生物可见距离减半——血条改走 GUI 通道后无深度遮挡,
         //    水下远距离出现显得突兀（用户实测反馈"还没看到实体就出现血条"）

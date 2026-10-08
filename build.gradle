@@ -14,7 +14,7 @@ allprojects {
     group = maven_group
     // 版本号按迭代次数计:patch 位 = 已完成迭代批次数(docs/architecture.md 变更记录条目数,当前 96),
     // 每完成一次迭代发布 +1;MC 版本作后缀
-    version = '1.0.112-1.20.1'
+    version = '1.0.113-1.20.1'
 
     repositories {
         maven { url = 'https://maven.architectury.dev/' }
