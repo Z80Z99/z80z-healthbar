@@ -30,18 +30,22 @@ public final class HudFx {
     }
 
     /**
-     * 扫光带在填充内的区间（相位驱动版——扫光速度/方向由调用方按数据变化状态推进相位）。
+     * 扫光带在填充内的区间（2026-10-08 重做,单调右行版）。
      *
-     * @param innerW 条内宽（带宽 = max(6, innerW/6)）
+     * <p>旧版"数据减少向左扫"的方向反转经 floorMod 回绕会在条的左右两端瞬移（视觉跳变）,
+     * 且整带为纯色方块。重做:相位只增不减（右行循环）,条带由渲染端按亮度切片绘制成
+     * 渐变（见 {@link #sheenStripAlpha}）;两端各有一小段完全出条区间,回绕不可见。
+     *
+     * @param innerW 条内宽（光晕带宽 = max(10, innerW/5)）
      * @param fillW 当前填充宽（扫光只在有血区域流动）
-     * @param phaseMs 累计相位（ms;调用方积分:speed 随数据变化 1.0/静止 0.5,方向随增减 ±1）
+     * @param phaseMs 累计相位（ms;速度由 {@link #advanceSheen} 调制）
      * @return {start, end} 相对填充左缘的像素区间;不在填充内（如 fillW=0）返回 null
      */
     public static int[] sheenBandPhase(int innerW, int fillW, double phaseMs) {
         if (fillW <= 0) return null;
-        int bandW = Math.max(6, innerW / 6);
-        double t = Math.floorMod(Math.round(phaseMs), SHEEN_PERIOD_MS);
-        double frac = t / (double) SHEEN_PERIOD_MS;
+        int bandW = Math.max(10, innerW / 5);
+        double t = phaseMs / (double) SHEEN_PERIOD_MS;
+        double frac = t - Math.floor(t);
         // 从填充左侧外进入、右侧外离开:pos ∈ [-bandW, fillW]
         int pos = (int) Math.round(-bandW + frac * (fillW + bandW));
         int start = Math.max(0, pos);
@@ -52,7 +56,7 @@ public final class HudFx {
 
     /** 旧签名兼容（纯时间相位） */
     public static int[] sheenBand(int innerW, int fillW, long now, int phase) {
-        return sheenBandPhase(innerW, fillW, Math.floorMod(now + phase, SHEEN_PERIOD_MS));
+        return sheenBandPhase(innerW, fillW, now + phase);
     }
 
     // ---- 自适应扫光（数值变化 1.0× 速、静止 0.5× 速,方向随数据增减） ----
@@ -61,7 +65,7 @@ public final class HudFx {
     private static final int SHEEN_STALE_MS = 10_000;
 
     /**
-     * 自适应扫光相位推进：静止 0.5× 速、数值变化 1.0× 速;数据增加向右扫、减少向左扫。
+     * 自适应扫光相位推进：静止 0.5× 速、数值变化 1.0× 速（单调右行——不再随增减反转方向）。
      *
      * @param key    相位跟踪键（实体 ID;玩家组件用负编号）
      * @param fillW  当前填充宽（变化检测;==0 视为静止）
@@ -83,19 +87,57 @@ public final class HudFx {
         double prevFill = st[2];
         boolean grew = fillW > prevFill + 0.5;
         boolean shrank = fillW < prevFill - 0.5;
-        double dir = st[0] >= 0 ? 1.0 : -1.0;
-        if (grew) dir = 1.0;
-        if (shrank) dir = -1.0;
-        double speed = (changing || grew || shrank ? 1.0 : 0.5) * dir;
+        double speed = (changing || grew || shrank) ? 1.0 : 0.5;
         st[0] += dt * speed;
         st[1] = now;
         st[2] = fillW;
         return st[0];
     }
 
-    /** 扫光带前缘宽（亮边,占带宽 1/4,至少 1px） */
-    public static int sheenEdgeW(int innerW) {
-        return Math.max(1, Math.max(6, innerW / 6) / 4);
+    /**
+     * 扫光单条带的白色 alpha（0..0x66）——渐变分布,非平铺方块：
+     * <ul>
+     *   <li>主体光晕：对称余弦窗（中段最亮、两端渐隐至 0）;峰值 0x2A;</li>
+     *   <li>前缘亮点：位于 t≈3/4（右行方向的前部）,窄而亮;峰值 0x55;</li>
+     *   <li>两者叠加后整体钳制 0x66（≈40% 白,清晰但不刺眼）。</li>
+     * </ul>
+     *
+     * @param relStart 该切片相对光带左缘的起点（px）
+     * @param sliceW   切片宽（px）
+     * @param bandW    光带总宽（px）
+     */
+    public static int sheenStripAlpha(int relStart, int sliceW, int bandW) {
+        if (bandW <= 0 || sliceW <= 0) return 0;
+        float t = (relStart + sliceW * 0.5f) / bandW;
+        if (t < 0f) t = 0f;
+        if (t > 1f) t = 1f;
+        float halo = (float) Math.sin(Math.PI * t);
+        halo *= halo;
+        float g = 1f - Math.abs(t - 0.75f) / 0.25f;
+        if (g < 0f) g = 0f;
+        g *= g;
+        int a = Math.round(halo * 0x2A) + Math.round(g * 0x55);
+        return Math.min(0x66, a);
+    }
+
+    /** 扫光切片绘制回调（各管线的 fill 原语签名不同——GuiGraphics.fill / VertexConsumer 矩形） */
+    public interface SheenStrip {
+        void fill(int x, int w, int alpha);
+    }
+
+    /**
+     * 把扫光带按亮度切片交给渲染端绘制（x 相对填充左缘;alpha 为白色通道,未乘管线透明度）。
+     * 切片步进 ≤ bandW/16,15-30px 的光带约 8-16 次 fill——渐变肉眼连续,开销可忽略。
+     */
+    public static void drawSheen(int[] band, SheenStrip sink) {
+        if (band == null) return;
+        int bandW = band[1] - band[0];
+        int step = Math.max(1, bandW / 16);
+        for (int x = band[0]; x < band[1]; x += step) {
+            int w = Math.min(band[1], x + step) - x;
+            int a = sheenStripAlpha(x - band[0], w, bandW);
+            if (a > 0) sink.fill(x, w, a);
+        }
     }
 
     /** 抖动方式：0=关 1=静态(0/1 序列,原版) 2=平滑比例(正弦,幅度∝强度) 3=动态(幅度∝伤害量) */

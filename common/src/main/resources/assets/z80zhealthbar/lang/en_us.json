@@ -386,7 +386,7 @@
   "z80zhealthbar.option.barfx.lowHpPulse": "Low-HP pulsing fill",
   "z80zhealthbar.option.barfx.lowHpPulse.tooltip": "Fill brightness breathes while below the low-health threshold (mob bars: 30%).",
   "z80zhealthbar.option.barfx.sheen": "Sheen sweep",
-  "z80zhealthbar.option.barfx.sheen.tooltip": "A moving highlight band sweeps across the fill periodically.",
+  "z80zhealthbar.option.barfx.sheen.tooltip": "A gradient sheen band (wide halo + leading highlight, sweeping rightward) passes over the fill periodically. Faster while the value changes, slower when idle.",
   "z80zhealthbar.option.barfx.healGlow": "Heal glow",
   "z80zhealthbar.option.barfx.healGlow.tooltip": "Fill briefly glows green when healing.",
   "z80zhealthbar.option.barfx.hitShake": "Hit shake",

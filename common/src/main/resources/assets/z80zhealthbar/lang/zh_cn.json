@@ -386,7 +386,7 @@
   "z80zhealthbar.option.barfx.lowHpPulse": "低血脉冲填充",
   "z80zhealthbar.option.barfx.lowHpPulse.tooltip": "血量低于阈值时填充颜色呼吸明暗（玩家条阈值=低血量阈值,实体条 30%）。",
   "z80zhealthbar.option.barfx.sheen": "扫光流动",
-  "z80zhealthbar.option.barfx.sheen.tooltip": "填充区周期性扫过一道移动高光带。",
+  "z80zhealthbar.option.barfx.sheen.tooltip": "填充区周期性扫过一道渐变光泽带（宽光晕+前缘亮点,右行）。数据变化时加速,静止时慢速。",
   "z80zhealthbar.option.barfx.healGlow": "治疗泛光",
   "z80zhealthbar.option.barfx.healGlow.tooltip": "回血时填充短暂泛绿光。",
   "z80zhealthbar.option.barfx.hitShake": "受击抖动",

@@ -965,14 +965,12 @@ public final class CustomHudRenderer {
                 fillW, System.currentTimeMillis(), false);
         int[] band = HudFx.sheenBandPhase(innerW, fillW, phase);
         if (band == null) return;
-        int x0 = HudBarPainter.INSET + band[0];
-        int x1 = HudBarPainter.INSET + band[1];
-        int edge = HudFx.sheenEdgeW(innerW);
         int y0 = HudBarPainter.fillTop(0, h);
         int ih = HudBarPainter.innerHeight(h);
         if (ih <= 0) return;
-        g.fill(x0 + edge, y0, x1, y0 + ih, 0x10FFFFFF);
-        g.fill(x0, y0, Math.min(x0 + edge, x1), y0 + ih, 0x20FFFFFF);
+        HudFx.drawSheen(band, (sx, sw, a) ->
+                g.fill(HudBarPainter.INSET + sx, y0, HudBarPainter.INSET + sx + sw, y0 + ih,
+                        (a << 24) | 0xFFFFFF));
     }
 
     /** 数值格式化：整数直接显示（20/20 而非 20.0/20.0），非整保留一位小数 */

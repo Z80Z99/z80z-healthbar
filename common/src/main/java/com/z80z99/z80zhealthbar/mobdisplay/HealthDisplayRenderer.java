@@ -156,19 +156,16 @@ public class HealthDisplayRenderer implements IMobDisplayRenderer {
                 default -> fillRect(vc, m, x, y, fillW, barH, fillColor);
             }
         }
-        // 7) 扫光流动：填充区周期性扫过移动高光带（前缘亮边 + 主体淡带,裁剪在填充内;
-        //    per-entity 相位偏移防多根条同步）。绘制于填充之上、刻度之下
+        // 7) 扫光流动：渐变光泽带（宽光晕+前缘亮点,切片绘制）周期性扫过填充区,
+        //    per-entity 相位偏移防多根条同步。绘制于填充之上、刻度之下（2026-10-08 重做）
         if (fx.enabled && fx.sheen && fillW > 0) {
             double sheenPhase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
                     snap.entityId, fillW, System.currentTimeMillis(), false);
             int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(barWidth, fillW, sheenPhase);
-            if (band != null) {
-                int edge = com.z80z99.z80zhealthbar.overlay.HudFx.sheenEdgeW(barWidth);
-                int a1 = (int) (0x10 * alphaMul) << 24 | 0xFFFFFF;
-                int a2 = (int) (0x20 * alphaMul) << 24 | 0xFFFFFF;
-                fillRect(vc, m, x + band[0] + edge, y, band[1] - band[0] - edge, barH, a1);
-                fillRect(vc, m, x + band[0], y, Math.min(edge, band[1] - band[0]), barH, a2);
-            }
+            final int am = Math.max(0, Math.min(255, (int) (alphaMul * 255)));
+            final int sheenX = x, sheenY = y, sheenH = barH;
+            com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, a) ->
+                    fillRect(vc, m, sheenX + sx, sheenY, sw, sheenH, (Math.min(255, a * am / 255) << 24) | 0xFFFFFF));
         }
         // 8) 分格刻度线（变体 2）：叠加式 1px 纵向刻度,画在填充/残影之上——
         //    不再在填充里切缝,格边界整数化后不存在尾部缝隙与对位问题;格宽不足 2px（连 1px 刻度

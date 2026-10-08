@@ -253,14 +253,12 @@ public class PlayerHealthOverlay extends SimpleBarOverlay {
                 fillW, System.currentTimeMillis(), false);
         int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW, phase);
         if (band == null) return;
-        int x0 = left + HudBarPainter.INSET + band[0];
-        int x1 = left + HudBarPainter.INSET + band[1];
-        int edge = com.z80z99.z80zhealthbar.overlay.HudFx.sheenEdgeW(innerW);
         int y0 = HudBarPainter.fillTop(top, barH);
         int h = HudBarPainter.innerHeight(barH);
         if (h <= 0) return;
-        graphics.fill(x0 + edge, y0, x1, y0 + h, 0x10FFFFFF);
-        graphics.fill(x0, y0, Math.min(x0 + edge, x1), y0 + h, 0x20FFFFFF);
+        com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, a) ->
+                graphics.fill(left + HudBarPainter.INSET + sx, y0,
+                        left + HudBarPainter.INSET + sx + sw, y0 + h, (a << 24) | 0xFFFFFF));
     }
 
     /** 伤害残影段（与样式3同源 BarFx 动画）：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）；内宽几何。

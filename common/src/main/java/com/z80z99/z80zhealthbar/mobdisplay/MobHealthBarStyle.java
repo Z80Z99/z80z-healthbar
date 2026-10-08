@@ -147,7 +147,18 @@ public final class MobHealthBarStyle {
                     ColorHelper.modifyAlpha(
                             ColorHelper.parseColor(ConfigManager.getConfig().dynamicFx.ghostColor), ghostA));
         }
-        if (fillW > 0) fillQuad(vc, m, x + insetX, y + insetY, fillW, fillH, fill);
+        if (fillW > 0) {
+            fillQuad(vc, m, x + insetX, y + insetY, fillW, fillH, fill);
+            // 扫光流动（与帧条/样式3 同款渐变光泽带）
+            if (fxCfg.enabled && fxCfg.sheen) {
+                double sheenPhase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
+                        snap.entityId, fillW, System.currentTimeMillis(), false);
+                int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(innerW, fillW, sheenPhase);
+                final int cx0 = x + insetX, cy0 = y + insetY, ch0 = fillH, cam = a;
+                com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, al) ->
+                        fillQuad(vc, m, cx0 + sx, cy0, sw, ch0, (Math.min(255, al * cam / 255) << 24) | 0xFFFFFF));
+            }
+        }
         if (snap.absorption > 0) { // 吸收段:金色,追加在生命填充之后
             int absW = Mth.floor(Math.min(1f, snap.absorption / snap.maxHealth) * (innerW - fillW));
             if (absW > 0) fillQuad(vc, m, x + insetX + fillW, y + insetY, absW, fillH,
@@ -231,6 +242,15 @@ public final class MobHealthBarStyle {
         // 5) 主填充
         if (fillW > 0) {
             fillQuad(vc, matrix, fillX, fillY, fillW, fillH, fillColor);
+            // 5b) 扫光流动（渐变光泽带,切片;设置节宣称样式1/3 通用——此前样式1 缺失）
+            if (fxCfg.enabled && fxCfg.sheen) {
+                double sheenPhase = com.z80z99.z80zhealthbar.overlay.HudFx.advanceSheen(
+                        snap.entityId, fillW, System.currentTimeMillis(), false);
+                int[] band = com.z80z99.z80zhealthbar.overlay.HudFx.sheenBandPhase(fillMaxW, fillW, sheenPhase);
+                final int sx0 = fillX, sy0 = fillY, sh0 = fillH, sam = a;
+                com.z80z99.z80zhealthbar.overlay.HudFx.drawSheen(band, (sx, sw, al) ->
+                        fillQuad(vc, matrix, sx0 + sx, sy0, sw, sh0, (Math.min(255, al * sam / 255) << 24) | 0xFFFFFF));
+            }
         }
         // 6) 吸收：金色小段追加在填充右侧（吸收>0 时）
         if (snap.absorption > 0) {
