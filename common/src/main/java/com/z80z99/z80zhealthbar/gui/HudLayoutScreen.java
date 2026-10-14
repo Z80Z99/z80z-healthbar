@@ -88,6 +88,8 @@ public final class HudLayoutScreen extends Screen {
     private int panelContentH;
     /** 当前选择的预设布局（点"应用预设"按钮生效） */
     private String presetSel = "MODERN";
+    /** hotbar 组件当前编辑的槽位（0..8） */
+    private int hotbarEditSlot = 0;
 
     public HudLayoutScreen(Screen parent) {
         super(Component.translatable("z80zhealthbar.editor.title"));
@@ -565,6 +567,13 @@ public final class HudLayoutScreen extends Screen {
                 String type = cat[i];
                 String dn = Component.translatable("z80zhealthbar.hud.component." + type).getString();
                 panelEntries.add(listRow(() -> dn, "z80zhealthbar.editor.add", () -> {
+                    // hotbar 是单组件（内含 9 槽）:已存在则直接选中,不重复添加
+                    if (HudLayoutConfig.HOTBAR.equals(type) && layout().components.containsKey(HudLayoutConfig.HOTBAR)) {
+                        selected = HudLayoutConfig.HOTBAR;
+                        panelPage = PanelPage.EDIT;
+                        rebuildWidgets();
+                        return;
+                    }
                     String k = layout().addInstance(type);
                     if (k != null) {
                         selected = k;
@@ -1042,22 +1051,42 @@ public final class HudLayoutScreen extends Screen {
         if (selType.equals(HudLayoutConfig.HOTBAR)) {
             // hotbar 特判:槽位序号说明 + 重置到推荐位（相对原版位置的偏移归零）
             int hn = 1;
-            int h0 = selected.indexOf('#');
-            if (h0 > 0) {
-                try { hn = Integer.parseInt(selected.substring(h0 + 1)); } catch (NumberFormatException ignored) { }
-            }
-            final int slotNo = hn;
-            panelEntries.add(new PEntry("z80zhealthbar.editor.hotbar.slot_note", null, null) );
-            panelEntries.add(listRow(() -> Component.translatable("z80zhealthbar.editor.hotbar.slot_no", slotNo).getString(),
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.hotbar.note"));
+            // 槽位选择（1..9 循环）——下方所有参数作用于当前选择的槽位
+            panelEntries.add(cycler("z80zhealthbar.editor.hotbar.slot",
+                    () -> Component.translatable("z80zhealthbar.editor.hotbar.slot.fmt", hotbarEditSlot + 1).getString(),
+                    () -> hotbarEditSlot = (hotbarEditSlot + 1) % 9));
+            final var hs = c.hotbarSlot(hotbarEditSlot);
+            panelEntries.add(toggle("z80zhealthbar.editor.hotbar.hidden",
+                    () -> hs.hidden, v -> hs.hidden = v));
+            panelEntries.add(stepper("z80zhealthbar.editor.pos_x",
+                    () -> hs.offsetX, v -> hs.offsetX = (int) Math.round(v), -200, 200, 1));
+            panelEntries.add(stepper("z80zhealthbar.editor.pos_y",
+                    () -> hs.offsetY, v -> hs.offsetY = (int) Math.round(v), -200, 200, 1));
+            panelEntries.add(stepper1("z80zhealthbar.editor.component_scale",
+                    () -> hs.scale, v -> hs.scale = v, 0.25, 4.0, 0.05));
+            panelEntries.add(stepper("z80zhealthbar.editor.opacity",
+                    () -> hs.opacity, v -> hs.opacity = (int) Math.round(v), 0, 100, 5));
+            // 背景与渐变
+            panelEntries.add(new PEntry("z80zhealthbar.editor.section.color", null, null));
+            panelEntries.add(colorRow("z80zhealthbar.editor.hotbar.bg", () -> hs.bgColor, v -> hs.bgColor = v));
+            panelEntries.add(colorRow("z80zhealthbar.editor.hotbar.bg2", () -> hs.bgColor2, v -> hs.bgColor2 = v));
+            panelEntries.add(cycler("z80zhealthbar.editor.hotbar.grad",
+                    () -> Component.translatable("z80zhealthbar.editor.hotbar.grad." + hs.gradientDir).getString(),
+                    () -> hs.gradientDir = (hs.gradientDir + 1) % 3));
+            // 边框
+            panelEntries.add(new PEntry("z80zhealthbar.editor.section.border", null, null));
+            panelEntries.add(cycler("z80zhealthbar.editor.hotbar.border",
+                    () -> Component.translatable("z80zhealthbar.editor.hotbar.border." + hs.borderStyle).getString(),
+                    () -> hs.borderStyle = (hs.borderStyle + 1) % 4));
+            panelEntries.add(colorRow("z80zhealthbar.editor.hotbar.border_color",
+                    () -> hs.borderColor, v -> hs.borderColor = v));
+            panelEntries.add(listRow(
+                    () -> Component.translatable("z80zhealthbar.editor.hotbar.reset_slot").getString(),
                     "z80zhealthbar.editor.hotbar.reset", () -> {
-                        c.offsetX = 0;
-                        c.offsetY = 0;
-                        c.scale = 1.0;
-                        c.opacity = 100;
+                        c.hotbarSlots.set(hotbarEditSlot, new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout.HotbarSlot());
                         markDirty();
                     }));
-            panelEntries.add(new PEntry("z80zhealthbar.editor.section.color", null, null));
-            panelEntries.add(colorRow("z80zhealthbar.editor.color.card", () -> c.colorCard, v -> c.colorCard = v));
             addComponentActions(selected);
             panelEntries.add(backRow());
             return;

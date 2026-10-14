@@ -2,6 +2,7 @@ package com.z80z99.z80zhealthbar.config.configs;
 
 import com.z80z99.z80zhealthbar.layout.HudAnchor;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,6 +83,49 @@ public class HudLayoutConfig {
         public int rotation = 0;
         /** 饱和度显示方式（仅饱食度类组件）：0=覆盖 1=右侧追加(吸收式) 2=顶部细条 3=底部细条 4=关闭 */
         public int saturationMode = 0;
+        /** hotbar 组件的 9 个槽位独立设置（仅 type=hotbar 使用;null/缺项运行时补默认） */
+        public List<HotbarSlot> hotbarSlots = null;
+
+        /** hotbar 槽位设置（每槽独立:位置/缩放/透明度/背景+渐变/边框/隐藏） */
+        public static class HotbarSlot {
+            public int offsetX = 0;
+            public int offsetY = 0;
+            public double scale = 1.0;
+            /** 该槽不透明度（0..100） */
+            public int opacity = 100;
+            /** 槽位背景色（空 = 原版深色底） */
+            public String bgColor = "";
+            /** 渐变末端色（非空 = 从 bgColor 渐变到该色） */
+            public String bgColor2 = "";
+            /** 渐变方向：0=垂直 1=水平 2=对角 */
+            public int gradientDir = 0;
+            /** 边框样式：0=无 1=细 2=粗 3=发光 */
+            public int borderStyle = 0;
+            /** 边框颜色（空 = 半透明白） */
+            public String borderColor = "";
+            /** 隐藏该槽（不绘制背景与物品） */
+            public boolean hidden = false;
+
+            public HotbarSlot copy() {
+                HotbarSlot s = new HotbarSlot();
+                s.offsetX = offsetX; s.offsetY = offsetY;
+                s.scale = scale; s.opacity = opacity;
+                s.bgColor = bgColor; s.bgColor2 = bgColor2;
+                s.gradientDir = gradientDir; s.borderStyle = borderStyle;
+                s.borderColor = borderColor; s.hidden = hidden;
+                return s;
+            }
+        }
+
+        /** 取槽位设置（越界/缺项自动补默认,保证始终 9 项） */
+        public HotbarSlot hotbarSlot(int idx) {
+            if (hotbarSlots == null) hotbarSlots = new ArrayList<>();
+            while (hotbarSlots.size() < 9) hotbarSlots.add(new HotbarSlot());
+            while (hotbarSlots.size() > 9) hotbarSlots.remove(hotbarSlots.size() - 1);
+            HotbarSlot s = hotbarSlots.get(Math.max(0, Math.min(8, idx)));
+            if (s == null) { s = new HotbarSlot(); hotbarSlots.set(idx, s); }
+            return s;
+        }
         // ===== 组件自定义颜色（#RRGGBBAA;空串 = 继承全局默认/状态自动变色）。RGB 生效,
         // alpha 仍由组件透明度参数统一控制;颜色轮盘编辑（实测反馈"各元素颜色,各组件独立设置"））
         /** 条填充色（覆盖状态自动变色——如生命中毒变绿;空 = 保持状态色） */
@@ -160,6 +204,10 @@ public class HudLayoutConfig {
             c.group = group; c.iconTexture = iconTexture;
             c.opacity = opacity; c.idleFadeSecs = idleFadeSecs; c.rotation = rotation;
             c.saturationMode = saturationMode;
+            if (hotbarSlots != null) {
+                c.hotbarSlots = new ArrayList<>();
+                for (HotbarSlot hs : hotbarSlots) c.hotbarSlots.add(hs == null ? null : hs.copy());
+            }
             c.colorFill = colorFill; c.colorFill2 = colorFill2;
             c.colorText = colorText; c.colorCard = colorCard;
             return c;
@@ -378,6 +426,11 @@ public class HudLayoutConfig {
             if (!components.containsKey(key)) {
                 ComponentLayout c = new ComponentLayout();
                 c.type = type; // 显式写 type:渲染分发不依赖键名解析
+                if (HOTBAR.equals(type)) {
+                    // 默认对齐原版快捷栏:BOTTOM_CENTER 基线(sh-39) - 条高 22 + 偏移 39 = 条顶 sh-22
+                    c.anchor = HudAnchor.BOTTOM_CENTER.name();
+                    c.offsetY = 39;
+                }
                 components.put(key, c);
                 return key;
             }

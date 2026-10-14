@@ -197,8 +197,8 @@ class HudLayoutSolverTest {
         var c = new HudLayoutConfig.ComponentLayout();
         c.type = HudLayoutConfig.HOTBAR;
         int[] m = com.z80z99.z80zhealthbar.layout.HudLayoutSolver.measure(c);
-        // 原版槽位 20 宽（16 物品 + 框边距）、22 高（含选中框上溢 1px）
-        assertEquals(20, m[0]);
+        // 单组件 = 整个快捷栏（原版 182x22;9 槽由组件内部排布）
+        assertEquals(182, m[0]);
         assertEquals(22, m[1]);
     }
 }

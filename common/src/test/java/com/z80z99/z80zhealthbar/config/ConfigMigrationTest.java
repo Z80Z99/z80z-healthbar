@@ -16,7 +16,7 @@ class ConfigMigrationTest {
         cfg.mobDisplayMode = MobDisplayMode.BARS;
         assertTrue(ConfigManager.migrate(cfg));
         assertEquals(EntityHealthStyle.ASTEORBAR.name(), cfg.entityStyle);
-        assertEquals(4, cfg.configVersion);
+        assertEquals(5, cfg.configVersion);
         assertNull(cfg.mobDisplayMode);
     }
 
@@ -41,7 +41,7 @@ class ConfigMigrationTest {
         split.type = "compat_thirst";
         comps.put("compat_thirst", split);
         assertTrue(ConfigManager.migrate(cfg));
-        assertEquals(4, cfg.configVersion);
+        assertEquals(5, cfg.configVersion);
         assertEquals("OFF", comps.get("compat").mode, "legacy group must be turned off when split rows exist");
         assertEquals("BAR", comps.get("compat_thirst").mode, "split row untouched");
     }
@@ -55,8 +55,35 @@ class ConfigMigrationTest {
         var group = new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout();
         comps.put("compat", group);
         assertTrue(ConfigManager.migrate(cfg));
-        assertEquals(4, cfg.configVersion);
+        assertEquals(5, cfg.configVersion);
         assertEquals("BAR", comps.get("compat").mode, "group-only setup keeps working");
+    }
+
+    @Test
+    void v5MergesLegacyHotbarInstances() {
+        Z80ZHealthBarConfig cfg = new Z80ZHealthBarConfig();
+        cfg.configVersion = 4;
+        var comps = cfg.hudLayout.components;
+        comps.clear();
+        var h1 = new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout();
+        h1.type = "hotbar";
+        h1.offsetX = 5; h1.offsetY = -3; h1.opacity = 80; h1.colorCard = "#FF112233";
+        comps.put("hotbar#1", h1);
+        var h2 = new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout();
+        h2.type = "hotbar";
+        comps.put("hotbar#2", h2);
+        assertTrue(ConfigManager.migrate(cfg));
+        assertEquals(5, cfg.configVersion);
+        assertFalse(comps.containsKey("hotbar#1"), "legacy keys removed");
+        assertFalse(comps.containsKey("hotbar#2"), "legacy keys removed");
+        var main = comps.get("hotbar");
+        assertNotNull(main, "single hotbar component created");
+        assertEquals(5, main.hotbarSlot(0).offsetX);
+        assertEquals(-3, main.hotbarSlot(0).offsetY);
+        assertEquals(80, main.hotbarSlot(0).opacity);
+        assertEquals("#FF112233", main.hotbarSlot(0).bgColor);
+        assertEquals(0, main.hotbarSlot(1).offsetX);
+        assertEquals(1.0, main.hotbarSlot(8).scale, 1e-9);
     }
 
     @Test

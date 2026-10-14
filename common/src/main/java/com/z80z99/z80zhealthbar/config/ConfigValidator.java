@@ -204,6 +204,20 @@ public final class ConfigValidator {
             cl.textScale = cl.textScale <= 0 ? 1.0 : clamp(cl.textScale, 0.25, 3.0);
             cl.iconScale = cl.iconScale <= 0 ? 1.0 : clamp(cl.iconScale, 0.25, 3.0);
             cl.iconOffsetX = clamp(cl.iconOffsetX, -500, 500);
+            if (cl.hotbarSlots != null) {
+                while (cl.hotbarSlots.size() < 9) cl.hotbarSlots.add(null);
+                while (cl.hotbarSlots.size() > 9) cl.hotbarSlots.remove(cl.hotbarSlots.size() - 1);
+                for (int i = 0; i < 9; i++) {
+                    var hs = cl.hotbarSlots.get(i);
+                    if (hs == null) { hs = new HudLayoutConfig.ComponentLayout.HotbarSlot(); cl.hotbarSlots.set(i, hs); }
+                    hs.offsetX = clamp(hs.offsetX, -500, 500);
+                    hs.offsetY = clamp(hs.offsetY, -500, 500);
+                    hs.scale = hs.scale <= 0 ? 1.0 : clamp(hs.scale, 0.25, 4.0);
+                    hs.opacity = clamp(hs.opacity, 0, 100);
+                    hs.gradientDir = clamp(hs.gradientDir, 0, 2);
+                    hs.borderStyle = clamp(hs.borderStyle, 0, 3);
+                }
+            }
             cl.iconOffsetY = clamp(cl.iconOffsetY, -500, 500);
             cl.opacity = clamp(cl.opacity, 0, 100);
             cl.idleFadeSecs = clamp(cl.idleFadeSecs, 0, 600);

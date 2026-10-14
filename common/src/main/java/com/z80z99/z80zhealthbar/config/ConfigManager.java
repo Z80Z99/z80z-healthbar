@@ -96,6 +96,44 @@ public final class ConfigManager {
             cfg.configVersion = 4;
             migrated = true;
         }
+        if (cfg.configVersion < 5) {
+            // v5：快捷栏改为"单组件 9 槽"（此前 hotbar#1..#9 九个独立实例）。
+            // 合并旧实例参数进 hotbar 组件的槽位设置并删除旧键;默认位置补正到原版快捷栏处
+            var comps5 = cfg.hudLayout == null ? null : cfg.hudLayout.components;
+            if (comps5 != null) {
+                boolean anyOld = false;
+                for (int n = 1; n <= 9; n++) if (comps5.containsKey("hotbar#" + n)) { anyOld = true; break; }
+                if (anyOld) {
+                    var slots = new java.util.ArrayList<com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout.HotbarSlot>();
+                    for (int n = 1; n <= 9; n++) {
+                        var st = new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout.HotbarSlot();
+                        var old = comps5.get("hotbar#" + n);
+                        if (old != null) {
+                            st.offsetX = old.offsetX;
+                            st.offsetY = old.offsetY;
+                            st.scale = old.scale;
+                            st.opacity = old.opacity;
+                            if (old.colorCard != null) st.bgColor = old.colorCard;
+                        }
+                        slots.add(st);
+                    }
+                    var main = comps5.get("hotbar");
+                    if (main == null) {
+                        main = new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout();
+                        main.type = "hotbar";
+                        comps5.put("hotbar", main);
+                    }
+                    main.hotbarSlots = slots;
+                }
+                for (int n = 1; n <= 9; n++) comps5.remove("hotbar#" + n);
+                // 旧设计的组件偏移语义已不适用（20x22 选择框的拖拽值 vs 新 182x22 整条）——
+                // 一律重置到原版快捷栏位置（x 居中偏移 0;y = BOTTOM_CENTER 基线 - 条高 + 39）
+                var hb = comps5.get("hotbar");
+                if (hb != null) { hb.offsetX = 0; hb.offsetY = 39; }
+            }
+            cfg.configVersion = 5;
+            migrated = true;
+        }
         // 任何版本：遗留 mobDisplayMode 字段迁移后清除（Gson 输出时忽略 null 字段）
         if (cfg.mobDisplayMode != null) {
             if (cfg.entityStyle == null || cfg.entityStyle.isBlank()) {

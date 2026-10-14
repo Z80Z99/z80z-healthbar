@@ -142,8 +142,8 @@ public final class HudLayoutSolver {
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
             return new int[]{54, 9}; // 6 个 9px 图标位（渲染时按实际数量收缩）
         }
-        // hotbar 槽位:原版几何（20 宽 = 16 物品 + 框边距;22 高含选中框上溢 1px）
-        if (HudLayoutConfig.HOTBAR.equals(c.type)) return new int[]{20, 22};
+        // hotbar 组件:整个快捷栏（原版 182x22——9 槽内部由组件自己排布）
+        if (HudLayoutConfig.HOTBAR.equals(c.type)) return new int[]{182, 22};
         return measureBar(c);
     }
 
