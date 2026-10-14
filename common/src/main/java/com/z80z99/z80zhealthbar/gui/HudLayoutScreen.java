@@ -667,11 +667,13 @@ public final class HudLayoutScreen extends Screen {
     }
 
     /** 文本子组件页：主组件的文本部件参数（独立层级,互不干扰） */
-    /** hotbar 主组件行下方追加 9 个槽位子组件行（缩进;直达各槽独立编辑页） */
+    /** hotbar 主组件行下方追加**已添加**槽位的子组件行（缩进;直达各槽独立编辑页。
+     *  未添加（hidden）的槽位不列行——与文本/图标子件同形式,经主组件页"添加"行启用） */
     private void appendHotbarSlotRows(String key, ComponentLayout c) {
         if (c == null || !HudLayoutConfig.HOTBAR.equals(HudLayoutConfig.typeOf(key, c))) return;
         for (int i = 0; i < 9; i++) {
             final int slotIdx = i;
+            if (c.hotbarSlot(i).hidden) continue; // 未添加的槽位不出现在列表
             String label = displayNameOf(key) + " · " + Component.translatable(
                     "z80zhealthbar.editor.hotbar.slot.fmt", i + 1).getString();
             panelEntries.add(listRow(() -> "   " + label, "z80zhealthbar.editor.adjust", () -> {
@@ -1116,10 +1118,35 @@ public final class HudLayoutScreen extends Screen {
         // 类型过滤：无该部件的类型不显示入口（如经验无状态图标,compat 无文本无图标）
         String selType = HudLayoutConfig.typeOf(selected, c);
         if (selType.equals(HudLayoutConfig.HOTBAR)) {
-            // 槽位是固定子件:本页只放"整条"参数（位置/缩放等在通用节）,槽位经下方 9 行子组件进入
+            // 槽位 = 可逐格添加/移除的独立子组件（与文本/图标子件同形式）:
+            // 未添加的槽位显示"添加"行（一键启用并直达该槽编辑页）;已添加的显示"第 N 格"行
             panelEntries.add(PEntry.note("z80zhealthbar.editor.hotbar.note"));
             panelEntries.add(new PEntry("z80zhealthbar.editor.hotbar.slots_section", null, null));
-            appendHotbarSlotRows(selected, c);
+            for (int i = 0; i < 9; i++) {
+                final int slotIdx = i;
+                var sl = c.hotbarSlot(i);
+                if (sl.hidden) {
+                    panelEntries.add(listRow(
+                            () -> Component.translatable("z80zhealthbar.editor.hotbar.add_slot",
+                                    slotIdx + 1).getString(),
+                            "z80zhealthbar.editor.add", () -> {
+                                c.hotbarSlot(slotIdx).hidden = false;
+                                markDirty();
+                                hotbarEditSlot = slotIdx;
+                                panelPage = PanelPage.HOTBAR_SLOT;
+                                rebuildWidgets();
+                            }));
+                } else {
+                    panelEntries.add(listRow(
+                            () -> Component.translatable("z80zhealthbar.editor.hotbar.slot.fmt",
+                                    slotIdx + 1).getString(),
+                            "z80zhealthbar.editor.adjust", () -> {
+                                hotbarEditSlot = slotIdx;
+                                panelPage = PanelPage.HOTBAR_SLOT;
+                                rebuildWidgets();
+                            }));
+                }
+            }
             addComponentActions(selected);
             panelEntries.add(backRow());
             return;
@@ -1509,6 +1536,7 @@ public final class HudLayoutScreen extends Screen {
                     float k = hbC == null ? 1f : (float) hbC.scale;
                     for (int si = 0; si < 9; si++) {
                         var sl = hbC == null ? null : hbC.hotbarSlot(si);
+                        if (sl != null && sl.hidden) continue; // 未添加的槽位无指示框
                         int ox = sl == null ? 0 : sl.offsetX;
                         int oy = sl == null ? 0 : sl.offsetY;
                         int gx = box.x() + (int) ((1 + si * 20 + ox) * k);
@@ -1842,6 +1870,7 @@ public final class HudLayoutScreen extends Screen {
                     int hitSlot = -1;
                     for (int si = 0; si < 9; si++) {
                         var sl = hbComp.hotbarSlot(si);
+                        if (sl.hidden) continue; // 未添加的槽位不可点选
                         double gx = box.x() + (1 + si * 20 + sl.offsetX) * k;
                         double gy = box.y() + (1 + sl.offsetY) * k;
                         if (mouseX >= gx && mouseX < gx + 20 * k

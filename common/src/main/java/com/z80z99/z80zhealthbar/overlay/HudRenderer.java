@@ -115,10 +115,15 @@ public final class HudRenderer {
     /** CUSTOM 模式下 hotbar 组件是否接管：9 实例（hotbar#1..#9）任一存在且非 OFF */
     private static boolean customHotbarActive() {
         var comps = ConfigManager.getConfig().hudLayout.components;
-        for (String k : comps.keySet()) {
-            if (!k.startsWith(HudLayoutConfig.HOTBAR)) continue;
-            var c = comps.get(k);
-            if (c != null && c.modeParsed() != HudLayoutConfig.ComponentMode.OFF) return true;
+        for (java.util.Map.Entry<String, HudLayoutConfig.ComponentLayout> e : comps.entrySet()) {
+            if (!e.getKey().startsWith(HudLayoutConfig.HOTBAR)) continue;
+            var c = e.getValue();
+            if (c == null || c.modeParsed() == HudLayoutConfig.ComponentMode.OFF) continue;
+            // 至少一个已添加（非隐藏）的槽位才算接管——全部移除时原版快捷栏回归
+            // （与"槽位可逐格移除"配套的安全网:绝不出现"无快捷栏"空窗）
+            for (int i = 0; i < 9; i++) {
+                if (!c.hotbarSlot(i).hidden) return true;
+            }
         }
         return false;
     }
