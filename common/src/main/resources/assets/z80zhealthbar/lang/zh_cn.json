@@ -499,6 +499,7 @@
   "z80zhealthbar.editor.color.clear": "清除",
   "z80zhealthbar.editor.color.cancel": "取消",
   "z80zhealthbar.editor.color.hex": "hex",
+  "z80zhealthbar.editor.color.alpha": "不透明度",
   "z80zhealthbar.editor.section.bar": "条形",
   "z80zhealthbar.editor.section.text": "文本",
   "z80zhealthbar.editor.section.icon": "图标",

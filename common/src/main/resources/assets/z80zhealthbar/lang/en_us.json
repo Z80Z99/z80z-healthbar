@@ -499,6 +499,7 @@
   "z80zhealthbar.editor.color.clear": "Clear",
   "z80zhealthbar.editor.color.cancel": "Cancel",
   "z80zhealthbar.editor.color.hex": "hex",
+  "z80zhealthbar.editor.color.alpha": "Alpha",
   "z80zhealthbar.editor.section.bar": "Bar",
   "z80zhealthbar.editor.section.text": "Text",
   "z80zhealthbar.editor.section.icon": "Icon",

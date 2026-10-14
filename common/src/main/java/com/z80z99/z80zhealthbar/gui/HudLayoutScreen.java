@@ -90,6 +90,10 @@ public final class HudLayoutScreen extends Screen {
     private String presetSel = "MODERN";
     /** hotbar 组件当前编辑的槽位（0..8） */
     private int hotbarEditSlot = 0;
+    /** hotbar 槽位拖拽状态（预览中直接拖单个槽） */
+    private int hotbarDragSlot = -1;
+    private int hbGrabX, hbGrabY, hbStartOffX, hbStartOffY;
+    private float hbDragScale = 1f;
 
     public HudLayoutScreen(Screen parent) {
         super(Component.translatable("z80zhealthbar.editor.title"));
@@ -1447,16 +1451,23 @@ public final class HudLayoutScreen extends Screen {
                 boolean isSel = e.getKey().equals(selected);
                 int color = isSel ? 0x8040FF40 : 0x50FFFFFF;
                 graphics.renderOutline(box.x() - 1, box.y() - 1, box.width() + 2, box.height() + 2, color);
-                // hotbar:9 个槽格指示（原版 20x20 几何）+ 当前编辑槽绿框（选中时）——
-                // 旧版无指示,用户无法看清"正在编辑哪个槽"（实测反馈）
+                // hotbar:槽格指示（仅选中该组件时画）——中性暗框,当前编辑槽青色高亮;
+                // 坐标乘组件 scale 保证与放大/缩小后的渲染对齐（旧版绿色 + 未乘 scale = "显示错误"观感）
                 String boxKey = e.getKey();
-                if (!boxKey.contains(".") && HudLayoutConfig.HOTBAR.equals(
+                if (isSel && !boxKey.contains(".") && HudLayoutConfig.HOTBAR.equals(
                         HudLayoutConfig.typeOf(boxKey, layout().peek(boxKey)))) {
+                    var hbC = layout().peek(boxKey);
+                    float k = hbC == null ? 1f : (float) hbC.scale;
                     for (int si = 0; si < 9; si++) {
-                        int gx = box.x() + 1 + si * 20, gy = box.y() + 1;
-                        boolean editing = isSel && si == hotbarEditSlot;
-                        graphics.renderOutline(gx - 1, gy - 1, 22, 22,
-                                editing ? 0xFF40FF40 : (isSel ? 0x3840FF40 : 0x20FFFFFF));
+                        var sl = hbC == null ? null : hbC.hotbarSlot(si);
+                        int ox = sl == null ? 0 : sl.offsetX;
+                        int oy = sl == null ? 0 : sl.offsetY;
+                        int gx = box.x() + (int) ((1 + si * 20 + ox) * k);
+                        int gy = box.y() + (int) ((1 + oy) * k);
+                        int gw = (int) (20 * k);
+                        boolean editing = si == hotbarEditSlot;
+                        graphics.renderOutline(gx, gy, gw, gw,
+                                editing ? 0xC07FD4FF : 0x30FFFFFF);
                     }
                 }
                 if (isSel) {
@@ -1772,6 +1783,39 @@ public final class HudLayoutScreen extends Screen {
             HudLayoutSolver.Box box = e.getValue();
             if (mouseX >= box.x() && mouseX <= box.x() + box.width()
                     && mouseY >= box.y() && mouseY <= box.y() + box.height()) {
+                // hotbar:先测点击是否落在某个槽格上（含槽偏移,scale 换算）——
+                // 命中则选中该槽并进入槽拖拽（子组件式交互,免步进微调）
+                String hbKey = e.getKey();
+                var hbComp = layout().peek(hbKey);
+                if (hbComp != null && HudLayoutConfig.HOTBAR.equals(
+                        HudLayoutConfig.typeOf(hbKey, hbComp))) {
+                    float k = (float) hbComp.scale;
+                    int hitSlot = -1;
+                    for (int si = 0; si < 9; si++) {
+                        var sl = hbComp.hotbarSlot(si);
+                        double gx = box.x() + (1 + si * 20 + sl.offsetX) * k;
+                        double gy = box.y() + (1 + sl.offsetY) * k;
+                        if (mouseX >= gx && mouseX < gx + 20 * k
+                                && mouseY >= gy && mouseY < gy + 20 * k) {
+                            hitSlot = si;
+                            break;
+                        }
+                    }
+                    if (hitSlot >= 0) {
+                        selected = hbKey;
+                        hotbarEditSlot = hitSlot;
+                        var sl = hbComp.hotbarSlot(hitSlot);
+                        hotbarDragSlot = hitSlot;
+                        hbDragScale = k;
+                        hbGrabX = (int) mouseX;
+                        hbGrabY = (int) mouseY;
+                        hbStartOffX = sl.offsetX;
+                        hbStartOffY = sl.offsetY;
+                        panelPage = PanelPage.EDIT;
+                        rebuildWidgets();
+                        return true;
+                    }
+                }
                 boolean changed = !e.getKey().equals(selected);
                 selected = e.getKey();
                 dragging = true;
@@ -1831,6 +1875,19 @@ public final class HudLayoutScreen extends Screen {
             }
             return true;
         }
+        if (hotbarDragSlot >= 0 && editingCustom()) {
+            markDirty();
+            var hbC = layout().peek(selected);
+            if (hbC != null && HudLayoutConfig.HOTBAR.equals(HudLayoutConfig.typeOf(selected, hbC))) {
+                var sl = hbC.hotbarSlot(hotbarDragSlot);
+                float k = hbDragScale <= 0.01f ? 1f : hbDragScale;
+                sl.offsetX = Math.max(-500, Math.min(500,
+                        hbStartOffX + Math.round(((int) mouseX - hbGrabX) / k)));
+                sl.offsetY = Math.max(-500, Math.min(500,
+                        hbStartOffY + Math.round(((int) mouseY - hbGrabY) / k)));
+            }
+            return true;
+        }
         if (dragging && editingCustom()) {
             markDirty();
                 applyDrag(selected, dragStartOffX + (int) mouseX - draggingX,
@@ -1843,6 +1900,7 @@ public final class HudLayoutScreen extends Screen {
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         dragging = false;
+        hotbarDragSlot = -1;
         draggingAsteorBar = null;
         draggingAsteorIcon = false;
         draggingAsteorText = false;

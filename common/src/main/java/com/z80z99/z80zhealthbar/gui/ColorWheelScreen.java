@@ -1,6 +1,8 @@
 package com.z80z99.z80zhealthbar.gui;
 
-import net.minecraft.client.gui.GuiGraphics;import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -8,14 +10,17 @@ import org.lwjgl.glfw.GLFW;
 import java.util.function.Consumer;
 
 /**
- * 颜色轮盘（HSV 选择器）：SV 方块（横=饱和度,纵=亮度反转）+ 色相竖条 + alpha 滑条
+ * 颜色轮盘（HSV 选择器）：SV 方块（横=饱和度,纵=亮度反转）+ 色相竖条 + alpha 竖条
  * + hex 直输入 + 新旧色预览。确定后经 {@code onDone} 写回（#RRGGBBAA）;
  * "清除"回调 onDone 传空串（= 恢复继承默认/状态自动变色）。
+ *
+ * <p>2026-10-09 修复:(1) 性能——按钮此前在 render() 里 addRenderableWidget,每帧累积
+ * 3 个 widget（实测"取色器界面卡顿"根因）,全部移入 init();(2) 布局——hex 框/预览色块/
+ * alpha 条/按钮相互重叠,重排为分区布局（SV→预览+hex→按钮,alpha 条纳入右侧栏）。
  */
 public class ColorWheelScreen extends Screen {
 
-
-    private static final int SV_W = 200, SV_H = 120, BAR_W = 14, GAP = 10;
+    private static final int SV_W = 200, SV_H = 120, BAR_W = 14, GAP = 14;
 
     private final Screen parent;
     private final String initial;
@@ -28,7 +33,7 @@ public class ColorWheelScreen extends Screen {
     private EditBox hexBox;
     private boolean dragSv, dragHue, dragAlpha;
 
-    private int svX, svY, hueX, alphaX, y0;
+    private int svX, svY, hueX, alphaY, prevY, hexX, hexY, btnY, y0;
 
     public ColorWheelScreen(Screen parent, String title, String initialHexARGB, Consumer<String> onDone) {
         super(Component.literal(title == null ? "" : title));
@@ -90,29 +95,43 @@ public class ColorWheelScreen extends Screen {
     @Override
     protected void init() {
         int cx = (width - (SV_W + GAP + BAR_W)) / 2;
-        y0 = Math.max(50, height / 2 - 90);
+        y0 = Math.max(34, (height - 236) / 2);
         svX = cx;
-        svY = y0 + 22;
+        svY = y0 + 20;
         hueX = svX + SV_W + GAP;
+        alphaY = svY + SV_H + 12;   // 右侧栏:色相条下方接 alpha 条
+        prevY = svY + SV_H + 12;    // 左列:预览色块行
+        hexX = svX + 96;
+        hexY = prevY + 11;
+        btnY = prevY + 60;
 
-        hexBox = new EditBox(font, cx, y0 + SV_H + 34, 100, 18, Component.translatable("z80zhealthbar.editor.color.hex"));
+        hexBox = new EditBox(font, hexX, hexY, 116, 18, Component.translatable("z80zhealthbar.editor.color.hex"));
         hexBox.setMaxLength(9);
         hexBox.setValue(currentHex());
-        hexBox.setResponder(s -> applyHex(s));
+        hexBox.setResponder(this::applyHex);
         addRenderableWidget(hexBox);
+
+        // 按钮在此创建一次（此前在 render() 每帧添加,是卡顿根因）
+        addRenderableWidget(Button.builder(
+                Component.translatable("z80zhealthbar.editor.color.ok"), b -> done())
+                .bounds(width / 2 - 102, btnY, 64, 18).build());
+        addRenderableWidget(Button.builder(
+                Component.translatable("z80zhealthbar.editor.color.clear"), b -> finish(""))
+                .bounds(width / 2 - 32, btnY, 64, 18).build());
+        addRenderableWidget(Button.builder(
+                Component.translatable("z80zhealthbar.editor.color.cancel"), b -> onClose())
+                .bounds(width / 2 + 38, btnY, 64, 18).build());
     }
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         renderBackground(g);
-
-        g.drawCenteredString(font, title, width / 2, y0 - 14, 0xFFCFE6FF);
+        g.drawCenteredString(font, title, width / 2, y0 - 6, 0xFFCFE6FF);
 
         // SV 方块：底层 横向 白→纯色 渐变,上层 纵向 透明→黑
         g.fillGradient(svX, svY, svX + SV_W, svY + SV_H, 0xFFFFFFFF, 0xFF000000 | hueRgb(hue));
         g.fillGradient(svX, svY, svX + SV_W, svY + SV_H, 0x00000000, 0xFF000000);
         g.renderOutline(svX - 1, svY - 1, SV_W + 2, SV_H + 2, 0x60FFFFFF);
-        // SV 游标（小圆点近似:十字准星）
         int px = svX + (int) (sat * (SV_W - 1));
         int py = svY + (int) ((1f - val) * (SV_H - 1));
         g.fill(px - 5, py, px + 5, py + 1, 0xFFFFFFFF);
@@ -130,37 +149,25 @@ public class ColorWheelScreen extends Screen {
         g.fill(hueX - 3, hy - 1, hueX, hy + 2, 0xFFFFFFFF);
         g.fill(hueX + BAR_W, hy - 1, hueX + BAR_W + 3, hy + 2, 0xFFFFFFFF);
 
-        // alpha 滑条：黑→白渐变上叠当前纯色（左透明右不透明的视觉由 outline 提示）
-        int ay = svY + SV_H + 8;
-        g.fillGradient(hueX, ay, hueX + BAR_W, ay + SV_H / 2, 0xFF000000, 0xFFFFFFFF);
-        g.fillGradient(hueX, ay, hueX + BAR_W, ay + SV_H / 2, (currentRgb() & 0xFFFFFF), 0x00000000 | currentRgb());
-        g.renderOutline(hueX - 1, ay - 1, BAR_W + 2, SV_H / 2 + 2, 0x60FFFFFF);
-        int aY = ay + (int) ((1f - alpha) * (SV_H / 2 - 1));
+        // alpha 竖条（色相条正下方,同列不重叠）:下=透明 上=不透明;叠当前纯色示色
+        int ah = 46;
+        g.fillGradient(hueX, alphaY, hueX + BAR_W, alphaY + ah, 0xFF000000, 0xFFFFFFFF);
+        g.fillGradient(hueX, alphaY, hueX + BAR_W, alphaY + ah, (currentRgb() & 0xFFFFFF) | 0xFF000000, currentRgb());
+        g.renderOutline(hueX - 1, alphaY - 1, BAR_W + 2, ah + 2, 0x60FFFFFF);
+        int aY = alphaY + (int) ((1f - alpha) * (ah - 1));
         g.fill(hueX - 3, aY, hueX, aY + 2, 0xFFFFFFFF);
         g.fill(hueX + BAR_W, aY, hueX + BAR_W + 3, aY + 2, 0xFFFFFFFF);
+        g.drawString(font, Component.translatable("z80zhealthbar.editor.color.alpha").getString(),
+                hueX - 40, alphaY + ah / 2 - 4, 0xFFB8C4D0);
 
-        // 预览：新色 / 旧色
-        int prevY = svY + SV_H + 8;
+        // 预览：新色 / 旧色（左列,与 hex 框同行不重叠——新色 40 宽、旧色 40 宽、hex 右侧）
         g.fill(svX, prevY, svX + 40, prevY + 40, 0xFF000000);
         g.fill(svX + 1, prevY + 1, svX + 39, prevY + 39, currentArgb());
         g.renderOutline(svX, prevY, 40, 40, 0x80FFFFFF);
         g.fill(svX + 44, prevY, svX + 84, prevY + 40, 0xFF000000);
-        int oldV = parseSafe(initial);
-        g.fill(svX + 45, prevY + 1, svX + 83, prevY + 39, oldV);
+        g.fill(svX + 45, prevY + 1, svX + 83, prevY + 39, parseSafe(initial));
         g.renderOutline(svX + 44, prevY, 40, 40, 0x60FFFFFF);
-        g.drawString(font, "hex:", svX + 90, prevY + 42 - 26, 0xFFB8C4D0);
-
-        // 按钮行
-        int by = Math.min(height - 30, y0 + SV_H + 66);
-        addRenderableWidget(net.minecraft.client.gui.components.Button.builder(
-                Component.translatable("z80zhealthbar.editor.color.ok"), b -> done())
-                .bounds(width / 2 - 102, by, 64, 18).build());
-        addRenderableWidget(net.minecraft.client.gui.components.Button.builder(
-                Component.translatable("z80zhealthbar.editor.color.clear"), b -> finish(""))
-                .bounds(width / 2 - 32, by, 64, 18).build());
-        addRenderableWidget(net.minecraft.client.gui.components.Button.builder(
-                Component.translatable("z80zhealthbar.editor.color.cancel"), b -> onClose())
-                .bounds(width / 2 + 38, by, 64, 18).build());
+        g.drawString(font, "hex:", hexX - 30, hexY + 5, 0xFFB8C4D0);
 
         super.render(g, mouseX, mouseY, partialTick);
     }
@@ -181,19 +188,19 @@ public class ColorWheelScreen extends Screen {
 
     private void finish(String value) {
         onDone.accept(value);
-        minecraft.setScreen(parent);
+        if (minecraft != null) minecraft.setScreen(parent);
     }
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent); // 取消:不写回
+        if (minecraft != null) minecraft.setScreen(parent); // 取消:不写回
     }
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         dragSv = inRect(mx, my, svX, svY, SV_W, SV_H);
         dragHue = inRect(mx, my, hueX, svY, BAR_W, SV_H);
-        dragAlpha = inRect(mx, my, hueX, svY + SV_H + 8, BAR_W, SV_H / 2);
+        dragAlpha = inRect(mx, my, hueX, alphaY, BAR_W, 46);
         if (dragSv) pickSv(mx, my);
         if (dragHue) pickHue(my);
         if (dragAlpha) pickAlpha(my);
@@ -221,20 +228,19 @@ public class ColorWheelScreen extends Screen {
     }
 
     private void pickSv(double mx, double my) {
-        sat = (float) Mth01((mx - svX) / (SV_W - 1.0));
-        val = 1f - (float) Mth01((my - svY) / (SV_H - 1.0));
+        sat = (float) clamp01((mx - svX) / (SV_W - 1.0));
+        val = 1f - (float) clamp01((my - svY) / (SV_H - 1.0));
     }
 
     private void pickHue(double my) {
-        hue = (float) Mth01((my - svY) / (SV_H - 1.0));
+        hue = (float) clamp01((my - svY) / (SV_H - 1.0));
     }
 
     private void pickAlpha(double my) {
-        int ay = svY + SV_H + 8;
-        alpha = 1f - (float) Mth01((my - ay) / (SV_H / 2.0 - 1.0));
+        alpha = 1f - (float) clamp01((my - alphaY) / 45.0);
     }
 
-    private double Mth01(double v) {
+    private double clamp01(double v) {
         return Math.max(0, Math.min(1, v));
     }
 
