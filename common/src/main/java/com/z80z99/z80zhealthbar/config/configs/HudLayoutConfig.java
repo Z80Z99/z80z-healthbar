@@ -83,21 +83,45 @@ public class HudLayoutConfig {
         public int rotation = 0;
         /** 饱和度显示方式（仅饱食度类组件）：0=覆盖 1=右侧追加(吸收式) 2=顶部细条 3=底部细条 4=关闭 */
         public int saturationMode = 0;
+        /** hotbar 选中槽样式：0=原版白框 1=呼吸灯背景 2=抬升浮动 3=脉冲边框 4=高亮填充 */
+        public int selStyle = 0;
+        /** 选中槽样式颜色（空 = 白系默认） */
+        public String selColor = "";
+        /** 选中槽样式方向：0=向上/底缘辉光 1=向下/顶缘辉光（抬升的位移向、呼吸灯的锚定边） */
+        public int selDir = 0;
+        /** 选中槽边框:0=外边框 1=内边框 2=双边框 3=无边框（作用于样式1/2/4 描边与样式3 脉冲环位） */
+        public int selBorder = 0;
+        /** 选中槽呼吸/脉冲周期（毫秒,100..6000;呼吸灯背景与脉冲边框共用） */
+        public int selSpeedMs = 1600;
+        /** 抬升浮动的位移幅度（像素,0..8） */
+        public int selLiftPx = 2;
+        /** 高亮填充强度（0..100;填充 alpha = 样式色 alpha × 强度%） */
+        public int selFillPct = 50;
+        /** 选中槽切换动效:0=瞬切 1=顺滑滑动 2=回弹滑动（高亮自原格滑向新格,途中拉伸） */
+        public int selAnim = 1;
+        /** 选中槽切换动效时长（毫秒,80..600） */
+        public int selAnimMs = 220;
         /** hotbar 组件的 9 个槽位独立设置（仅 type=hotbar 使用;null/缺项运行时补默认） */
         public List<HotbarSlot> hotbarSlots = null;
 
-        /** hotbar 槽位设置（每槽独立:位置/缩放/透明度/背景+渐变/边框/隐藏） */
+        /** hotbar 槽位设置（每槽独立:位置/宽高/缩放/透明度/背景+渐变/边框/隐藏） */
         public static class HotbarSlot {
             public int offsetX = 0;
             public int offsetY = 0;
+            /** 槽格宽（像素,原版=20;相邻槽排布/命中/指示框均按此值） */
+            public int slotW = 20;
+            /** 槽格高（像素,原版=20） */
+            public int slotH = 20;
             public double scale = 1.0;
             /** 该槽不透明度（0..100） */
             public int opacity = 100;
             /** 槽位背景色（空 = 原版深色底） */
             public String bgColor = "";
-            /** 渐变末端色（非空 = 从 bgColor 渐变到该色） */
+            /** 渐变末端色（非空 = 从 bgColor 沿渐变角渐变到该色） */
             public String bgColor2 = "";
-            /** 渐变方向：0=垂直 1=水平 2=对角 */
+            /** 渐变角度（度,0=左→右,90=上→下,顺时针;-1 = 未迁移,validator 从旧 gradientDir 换算） */
+            public int gradientAngle = -1;
+            /** 旧渐变方向（0=垂直 1=水平 2=对角）——仅作一次性迁移源,渲染/编辑不再读取 */
             public int gradientDir = 0;
             /** 边框样式：0=无 1=细 2=粗 3=发光 */
             public int borderStyle = 0;
@@ -111,22 +135,31 @@ public class HudLayoutConfig {
             public HotbarSlot copy() {
                 HotbarSlot s = new HotbarSlot();
                 s.offsetX = offsetX; s.offsetY = offsetY;
+                s.slotW = slotW; s.slotH = slotH;
                 s.scale = scale; s.opacity = opacity;
                 s.bgColor = bgColor; s.bgColor2 = bgColor2;
-                s.gradientDir = gradientDir; s.borderStyle = borderStyle;
+                s.gradientAngle = gradientAngle; s.gradientDir = gradientDir;
+                s.borderStyle = borderStyle;
                 s.borderColor = borderColor; s.hidden = hidden;
                 s.idleFadeSecs = idleFadeSecs;
                 return s;
             }
         }
 
-        /** 取槽位设置（越界/缺项自动补默认,保证始终 9 项） */
+        /** 取槽位设置（越界/缺项自动补默认,保证始终 9 项）。运行时新建的槽位
+         *  直接给渐变角 90°（垂直,与旧默认一致）——不走 validator 迁移路径 */
         public HotbarSlot hotbarSlot(int idx) {
             if (hotbarSlots == null) hotbarSlots = new ArrayList<>();
-            while (hotbarSlots.size() < 9) hotbarSlots.add(new HotbarSlot());
+            while (hotbarSlots.size() < 9) hotbarSlots.add(freshSlot());
             while (hotbarSlots.size() > 9) hotbarSlots.remove(hotbarSlots.size() - 1);
             HotbarSlot s = hotbarSlots.get(Math.max(0, Math.min(8, idx)));
-            if (s == null) { s = new HotbarSlot(); hotbarSlots.set(idx, s); }
+            if (s == null) { s = freshSlot(); hotbarSlots.set(idx, s); }
+            return s;
+        }
+
+        private static HotbarSlot freshSlot() {
+            HotbarSlot s = new HotbarSlot();
+            s.gradientAngle = 90;
             return s;
         }
         // ===== 组件自定义颜色（#RRGGBBAA;空串 = 继承全局默认/状态自动变色）。RGB 生效,
@@ -207,6 +240,9 @@ public class HudLayoutConfig {
             c.group = group; c.iconTexture = iconTexture;
             c.opacity = opacity; c.idleFadeSecs = idleFadeSecs; c.rotation = rotation;
             c.saturationMode = saturationMode;
+            c.selStyle = selStyle; c.selColor = selColor; c.selDir = selDir; c.selBorder = selBorder;
+            c.selSpeedMs = selSpeedMs; c.selLiftPx = selLiftPx; c.selFillPct = selFillPct;
+            c.selAnim = selAnim; c.selAnimMs = selAnimMs;
             if (hotbarSlots != null) {
                 c.hotbarSlots = new ArrayList<>();
                 for (HotbarSlot hs : hotbarSlots) c.hotbarSlots.add(hs == null ? null : hs.copy());
@@ -232,8 +268,12 @@ public class HudLayoutConfig {
     public Map<String, ComponentLayout> components = defaultComponents();
 
     /** 编辑器悬浮属性面板位置（GUI 坐标；-1 = 默认右上） */
-    public int panelX = -1;
-    public int panelY = -1;
+        public int panelX = -1;
+        public int panelY = -1;
+        /** 编辑器面板宽（像素;-1 = 默认 178;仿 Windows 拖缘调宽,范围 156..440） */
+        public int panelW = -1;
+        /** 编辑器面板高（像素;-1 = 按内容自适应;拖下缘/角设定固定高,超高滚动） */
+        public int panelH = -1;
     /** 编辑器属性面板折叠（只留标题条;实测反馈"缩小面板只留个标题"） */
     public boolean panelCollapsed = false;
 

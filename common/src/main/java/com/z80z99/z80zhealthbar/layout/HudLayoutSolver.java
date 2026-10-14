@@ -142,8 +142,18 @@ public final class HudLayoutSolver {
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
             return new int[]{54, 9}; // 6 个 9px 图标位（渲染时按实际数量收缩）
         }
-        // hotbar 组件:整个快捷栏（原版 182x22——9 槽内部由组件自己排布）
-        if (HudLayoutConfig.HOTBAR.equals(c.type)) return new int[]{182, 22};
+        // hotbar 组件:盒体 = 2px 边距 + 槽格累计宽（隐藏槽保留占位,与渲染排布一致）× 可见槽最高。
+        // 类型判定不能只看 c.type——旧配置该字段可能为空串（typeOf 靠键名回退,此处无键名,
+        // 用 hotbarSlots 存在与否兜底,实测空 type 曾使盒体退化为 measureBar 细条）
+        if (HudLayoutConfig.HOTBAR.equals(c.type) || (c.hotbarSlots != null && !c.hotbarSlots.isEmpty())) {
+            int totalW = 0, maxH = 0;
+            for (int i = 0; i < 9; i++) {
+                var s = c.hotbarSlot(i);
+                totalW += Math.max(8, Math.min(64, s.slotW));
+                if (!s.hidden) maxH = Math.max(maxH, Math.max(8, Math.min(64, s.slotH)));
+            }
+            return new int[]{Math.max(2 + totalW, 22), Math.max(2 + maxH, 22)};
+        }
         return measureBar(c);
     }
 

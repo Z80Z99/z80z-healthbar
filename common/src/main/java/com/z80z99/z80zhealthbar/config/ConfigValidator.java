@@ -212,9 +212,14 @@ public final class ConfigValidator {
                     if (hs == null) { hs = new HudLayoutConfig.ComponentLayout.HotbarSlot(); cl.hotbarSlots.set(i, hs); }
                     hs.offsetX = clamp(hs.offsetX, -500, 500);
                     hs.offsetY = clamp(hs.offsetY, -500, 500);
+                    hs.slotW = clamp(hs.slotW, 8, 64);
+                    hs.slotH = clamp(hs.slotH, 8, 64);
                     hs.scale = hs.scale <= 0 ? 1.0 : clamp(hs.scale, 0.25, 4.0);
                     hs.opacity = clamp(hs.opacity, 0, 100);
-                    hs.gradientDir = clamp(hs.gradientDir, 0, 2);
+                    // 渐变角一次性迁移:旧 0=垂直 1=水平 2=对角 → 90/0/45 度（-1 = 旧配置未迁移）
+                    hs.gradientAngle = hs.gradientAngle < 0
+                            ? (hs.gradientDir == 1 ? 0 : hs.gradientDir == 2 ? 45 : 90)
+                            : clamp(hs.gradientAngle, 0, 359);
                     hs.borderStyle = clamp(hs.borderStyle, 0, 3);
                     hs.idleFadeSecs = clamp(hs.idleFadeSecs, 0, 60);
                 }
@@ -226,6 +231,14 @@ public final class ConfigValidator {
             // 饱和度显示方式（0=覆盖 1=右追加 2=顶部细条 3=底部细条 4=关闭）：不钳制时
             // 编辑器的循环行从越界值起跳（存 7 显示"关闭",点一下跳到"底部细条"）
             cl.saturationMode = clamp(cl.saturationMode, 0, 4);
+            cl.selStyle = clamp(cl.selStyle, 0, 4);
+            cl.selDir = clamp(cl.selDir, 0, 1);
+            cl.selBorder = clamp(cl.selBorder, 0, 3);
+            cl.selSpeedMs = clamp(cl.selSpeedMs, 100, 6000);
+            cl.selLiftPx = clamp(cl.selLiftPx, 0, 8);
+            cl.selFillPct = clamp(cl.selFillPct, 0, 100);
+            cl.selAnim = clamp(cl.selAnim, 0, 2);
+            cl.selAnimMs = clamp(cl.selAnimMs, 80, 600);
         }
     }
 

@@ -10,17 +10,24 @@ import org.lwjgl.glfw.GLFW;
 import java.util.function.Consumer;
 
 /**
- * 颜色轮盘（HSV 选择器）：SV 方块（横=饱和度,纵=亮度反转）+ 色相竖条 + alpha 竖条
- * + hex 直输入 + 新旧色预览。确定后经 {@code onDone} 写回（#RRGGBBAA）;
+ * 颜色轮盘（HSV 选择器）：SV 方块（横=饱和度,纵=亮度反转）+ 色相竖条 + alpha 横条
+ * + hex 直输入 + 原色/新色预览。确定后经 {@code onDone} 写回（AARRGGBB,无 #）;
  * "清除"回调 onDone 传空串（= 恢复继承默认/状态自动变色）。
  *
- * <p>2026-10-09 修复:(1) 性能——按钮此前在 render() 里 addRenderableWidget,每帧累积
- * 3 个 widget（实测"取色器界面卡顿"根因）,全部移入 init();(2) 布局——hex 框/预览色块/
- * alpha 条/按钮相互重叠,重排为分区布局（SV→预览+hex→按钮,alpha 条纳入右侧栏）。
+ * <p>2026-10-14 重排版（用户反馈:文字过小、拾取点被裁、条与条混淆、按钮重心偏移）：
+ * (1) 整卡加深色半透明底板+描边,标题 2 倍放大,提升对游戏背景的可读性;
+ * (2) alpha 从右侧竖条改为 SV 正下方的横向棋盘格条（棋盘=透明指示）,与色相竖条形态区分,
+ *     "不透明度"标签直接置于条左侧;（3) SV/色相/alpha 三处游标统一加黑描边,
+ *     SV 十字臂在方块边界内裁切不再溢出;（4) hex 输入带 # 前缀,与预览同行分区;
+ *     (5) 确定/清除/取消按钮组对齐内容区几何中心;（6) hex 框内按 Enter=确定。
+ * <p>历史：2026-10-09 修复按钮每帧重复 addRenderableWidget 的卡顿与元素重叠。
  */
 public class ColorWheelScreen extends Screen {
 
     private static final int SV_W = 200, SV_H = 120, BAR_W = 14, GAP = 14;
+    private static final int AB_H = 12;   // alpha 横条高
+    private static final int CHECK = 6;   // 棋盘格单元格
+    private static final int BTN_W = 64, BTN_GAP = 6, BTN_H = 18;
 
     private final Screen parent;
     private final String initial;
@@ -33,7 +40,8 @@ public class ColorWheelScreen extends Screen {
     private EditBox hexBox;
     private boolean dragSv, dragHue, dragAlpha;
 
-    private int svX, svY, hueX, alphaY, prevY, hexX, hexY, btnY, y0;
+    private int svX, svY, hueX, abX, abY, abW, prevY, hexX, hexY, btnY, y0;
+    private int panelX0, panelY0, panelX1, panelY1;
 
     public ColorWheelScreen(Screen parent, String title, String initialHexARGB, Consumer<String> onDone) {
         super(Component.literal(title == null ? "" : title));
@@ -94,48 +102,66 @@ public class ColorWheelScreen extends Screen {
 
     @Override
     protected void init() {
-        int cx = (width - (SV_W + GAP + BAR_W)) / 2;
-        y0 = Math.max(34, (height - 236) / 2);
+        int contentW = SV_W + GAP + BAR_W;
+        int cx = (width - contentW) / 2;
         svX = cx;
-        svY = y0 + 20;
         hueX = svX + SV_W + GAP;
-        alphaY = svY + SV_H + 12;   // 右侧栏:色相条下方接 alpha 条
-        prevY = svY + SV_H + 12;    // 左列:预览色块行
-        hexX = svX + 96;
-        hexY = prevY + 11;
-        btnY = prevY + 60;
+        y0 = Math.max(26, (height - 240) / 2);
+        svY = y0 + 26;                       // 标题(2x,占~20px)下方
+        abY = svY + SV_H + 8;                // alpha 横条:SV 正下方
+        abX = svX + 52;                      // 左侧留出"不透明度"标签
+        abW = SV_W - 52;
+        prevY = abY + AB_H + 8;              // 原色/新色预览行
+        hexX = svX + 112;
+        hexY = prevY + 7;                    // 输入框与 32 高的预览块垂直居中
+        btnY = prevY + 32 + 8;
 
-        hexBox = new EditBox(font, hexX, hexY, 116, 18, Component.translatable("z80zhealthbar.editor.color.hex"));
+        panelX0 = svX - 14;
+        panelY0 = y0 - 8;
+        panelX1 = svX + contentW + 14;
+        panelY1 = btnY + BTN_H + 8;
+
+        hexBox = new EditBox(font, hexX, hexY, contentW - 112, 18,
+                Component.translatable("z80zhealthbar.editor.color.hex"));
         hexBox.setMaxLength(9);
-        hexBox.setValue(currentHex());
+        hexBox.setValue("#" + currentHex());
         hexBox.setResponder(this::applyHex);
         addRenderableWidget(hexBox);
 
-        // 按钮在此创建一次（此前在 render() 每帧添加,是卡顿根因）
+        // 按钮组对齐内容区几何中心（3×64 + 2×6 = 204,内容区宽 228）
+        int bx = svX + (contentW - (BTN_W * 3 + BTN_GAP * 2)) / 2;
         addRenderableWidget(Button.builder(
                 Component.translatable("z80zhealthbar.editor.color.ok"), b -> done())
-                .bounds(width / 2 - 102, btnY, 64, 18).build());
+                .bounds(bx, btnY, BTN_W, BTN_H).build());
         addRenderableWidget(Button.builder(
                 Component.translatable("z80zhealthbar.editor.color.clear"), b -> finish(""))
-                .bounds(width / 2 - 32, btnY, 64, 18).build());
+                .bounds(bx + BTN_W + BTN_GAP, btnY, BTN_W, BTN_H).build());
         addRenderableWidget(Button.builder(
                 Component.translatable("z80zhealthbar.editor.color.cancel"), b -> onClose())
-                .bounds(width / 2 + 38, btnY, 64, 18).build());
+                .bounds(bx + (BTN_W + BTN_GAP) * 2, btnY, BTN_W, BTN_H).build());
     }
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         renderBackground(g);
-        g.drawCenteredString(font, title, width / 2, y0 - 6, 0xFFCFE6FF);
+
+        // 深色底板：所有文字/控件衬在半透明面板上,不与游戏画面直接混合
+        g.fill(panelX0, panelY0, panelX1, panelY1, 0xC8141A21);
+        g.renderOutline(panelX0, panelY0, panelX1 - panelX0, panelY1 - panelY0, 0xFF5A6678);
+        g.renderOutline(panelX0 + 1, panelY0 + 1, panelX1 - panelX0 - 2, panelY1 - panelY0 - 2, 0xFF0B0E13);
+
+        // 标题 2 倍放大（整数倍缩放保持像素锐利）
+        var pose = g.pose();
+        pose.pushPose();
+        pose.scale(2f, 2f, 1f);
+        g.drawCenteredString(font, title, width / 4, (y0 + 2) / 2, 0xFFEAF2FF);
+        pose.popPose();
 
         // SV 方块：底层 横向 白→纯色 渐变,上层 纵向 透明→黑
         g.fillGradient(svX, svY, svX + SV_W, svY + SV_H, 0xFFFFFFFF, 0xFF000000 | hueRgb(hue));
         g.fillGradient(svX, svY, svX + SV_W, svY + SV_H, 0x00000000, 0xFF000000);
         g.renderOutline(svX - 1, svY - 1, SV_W + 2, SV_H + 2, 0x60FFFFFF);
-        int px = svX + (int) (sat * (SV_W - 1));
-        int py = svY + (int) ((1f - val) * (SV_H - 1));
-        g.fill(px - 5, py, px + 5, py + 1, 0xFFFFFFFF);
-        g.fill(px, py - 5, px + 1, py + 5, 0xFFFFFFFF);
+        drawSvCursor(g);
 
         // 色相竖条（6 段渐变）+ 游标
         float[] stops = {0f, 1f / 6, 2f / 6, 3f / 6, 4f / 6, 5f / 6, 1f};
@@ -145,31 +171,70 @@ public class ColorWheelScreen extends Screen {
                     0xFF000000 | hueRgb(stops[i]), 0xFF000000 | hueRgb(stops[i + 1]));
         }
         g.renderOutline(hueX - 1, svY - 1, BAR_W + 2, SV_H + 2, 0x60FFFFFF);
-        int hy = svY + (int) (hue * (SV_H - 1));
-        g.fill(hueX - 3, hy - 1, hueX, hy + 2, 0xFFFFFFFF);
-        g.fill(hueX + BAR_W, hy - 1, hueX + BAR_W + 3, hy + 2, 0xFFFFFFFF);
+        drawHueCursor(g);
 
-        // alpha 竖条（色相条正下方,同列不重叠）:下=透明 上=不透明;叠当前纯色示色
-        int ah = 46;
-        g.fillGradient(hueX, alphaY, hueX + BAR_W, alphaY + ah, 0xFF000000, 0xFFFFFFFF);
-        g.fillGradient(hueX, alphaY, hueX + BAR_W, alphaY + ah, (currentRgb() & 0xFFFFFF) | 0xFF000000, currentRgb());
-        g.renderOutline(hueX - 1, alphaY - 1, BAR_W + 2, ah + 2, 0x60FFFFFF);
-        int aY = alphaY + (int) ((1f - alpha) * (ah - 1));
-        g.fill(hueX - 3, aY, hueX, aY + 2, 0xFFFFFFFF);
-        g.fill(hueX + BAR_W, aY, hueX + BAR_W + 3, aY + 2, 0xFFFFFFFF);
+        // alpha 横条:棋盘格示透明 + 当前色由透明(左)渐至不透明(右)
         g.drawString(font, Component.translatable("z80zhealthbar.editor.color.alpha").getString(),
-                hueX - 40, alphaY + ah / 2 - 4, 0xFFB8C4D0);
+                svX, abY + 2, 0xFFD5DEE9);
+        drawChecker(g, abX, abY, abW, AB_H);
+        int segs = 24;
+        for (int i = 0; i < segs; i++) {
+            int a = Math.round(255f * i / (segs - 1));
+            int x0 = abX + Math.round(abW * i / (float) segs);
+            int x1 = abX + Math.round(abW * (i + 1) / (float) segs);
+            g.fill(x0, abY, x1, abY + AB_H, (currentRgb() & 0xFFFFFF) | (a << 24));
+        }
+        g.renderOutline(abX - 1, abY - 1, abW + 2, AB_H + 2, 0x60FFFFFF);
+        drawAlphaCursor(g);
 
-        // 预览：新色 / 旧色（左列,与 hex 框同行不重叠——新色 40 宽、旧色 40 宽、hex 右侧）
-        g.fill(svX, prevY, svX + 40, prevY + 40, 0xFF000000);
-        g.fill(svX + 1, prevY + 1, svX + 39, prevY + 39, currentArgb());
-        g.renderOutline(svX, prevY, 40, 40, 0x80FFFFFF);
-        g.fill(svX + 44, prevY, svX + 84, prevY + 40, 0xFF000000);
-        g.fill(svX + 45, prevY + 1, svX + 83, prevY + 39, parseSafe(initial));
-        g.renderOutline(svX + 44, prevY, 40, 40, 0x60FFFFFF);
-        g.drawString(font, "hex:", hexX - 30, hexY + 5, 0xFFB8C4D0);
+        // 预览:左原色 → 右新色(棋盘格底,可示半透明);hex 输入同行
+        g.fill(svX, prevY, svX + 32, prevY + 32, 0xFF000000);
+        g.fill(svX + 1, prevY + 1, svX + 31, prevY + 31, parseSafe(initial));
+        g.renderOutline(svX, prevY, 32, 32, 0x60FFFFFF);
+        drawChecker(g, svX + 40, prevY, 32, 32);
+        g.fill(svX + 40, prevY, svX + 72, prevY + 32, currentArgb());
+        g.renderOutline(svX + 40, prevY, 32, 32, 0x80FFFFFF);
+        g.drawString(font, "hex:", svX + 84, hexY + 5, 0xFFD5DEE9);
 
         super.render(g, mouseX, mouseY, partialTick);
+    }
+
+    /** SV 十字游标：黑描边白十字,臂在方块边界内裁切（不再溢出被裁） */
+    private void drawSvCursor(GuiGraphics g) {
+        int px = svX + Math.round(sat * (SV_W - 1));
+        int py = svY + Math.round((1f - val) * (SV_H - 1));
+        int ax0 = Math.max(svX, px - 5), ax1 = Math.min(svX + SV_W, px + 6);
+        int ay0 = Math.max(svY, py - 5), ay1 = Math.min(svY + SV_H, py + 6);
+        g.fill(ax0, py - 1, ax1, py + 2, 0xFF000000);
+        g.fill(ax0, py, ax1, py + 1, 0xFFFFFFFF);
+        g.fill(px - 1, ay0, px + 2, ay1, 0xFF000000);
+        g.fill(px, ay0, px + 1, ay1, 0xFFFFFFFF);
+    }
+
+    /** 色相游标:条两侧横向 tick,黑底白芯 */
+    private void drawHueCursor(GuiGraphics g) {
+        int hy = svY + Math.round(hue * (SV_H - 1));
+        g.fill(hueX - 4, hy - 2, hueX, hy + 3, 0xFF000000);
+        g.fill(hueX + BAR_W, hy - 2, hueX + BAR_W + 4, hy + 3, 0xFF000000);
+        g.fill(hueX - 3, hy - 1, hueX, hy + 2, 0xFFFFFFFF);
+        g.fill(hueX + BAR_W, hy - 1, hueX + BAR_W + 3, hy + 2, 0xFFFFFFFF);
+    }
+
+    /** alpha 游标:贯穿横条的竖线,黑底白芯,上下各探出 2px */
+    private void drawAlphaCursor(GuiGraphics g) {
+        int ax = abX + Math.round(alpha * (abW - 1));
+        g.fill(ax - 2, abY - 2, ax + 3, abY + AB_H + 2, 0xFF000000);
+        g.fill(ax, abY - 2, ax + 1, abY + AB_H + 2, 0xFFFFFFFF);
+    }
+
+    /** 棋盘格（透明度指示底） */
+    private void drawChecker(GuiGraphics g, int x, int y, int w, int h) {
+        for (int cy = 0; cy < h; cy += CHECK) {
+            for (int cx = 0; cx < w; cx += CHECK) {
+                int c = (cx / CHECK + cy / CHECK) % 2 == 0 ? 0xFF3F3F3F : 0xFF282828;
+                g.fill(x + cx, y + cy, Math.min(x + cx + CHECK, x + w), Math.min(y + cy + CHECK, y + h), c);
+            }
+        }
     }
 
     private int parseSafe(String s) {
@@ -200,10 +265,10 @@ public class ColorWheelScreen extends Screen {
     public boolean mouseClicked(double mx, double my, int button) {
         dragSv = inRect(mx, my, svX, svY, SV_W, SV_H);
         dragHue = inRect(mx, my, hueX, svY, BAR_W, SV_H);
-        dragAlpha = inRect(mx, my, hueX, alphaY, BAR_W, 46);
+        dragAlpha = inRect(mx, my, abX, abY, abW, AB_H);
         if (dragSv) pickSv(mx, my);
         if (dragHue) pickHue(my);
-        if (dragAlpha) pickAlpha(my);
+        if (dragAlpha) pickAlpha(mx);
         if (dragSv || dragHue || dragAlpha) syncHexBox();
         return super.mouseClicked(mx, my, button);
     }
@@ -212,7 +277,7 @@ public class ColorWheelScreen extends Screen {
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
         if (dragSv) pickSv(mx, my);
         if (dragHue) pickHue(my);
-        if (dragAlpha) pickAlpha(my);
+        if (dragAlpha) pickAlpha(mx);
         if (dragSv || dragHue || dragAlpha) syncHexBox();
         return super.mouseDragged(mx, my, button, dx, dy);
     }
@@ -236,8 +301,8 @@ public class ColorWheelScreen extends Screen {
         hue = (float) clamp01((my - svY) / (SV_H - 1.0));
     }
 
-    private void pickAlpha(double my) {
-        alpha = 1f - (float) clamp01((my - alphaY) / 45.0);
+    private void pickAlpha(double mx) {
+        alpha = (float) clamp01((mx - abX) / (abW - 1.0));
     }
 
     private double clamp01(double v) {
@@ -245,12 +310,17 @@ public class ColorWheelScreen extends Screen {
     }
 
     private void syncHexBox() {
-        if (hexBox != null && !hexBox.isFocused()) hexBox.setValue(currentHex());
+        if (hexBox != null && !hexBox.isFocused()) hexBox.setValue("#" + currentHex());
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE && !hexBox.isFocused()) {
+        if (hexBox != null && hexBox.isFocused()
+                && (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)) {
+            done();
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && (hexBox == null || !hexBox.isFocused())) {
             onClose();
             return true;
         }

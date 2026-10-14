@@ -1,6 +1,7 @@
 package com.z80z99.z80zhealthbar.overlay;
 
 import com.z80z99.z80zhealthbar.config.ConfigManager;
+import com.mojang.blaze3d.vertex.PoseStack;
 import com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig;
 import com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout;
 import com.z80z99.z80zhealthbar.layout.HudLayoutSolver;
@@ -228,8 +229,7 @@ public final class CustomHudRenderer {
             if (type.equals(HudLayoutConfig.HOTBAR)) {
                 sizes.put(key, HudLayoutSolver.measure(c)); // 单一事实来源
                 continue;
-            }
-            if (type.endsWith("_text") || type.equals("text")) {
+            }            if (type.endsWith("_text") || type.equals("text")) {
                 // 纯文本/自由文本组件：尺寸 = 实际文本宽（帧内缓存复用）
                 String t = type.equals("text") ? formatText(c.textFormat, player) : componentText(key, player);
                 sizes.put(key, new int[]{Math.max(8, t == null ? 8 : mc.font.width(t)), 10});
@@ -938,35 +938,49 @@ public final class CustomHudRenderer {
                                      ComponentLayout c, float compAlpha, String key) {
         var inv = player.getInventory();
         var pose = g.pose();
+        int selIdx = Math.max(0, Math.min(8, inv.selected));
+        SelAnim anim = selAnimState(key, selIdx);
+        float p = selAnimProgress(anim, c);   // 缓动进度（回弹可 >1 过冲）
+        float pc = Math.max(0f, Math.min(1f, p));
+        int pitch = 0; // 已排槽格累计宽（隐藏槽保留占位,与旧 index*20 排布语义一致）
         for (int i = 0; i < 9; i++) {
             var s = c.hotbarSlot(i);
+            int w = Math.max(8, Math.min(64, s.slotW));
+            int h = Math.max(8, Math.min(64, s.slotH));
+            int cellX = 1 + pitch;
+            pitch += w;
             if (s.hidden) continue;
             var stack = i < inv.items.size() ? inv.items.get(i) : net.minecraft.world.item.ItemStack.EMPTY;
-            // 透明度 = 组件级 × 槽级 × 槽位动态HUD（物品签名无变化 N 秒后淡出）
+            boolean sel = i == selIdx;
+            // 透明度 = 组件级 × 槽级 × 槽位动态HUD（物品签名无变化 N 秒后淡出）。
+            // 玩家当前选中的槽不淡出——切到该槽时物品必须立即可见（实测反馈）
             float eff = compAlpha * (Math.max(0, Math.min(100, s.opacity)) / 100f)
-                    * slotIdleAlpha(key, i, stack, s.idleFadeSecs);
+                    * (sel ? 1f : slotIdleAlpha(key, i, stack, s.idleFadeSecs));
             if (eff <= 0.01f) continue;
-            boolean sel = inv.selected == i;
-            int cx = 1 + i * 20 + s.offsetX; // 格体左上（20x20,局部坐标）
+            int cx = cellX + s.offsetX; // 格体左上（w×h,局部坐标;相邻槽按累计宽排布）
             int cy = 1 + s.offsetY;
+            // 选中抬升样式:目标格随高亮到达渐起,原格随高亮离场渐落（幅度可调,0=向上 1=向下）
+            float contentP = sel ? pc : (i == anim.fromIdx() ? 1f - pc : 0f);
+            int lift = c.selStyle == 2
+                    ? Math.round((c.selDir == 0 ? -1f : 1f) * Math.max(0, Math.min(8, c.selLiftPx)) * contentP)
+                    : 0;
             pose.pushPose();
-            pose.translate(cx + 10, cy + 10, 0); // 以格体中心为原点
+            pose.translate(cx + w / 2.0f, cy + h / 2.0f + lift, 0); // 以格体中心为原点
             float sc = (float) Math.max(0.25, Math.min(4.0, s.scale));
             if (Math.abs(sc - 1f) > 1e-3f) pose.scale(sc, sc, 1f);
             com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, eff);
             try {
+                int hw = w / 2, hh = h / 2;
                 // 背景（bgColor 留空=默认深色底;"#00000000"=完全透明,可见世界）
                 int bg1 = parseOr(s.bgColor, 0x900B1018);
                 if (s.bgColor2 != null && !s.bgColor2.isBlank()) {
                     int bg2 = parseOr(s.bgColor2, bg1);
-                    drawSlotGradient(g, -10, -10, 20, 20, s.gradientDir, bg1, bg2);
+                    drawSlotGradient(g, -hw, -hh, w, h, s.gradientAngle, bg1, bg2);
                 } else {
-                    g.fill(-10, -10, 10, 10, bg1);
+                    g.fill(-hw, -hh, -hw + w, -hh + h, bg1);
                 }
-                drawSlotBorder(g, -10, -10, 20, 20, s.borderStyle, parseOr(s.borderColor, 0x66FFFFFF));
-                // 选中框（原版 highlights (0,22)24x22:格体+(-2,-2),框内缘包住格体）
-                if (sel) g.blit(WIDGETS_TEX, -12, -12, 0, 22, 24, 22, 256, 256);
-                // 物品 + 数量/耐久（内容=格体+(2,2),即原版 (3+20i,3)）
+                drawSlotBorder(g, -hw, -hh, w, h, s.borderStyle, parseOr(s.borderColor, 0x66FFFFFF));
+                // 物品 + 数量/耐久（16px 内容居中于 w×h 格 = 原版 20 格 +2 边距的推广）
                 if (!stack.isEmpty()) {
                     g.renderItem(stack, -8, -8);
                     g.renderItemDecorations(mc.font, stack, -8, -8);
@@ -976,7 +990,154 @@ public final class CustomHudRenderer {
                 pose.popPose();
             }
         }
+        // 选中高亮最后画:沿切换动效从原格滑向新格（途中拉伸、到达点亮）,物品之上不被遮挡
+        drawSelHighlight(g, pose, c, anim, p, pc, compAlpha);
         if (compAlpha < 1f) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, compAlpha);
+    }
+
+    /** 选中槽切换动效状态（fromIdx = 上一次的目标格;start = 切换时刻） */
+    private record SelAnim(int fromIdx, int to, long start) {}
+
+    /** 键 = 组件键 → 动画;选中格变化即开新动画（起点 = 上一次的目标格） */
+    private static final java.util.Map<String, SelAnim> SEL_ANIMS = new java.util.HashMap<>();
+
+    private static SelAnim selAnimState(String key, int sel) {
+        var a = SEL_ANIMS.get(key);
+        if (a == null) {
+            a = new SelAnim(sel, sel, 0L); // 首帧:已定位,无动画
+        } else if (a.to() != sel) {
+            a = new SelAnim(a.to(), sel, System.currentTimeMillis());
+        }
+        SEL_ANIMS.put(key, a);
+        return a;
+    }
+
+    /** 切换动效进度:0=瞬切 1=顺滑(easeOutQuad) 2=回弹(easeOutBack,终点过冲再回落) */
+    private static float selAnimProgress(SelAnim a, ComponentLayout c) {
+        if (c.selAnim == 0 || a.fromIdx() == a.to()) return 1f;
+        long dur = Math.max(80, Math.min(600, c.selAnimMs));
+        float t = Math.max(0f, Math.min(1f, (System.currentTimeMillis() - a.start()) / (float) dur));
+        if (c.selAnim == 2) {
+            float u = t - 1f;
+            return 1f + 2.70158f * u * u * u + 1.70158f * u * u;
+        }
+        return 1f - (1f - t) * (1f - t);
+    }
+
+    /** 槽格中心/尺寸/缩放（组件局部未缩放坐标,与渲染排布同式:1px 边距 + 累计宽 + 偏移） */
+    private static float[] slotGeom(int idx, ComponentLayout c) {
+        int px = 1;
+        for (int i = 0; i < idx; i++) px += Math.max(8, Math.min(64, c.hotbarSlot(i).slotW));
+        var s = c.hotbarSlot(idx);
+        int w = Math.max(8, Math.min(64, s.slotW));
+        int h = Math.max(8, Math.min(64, s.slotH));
+        return new float[]{px + s.offsetX + w / 2f, 1 + s.offsetY + h / 2f, w, h,
+                (float) Math.max(0.25, Math.min(4.0, s.scale))};
+    }
+
+    /** 选中高亮动效绘制（组件局部坐标,在全部槽内容之后）:
+     *  位置/尺寸/缩放自原格插值到新格;途中沿运动方向拉伸(跳格越远越明显);
+     *  抬升样式随到达渐起;到达度驱动自定义样式亮度(0.35→1 "点亮"手感) */
+    private static void drawSelHighlight(GuiGraphics g, PoseStack pose, ComponentLayout c,
+                                         SelAnim anim, float p, float pc, float compAlpha) {
+        var toS = c.hotbarSlot(anim.to());
+        if (toS.hidden) return; // 目标格隐藏:与既有行为一致,不画高亮
+        float[] fc = slotGeom(Math.max(0, Math.min(8, anim.fromIdx())), c);
+        float[] tc = slotGeom(anim.to(), c);
+        float cx = fc[0] + (tc[0] - fc[0]) * p;
+        float cy = fc[1] + (tc[1] - fc[1]) * p;
+        float w = fc[2] + (tc[2] - fc[2]) * p;
+        float h = fc[3] + (tc[3] - fc[3]) * p;
+        float sc = fc[4] + (tc[4] - fc[4]) * p;
+        // 途中拉伸:跳格越远(≥4 格拉满)越明显,峰值为行程中点,落定恢复 1:1
+        float amp = Math.min(1f, Math.abs(anim.to() - anim.fromIdx()) / 4f);
+        float mid = 1f - Math.abs(1f - 2f * pc);
+        float sx = 1f + 0.18f * amp * mid;
+        float sy = 1f - 0.08f * amp * mid;
+        // 抬升样式:高亮跟随目标格内容一起渐起
+        float lift = c.selStyle == 2 ? (c.selDir == 0 ? -1f : 1f) * Math.max(0, Math.min(8, c.selLiftPx)) * pc : 0f;
+        float eff = compAlpha * (Math.max(0, Math.min(100, toS.opacity)) / 100f);
+        if (eff <= 0.01f) return;
+        pose.pushPose();
+        pose.translate(cx, cy + lift, 0);
+        if (Math.abs(sc - 1f) > 1e-3f || Math.abs(sx - 1f) > 1e-3f) pose.scale(sc * sx, sc * sy, 1f);
+        com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, eff);
+        try {
+            drawSelStyle(g, c, Math.round(-w / 2f), Math.round(-h / 2f), Math.round(w), Math.round(h), pc);
+        } finally {
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+            pose.popPose();
+        }
+    }
+
+    /** 选中槽边框:按 selBorder 画环——0=外(贴格外圈) 1=内(贴格缘) 2=双(内实外淡) 3=无 */
+    private static void selBorderRing(GuiGraphics g, ComponentLayout c, int x, int y, int w, int h, int argb) {
+        switch (Math.max(0, Math.min(3, c.selBorder))) {
+            case 1 -> ring(g, x, y, w, h, 1, argb);
+            case 2 -> {
+                ring(g, x, y, w, h, 1, argb);
+                ring(g, x - 2, y - 2, w + 4, h + 4, 1,
+                        ColorHelper.modifyAlpha(argb, ColorHelper.getAlpha(argb) / 2));
+            }
+            case 3 -> { } // 无边框:仅填充/辉光本体
+            default -> ring(g, x - 1, y - 1, w + 2, h + 2, 1, argb);
+        }
+    }
+
+    /** 选中槽样式（格体局部坐标,外层已按槽缩放）:
+     *  0=原版白框（widgets.png 高亮,拉伸适配非原版格宽高）
+     *  1=呼吸灯背景（辉光自锚定边铺满整格+边框随 selBorder;方向 0=底缘向上 1=顶缘向下）
+     *  2=抬升浮动（位移在 renderHotbar translate 完成,此处画强调边框）
+     *  3=脉冲边框（双环连续脉冲:基础环微呼吸+外圈辉环辐射消散,无宽度跳变）
+     *  4=高亮填充（整格半透明填充+边框随 selBorder） */
+    private static void drawSelStyle(GuiGraphics g, ComponentLayout c, int x, int y, int w, int h, float arrive) {
+        int col = parseOr(c.selColor, 0x64B4E8FF);
+        long period = Math.max(100, Math.min(6000, c.selSpeedMs));
+        float wave = 0.5f - 0.5f * (float) Math.cos((System.currentTimeMillis() % period) / (float) period * Math.PI * 2);
+        // 到达度点亮:高亮滑到位的过程中样式亮度 0.35→1,落定后恢复完整效果
+        float land = 0.35f + 0.65f * Math.max(0f, Math.min(1f, arrive));
+        switch (Math.max(0, Math.min(4, c.selStyle))) {
+            case 1 -> {
+                boolean fromBottom = c.selDir == 0;
+                int glowA = Math.round((50 + Math.round(wave * 110)) * land);
+                for (int r = 0; r < h; r++) {
+                    float edge = h <= 1 ? 1f : (fromBottom ? r / (float) (h - 1) : 1f - r / (float) (h - 1));
+                    g.fill(x, y + r, x + w, y + r + 1,
+                            ColorHelper.modifyAlpha(col, Math.max(8, Math.round(glowA * (0.25f + 0.75f * edge)))));
+                }
+                selBorderRing(g, c, x, y, w, h,
+                        ColorHelper.modifyAlpha(col, Math.round((90 + Math.round(wave * 130)) * land)));
+            }
+            case 2 -> selBorderRing(g, c, x, y, w, h, ColorHelper.modifyAlpha(col, Math.round(210 * land)));
+            case 3 -> {
+                // 连续脉冲:基础环恒在微呼吸,外圈辉环随波形辐射消散——宽度不再 1px/2px 硬跳（实测"脉冲不连贯"）
+                int baseA = Math.round((130 + 50 * wave) * land);
+                int radA = Math.round(200 * wave * land);
+                switch (Math.max(0, Math.min(3, c.selBorder))) {
+                    case 1 -> { // 内边框:环贴格缘,辉环向外辐射
+                        ring(g, x, y, w, h, 1, ColorHelper.modifyAlpha(col, baseA));
+                        ring(g, x - 2, y - 2, w + 4, h + 4, 1, ColorHelper.modifyAlpha(col, Math.round(radA * 0.8f)));
+                    }
+                    case 2 -> { // 双边框:内外环同脉冲,外环稍淡
+                        ring(g, x, y, w, h, 1, ColorHelper.modifyAlpha(col, baseA));
+                        ring(g, x - 2, y - 2, w + 4, h + 4, 1, ColorHelper.modifyAlpha(col, Math.round(baseA * 0.6f)));
+                        ring(g, x - 4, y - 4, w + 8, h + 8, 1, ColorHelper.modifyAlpha(col, radA));
+                    }
+                    case 3 -> // 无边框:退化为脉冲辉光填充,样式仍有意义
+                            g.fill(x, y, x + w, y + h, ColorHelper.modifyAlpha(col, Math.round(70 * wave * land)));
+                    default -> { // 外边框:基础环贴外圈,辉环更外圈辐射
+                        ring(g, x - 1, y - 1, w + 2, h + 2, 1, ColorHelper.modifyAlpha(col, baseA));
+                        ring(g, x - 3, y - 3, w + 6, h + 6, 1, ColorHelper.modifyAlpha(col, radA));
+                    }
+                }
+            }
+            case 4 -> {
+                int fa = ColorHelper.getAlpha(col) * Math.max(0, Math.min(100, c.selFillPct)) / 100;
+                g.fill(x, y, x + w, y + h, ColorHelper.modifyAlpha(col, Math.max(4, Math.round(fa * land))));
+                selBorderRing(g, c, x, y, w, h, ColorHelper.modifyAlpha(col, Math.round(ColorHelper.getAlpha(col) * land)));
+            }
+            default -> g.blit(WIDGETS_TEX, x - 2, y - 2, 0, 22, w + 4, h + 2, 256, 256);
+        }
     }
 
     /** 槽位动态HUD跟踪（键 = 组件键#槽号 → 物品签名/上次变化时刻） */
@@ -1006,20 +1167,34 @@ public final class CustomHudRenderer {
         return v == null ? fallback : v;
     }
 
-    /** 槽位背景渐变:0=垂直 1=水平(逐列) 2=对角(逐列+纵向微移) */
+    /** 槽位背景渐变（角度制）:0=左→右 90=上→下 270=下→上,顺时针;轴向渐变=格点在渐变轴上的
+     *  投影插值。0/90/180/270 走整条/整列快速路径,任意角度按 2px 块逐块取投影色（块内近似平色） */
     private static void drawSlotGradient(GuiGraphics g, int x, int y, int w, int h,
-                                         int dir, int c1, int c2) {
-        if (dir == 0) {
-            g.fillGradient(x, y, x + w, y + h, c1, c2);
+                                         int angleDeg, int c1, int c2) {
+        int a = (angleDeg < 0 ? 90 : ((angleDeg % 360) + 360) % 360); // 防御:未迁移 -1 按垂直处理
+        if (a == 90) { g.fillGradient(x, y, x + w, y + h, c1, c2); return; }
+        if (a == 270) { g.fillGradient(x, y, x + w, y + h, c2, c1); return; }
+        if (a == 0 || a == 180) {
+            boolean rev = a == 180;
+            for (int i = 0; i < w; i++) {
+                float t = i / (float) Math.max(1, w - 1);
+                g.fill(x + i, y, x + i + 1, y + h, ColorHelper.lerp(c1, c2, rev ? 1f - t : t));
+            }
             return;
         }
-        for (int i = 0; i < w; i++) {
-            float t = i / (float) Math.max(1, w - 1);
-            if (dir == 1) {
-                g.fill(x + i, y, x + i + 1, y + h, ColorHelper.lerp(c1, c2, t));
-            } else {
-                g.fillGradient(x + i, y, x + i + 1, y + h,
-                        ColorHelper.lerp(c1, c2, t), ColorHelper.lerp(c1, c2, Math.min(1f, t + 0.14f)));
+        double rad = Math.toRadians(a);
+        double dx = Math.cos(rad), dy = Math.sin(rad);
+        double tA = 0, tB = w * dx, tC = h * dy, tD = w * dx + h * dy;
+        double tMin = Math.min(Math.min(tA, tB), Math.min(tC, tD));
+        double span = Math.max(1e-6, Math.max(Math.max(tA, tB), Math.max(tC, tD)) - tMin);
+        int step = 2;
+        for (int by = 0; by < h; by += step) {
+            int bh = Math.min(step, h - by);
+            for (int bx = 0; bx < w; bx += step) {
+                int bw = Math.min(step, w - bx);
+                double tc = (bx + bw / 2.0) * dx + (by + bh / 2.0) * dy;
+                g.fill(x + bx, y + by, x + bx + bw, y + by + bh,
+                        ColorHelper.lerp(c1, c2, (float) ((tc - tMin) / span)));
             }
         }
     }
