@@ -1159,7 +1159,7 @@ public final class HudLayoutScreen extends Screen {
             panelEntries.add(backRow());
             return;
         }
-        if (!selType.equals(HudLayoutConfig.COMPAT)) {
+        if (!selType.equals(HudLayoutConfig.HOTBAR) && !selType.equals(HudLayoutConfig.COMPAT)) {
             panelEntries.add(listRow(() -> Component.translatable("z80zhealthbar.editor.sub_text").getString()
                             + (c.textAnchorParsed() != null
                             ? " · " + Component.translatable("z80zhealthbar.editor.sub_detached").getString() : ""),
@@ -1168,6 +1168,19 @@ public final class HudLayoutScreen extends Screen {
                         panelPage = PanelPage.SUB_TEXT;
                         rebuildWidgets();
                     }));
+            // 一键拆分:主组件页直接"添加"文本子组件（此前必须进子页把锚点从'跟随'切走）
+            if (c.textAnchorParsed() == null) {
+                panelEntries.add(listRow(
+                        () -> Component.translatable("z80zhealthbar.editor.sub_text_add").getString(),
+                        "z80zhealthbar.editor.add", () -> {
+                            c.textAnchor = c.anchorParsed().name(); // 以主组件同锚点起步,随后独立微调
+                            c.textOffsetX = 0;
+                            c.textOffsetY = 0;
+                            markDirty();
+                            autoGroupOnDetach(c);
+                            rebuildWidgets();
+                        }));
+            }
         }
         boolean typeHasIcon = selType.equals(HudLayoutConfig.HEALTH) || selType.equals(HudLayoutConfig.FOOD)
                 || selType.equals(HudLayoutConfig.AIR) || selType.equals(HudLayoutConfig.ARMOR)
@@ -1181,6 +1194,19 @@ public final class HudLayoutScreen extends Screen {
                         panelPage = PanelPage.SUB_ICON;
                         rebuildWidgets();
                     }));
+            // 一键拆分:主组件页直接"添加"图标子组件
+            if (c.iconAnchorParsed() == null) {
+                panelEntries.add(listRow(
+                        () -> Component.translatable("z80zhealthbar.editor.sub_icon_add").getString(),
+                        "z80zhealthbar.editor.add", () -> {
+                            c.iconAnchor = c.anchorParsed().name();
+                            c.iconOffsetX = 0;
+                            c.iconOffsetY = 0;
+                            markDirty();
+                            autoGroupOnDetach(c);
+                            rebuildWidgets();
+                        }));
+            }
         }
         // ---- 动作（复制/删除/重置/分组;全局动作在列表页） ----
         addComponentActions(baseKey(selected));
