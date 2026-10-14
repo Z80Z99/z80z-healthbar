@@ -113,6 +113,8 @@ public final class CustomHudRenderer {
                         if (t != null && !t.isEmpty()) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
                     } else if (type.equals("saturation_bar")) {
                         renderSaturationBar(graphics, mc, player, c);
+                    } else if (type.equals(HudLayoutConfig.HOTBAR)) {
+                        renderHotbarSlot(graphics, mc, key, player, c);
                     } else if (type.startsWith("compat_")) {
                         // 兼容状态单行组件（compat_saturation/exhaustion/thirst/stamina）:
                         // 从兼容组拆出的独立行,可单独摆放/配置（实测"上下不能分开成两个组件"）
@@ -221,6 +223,10 @@ public final class CustomHudRenderer {
             String type = HudLayoutConfig.typeOf(key, c);
             if (type.endsWith("_icon")) {
                 sizes.put(key, new int[]{9, 9}); // 纯图标组件
+                continue;
+            }
+            if (type.equals(HudLayoutConfig.HOTBAR)) {
+                sizes.put(key, HudLayoutSolver.measure(c)); // 单一事实来源
                 continue;
             }
             if (type.endsWith("_text") || type.equals("text")) {
@@ -919,6 +925,76 @@ public final class CustomHudRenderer {
         return c.iconSideParsed() == HudLayoutConfig.IconSide.RIGHT ? barW + 2 : -11;
     }
 
+    /**
+     * hotbar 槽位组件（hotbar#N,N∈1..9）:取消原版物品栏后由本模组重绘单个槽位。
+     * 几何拷贝原版 Gui.renderHotbar:背景条 widgets.png(0,0)182x22 @ (sw/2-91, sh-22);
+     * 选中框 (0,22)24x22 @ (sw/2-92, sh-23+sel*20);槽 x = sw/2-90+slot*20,y=sh-19。
+     * 每槽复用组件字段:offsetX/Y(相对原版位置偏移)/scale/opacity/colorFill(槽位底色)。
+     */
+    private static void renderHotbarSlot(GuiGraphics g, Minecraft mc,
+                                         String key, Player player,
+                                         ComponentLayout c) {
+        // 槽位序号 = 键后缀（hotbar#N;hotbar(无 N)=1）
+        int hash = key.indexOf('#');
+        int slot = 0;
+        if (hash > 0) {
+            try { slot = Math.max(0, Math.min(8, Integer.parseInt(key.substring(hash + 1)) - 1)); }
+            catch (NumberFormatException ignored) { }
+        }
+        int sw = g.guiWidth(), sh = g.guiHeight();
+        int x = sw / 2 - 90 + slot * 20;
+        int y = sh - 19;
+        var pose = g.pose();
+        pose.pushPose();
+        // 糟糕——g.pose() transform 是 Matrix3f-level abc;但 renderItem 用 context 内部位置
+        // —— 必须用 pose.translate,轴相对坐标系
+        pose.translate(c.offsetX, c.offsetY, 0);
+        // 缩放:以槽中心为锚
+        final float sc = (float) Math.max(0.25, Math.min(4.0, c.scale));
+        if (Math.abs(sc - 1.0f) > 1e-3) {
+            pose.translate(x + 10, y + 11, 0);
+            pose.scale(sc, sc, 1f);
+            pose.translate(-(x + 10), -(y + 11), 0);
+        }
+        // 透明度（组件 opacity × idleFade）
+        float compAlpha = (c.opacity / 100f) * idleFadeAlpha(key, key, player, c);
+        if (compAlpha <= 0.01f) { pose.popPose(); return; }
+        boolean tinted = compAlpha < 1f;
+        if (tinted) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, compAlpha);
+        try {
+            var inv = player.getInventory();
+            var stack = inv.items.size() > slot ? inv.items.get(slot) : net.minecraft.world.item.ItemStack.EMPTY;
+            boolean sel = inv.selected == slot;
+            // 槽位底色（colorFill 非空=覆盖原版透明底;留空=不画底,背景由 hotbar 底条组件搞定?
+            // 用户要求无底条依赖:colorFill 空时用深色默认底）
+            int cardA = (int) (compAlpha * 255);
+            int cardColor = 0x880B1018; // 默认深色近似原版槽底
+            if (c.colorCard != null && !c.colorCard.isBlank()) {
+                int v = com.z80z99.z80zhealthbar.util.ColorHelper.parseColor(c.colorCard);
+                if (v != 0) cardColor = v;
+            }
+            g.fill(x - 2, y - 3, x + 20, y + 22 - 3 + (sel ? 0 : 0),
+                    com.z80z99.z80zhealthbar.util.ColorHelper.modifyAlpha(cardColor, cardA));
+            // 选中框（widgets.png (0,22) 24x22;原版 y=sh-23+sel*20,x=cx-92+sel*20）
+            if (sel) {
+                g.blit(ICONS_WIDGETS, x - 2, y - 2,
+                        0, 22, 24, 22,
+                        256, 256);
+            }
+            // 物品
+            if (!stack.isEmpty()) {
+                g.renderItem(stack, x, y);
+                g.renderItemDecorations(mc.font, stack, x, y);
+            }
+        } finally {
+            if (tinted) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+            pose.popPose();
+        }
+    }
+
+    /** widgets sprite 引用（原版 Gui.WIDGETS_LOCATION 复刻;避免 import 私有字段） */
+    private static final net.minecraft.resources.ResourceLocation ICONS_WIDGETS =
+            new net.minecraft.resources.ResourceLocation("minecraft", "textures/gui/widgets.png");
     private static void drawCard(GuiGraphics g, int x, int y, int w, int h) {
         ComponentLayout c = CUR.get();
         if (c != null && c.colorCard != null && !c.colorCard.isBlank()) {

@@ -90,6 +90,11 @@ public final class HudRenderer {
         if (style == HudStyle.VANILLA) return false;
 
         if (style == HudStyle.CUSTOM) {
+            // hotbar 组件接管检查较复杂（9 实例任意存在即接管,见 HotbarSlots.hasAny）:
+            // 通用 peek 逻辑对它退化为"任一 hotbar#N 非 OFF"
+            if (id == VanillaOverlayId.HOTBAR) {
+                return customHotbarActive();
+            }
             var layout = ConfigManager.getConfig().hudLayout;
             // 只读探查：组件不存在（用户在编辑器删除）= 不绘制 → 不屏蔽原版。
             // 经 get() 会在渲染帧里把它插回配置——删除的组件"复活"且原版 HUD 被误屏蔽
@@ -97,13 +102,25 @@ public final class HudRenderer {
             return cl != null && cl.modeParsed() != HudLayoutConfig.ComponentMode.OFF;
         }
 
-        // ASTEORBAR：布局 0 = 本模式绘制关闭 → 不屏蔽原版
+        // ASTEORBAR：布局 0 = 本模式绘制关闭 → 不屏蔽原版;hotbar 组件仅 CUSTOM 模式支持
         if (cfg.overlayLayoutStyle == 0) return false;
+        if (id == VanillaOverlayId.HOTBAR) return false;
         return switch (id) {
-            case PLAYER_HEALTH, FOOD_LEVEL, AIR_LEVEL, MOUNT_HEALTH -> true;
+            case PLAYER_HEALTH, FOOD_LEVEL, AIR_LEVEL, MOUNT_HEALTH, HOTBAR -> true;
             case EXPERIENCE_BAR -> cfg.overwriteVanillaExperienceBar;
             case ARMOR_LEVEL -> cfg.overwriteVanillaArmorBar;
         };
+    }
+
+    /** CUSTOM 模式下 hotbar 组件是否接管：9 实例（hotbar#1..#9）任一存在且非 OFF */
+    private static boolean customHotbarActive() {
+        var comps = ConfigManager.getConfig().hudLayout.components;
+        for (String k : comps.keySet()) {
+            if (!k.startsWith(HudLayoutConfig.HOTBAR)) continue;
+            var c = comps.get(k);
+            if (c != null && c.modeParsed() != HudLayoutConfig.ComponentMode.OFF) return true;
+        }
+        return false;
     }
 
     /** 原版 HUD 覆盖层标识（Forge=VanillaGuiOverlay / Fabric=Gui.renderXxx 方法） */
@@ -113,7 +130,8 @@ public final class HudRenderer {
         AIR_LEVEL(HudLayoutConfig.AIR),
         EXPERIENCE_BAR(HudLayoutConfig.EXPERIENCE),
         ARMOR_LEVEL(HudLayoutConfig.ARMOR),
-        MOUNT_HEALTH(HudLayoutConfig.MOUNT);
+        MOUNT_HEALTH(HudLayoutConfig.MOUNT),
+        HOTBAR(HudLayoutConfig.HOTBAR);
 
         public final String layoutKey;
 

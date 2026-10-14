@@ -55,6 +55,11 @@ public final class ForgeClientEvents {
                 if (HudRenderer.shouldCancelVanilla(HudRenderer.VanillaOverlayId.MOUNT_HEALTH)) {
                     event.setCanceled(true);
                 }
+            } else if (overlay == VanillaGuiOverlay.HOTBAR.type()) {
+                // hotbar 组件接管（CUSTOM 模式 9 实例非 OFF）:取消原版物品栏,由 hotbar 组件重绘
+                if (HudRenderer.shouldCancelVanilla(HudRenderer.VanillaOverlayId.HOTBAR)) {
+                    event.setCanceled(true);
+                }
             }
 
             if (overlay == VanillaGuiOverlay.VIGNETTE.type()) {
@@ -65,7 +70,10 @@ public final class ForgeClientEvents {
 
         @SubscribeEvent
         public static void onRenderGuiOverlayPost(RenderGuiOverlayEvent.Post event) {
-            if (event.getOverlay() == VanillaGuiOverlay.HOTBAR.type()) {
+            // HUD 入口原挂 HOTBAR Post;hotbar 组件接管时该 overlay 的 Pre 会被取消（Post 同灭）,
+            // 改挂 VIGNETTE Post（事件链最先、永不被本模组取消,时序在原版 hotbar 之后——
+            // hotbar 接管重绘发生在其自身分支内,晚于 VIGNETTE,不会闪烁）
+            if (event.getOverlay() == VanillaGuiOverlay.VIGNETTE.type()) {
                 HudRenderer.render(event.getGuiGraphics(), event.getPartialTick());
             }
         }

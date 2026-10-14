@@ -191,4 +191,14 @@ class HudLayoutSolverTest {
         var boxes = HudLayoutSolver.solve(layout, sizes(layout), W, H);
         assertTrue(boxes.containsKey(HudLayoutConfig.HEALTH), "fallback anchor keeps component visible");
     }
+
+    @Test
+    void hotbarSlotMeasureMatchesVanillaGeometry() {
+        var c = new HudLayoutConfig.ComponentLayout();
+        c.type = HudLayoutConfig.HOTBAR;
+        int[] m = com.z80z99.z80zhealthbar.layout.HudLayoutSolver.measure(c);
+        // 原版槽位 20 宽（16 物品 + 框边距）、22 高（含选中框上溢 1px）
+        assertEquals(20, m[0]);
+        assertEquals(22, m[1]);
+    }
 }

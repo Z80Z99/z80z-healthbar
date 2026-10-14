@@ -33,4 +33,11 @@ public class GuiMixin {
     private void onRenderExperienceBar(GuiGraphics graphics, int xPos, CallbackInfo ci) {
         if (HudRenderer.shouldCancelVanilla(HudRenderer.VanillaOverlayId.EXPERIENCE_BAR)) ci.cancel();
     }
+
+    /** hotbar 组件接管（CUSTOM 模式）:取消原版物品栏,由 hotbar 组件重绘（仅 Forge 端接管生效;两端渲染入口一致） */
+    @Inject(method = "renderHotbar", at = @At("HEAD"), cancellable = true)
+    private void onRenderHotbar(float partialTick, GuiGraphics graphics, CallbackInfo ci) {
+        if (HudRenderer.shouldCancelVanilla(HudRenderer.VanillaOverlayId.HOTBAR)) ci.cancel();
+    }
+
 }

@@ -551,7 +551,7 @@ public final class HudLayoutScreen extends Screen {
         // 分类分组（多级菜单:状态条 / 文本 / 图标 / 信息类）
         String[][] cats = {
                 {"z80zhealthbar.editor.cat_bars", "health", "food", "air", "armor", "mount", "experience",
-                        "compat", "saturation_bar"},
+                        "compat", "saturation_bar", "hotbar"},
                 {"z80zhealthbar.editor.cat_texts", "health_text", "food_text", "air_text", "armor_text",
                         "mount_text", "xp_text", "saturation_text", "text"},
                 {"z80zhealthbar.editor.cat_icons", "health_icon", "food_icon", "air_icon", "armor_icon", "mount_icon"},
@@ -1039,6 +1039,30 @@ public final class HudLayoutScreen extends Screen {
         // ---- 子组件入口（文本/图标各一个独立参数页,与主组件互不干扰） ----
         // 类型过滤：无该部件的类型不显示入口（如经验无状态图标,compat 无文本无图标）
         String selType = HudLayoutConfig.typeOf(selected, c);
+        if (selType.equals(HudLayoutConfig.HOTBAR)) {
+            // hotbar 特判:槽位序号说明 + 重置到推荐位（相对原版位置的偏移归零）
+            int hn = 1;
+            int h0 = selected.indexOf('#');
+            if (h0 > 0) {
+                try { hn = Integer.parseInt(selected.substring(h0 + 1)); } catch (NumberFormatException ignored) { }
+            }
+            final int slotNo = hn;
+            panelEntries.add(new PEntry("z80zhealthbar.editor.hotbar.slot_note", null, null) );
+            panelEntries.add(listRow(() -> Component.translatable("z80zhealthbar.editor.hotbar.slot_no", slotNo).getString(),
+                    "z80zhealthbar.editor.hotbar.reset", () -> {
+                        c.offsetX = 0;
+                        c.offsetY = 0;
+                        c.scale = 1.0;
+                        c.opacity = 100;
+                        markDirty();
+                    }));
+            panelEntries.add(new PEntry("z80zhealthbar.editor.section.color", null, null));
+            panelEntries.add(colorRow("z80zhealthbar.editor.color.card", () -> c.colorCard, v -> c.colorCard = v));
+            addComponentActions(selected);
+            panelEntries.add(backRow());
+            return;
+        }
+        // selType 已声明（上方插入块内）
         if (selType.equals(HudLayoutConfig.COMPAT) || selType.startsWith("compat_")) {
             // compat 特判：多行动态行的文本部件参数（开关/模板/对齐/偏移/缩放;
             // 行间距由上方"间距"行控制,渲染端已接入）

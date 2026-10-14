@@ -175,6 +175,8 @@ public class HudLayoutConfig {
     public static final String MOUNT = "mount";
     /** 兼容状态组件组（thirst/stamina/exhaustion 等，动态行） */
     public static final String COMPAT = "compat";
+    /** 快捷栏槽位组件（hotbar#1..#9,取消原版 hotbar 由本模组重绘;仅 CUSTOM 模式） */
+    public static final String HOTBAR = "hotbar";
 
     public Map<String, ComponentLayout> components = defaultComponents();
 
@@ -361,7 +363,7 @@ public class HudLayoutConfig {
 
     /** 可添加的原子组件类型（编辑器"添加组件"清单;条/纯文本/纯图标/自由文本/信息类/兼容单行） */
     public static final List<String> ADDABLE_TYPES = List.of(
-            HEALTH, FOOD, AIR, ARMOR, MOUNT, EXPERIENCE, COMPAT,
+            HEALTH, FOOD, AIR, ARMOR, MOUNT, EXPERIENCE, COMPAT, HOTBAR,
             "health_text", "food_text", "air_text", "armor_text", "mount_text", "xp_text",
             "health_icon", "food_icon", "air_icon", "armor_icon", "mount_icon",
             "text",
