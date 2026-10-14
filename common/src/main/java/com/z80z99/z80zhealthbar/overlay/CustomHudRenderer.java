@@ -114,7 +114,7 @@ public final class CustomHudRenderer {
                     } else if (type.equals("saturation_bar")) {
                         renderSaturationBar(graphics, mc, player, c);
                     } else if (type.equals(HudLayoutConfig.HOTBAR)) {
-                        renderHotbar(graphics, mc, player, c, compAlpha);
+                        renderHotbar(graphics, mc, player, c, compAlpha, key);
                     } else if (type.startsWith("compat_")) {
                         // 兼容状态单行组件（compat_saturation/exhaustion/thirst/stamina）:
                         // 从兼容组拆出的独立行,可单独摆放/配置（实测"上下不能分开成两个组件"）
@@ -927,43 +927,46 @@ public final class CustomHudRenderer {
 
     /**
      * hotbar 组件（单组件 9 槽）:取消原版物品栏后由本模组重绘。
-     * <p>坐标以组件框（182x22）左上角为原点（外层已平移到求解器盒体——
-     * 旧实现用绝对屏幕坐标叠加平移，画到屏幕外即"槽不显示东西"的根因）。
-     * 原版几何:条 (cx-91, sh-22) 182x22;槽 i (1+i*20, 3) 16x16;选中框 (sel*20-1, -1) 24x22。
-     * 每槽独立:offset/scale/opacity/背景+渐变/边框/隐藏（HotbarSlot）。
+     * <p>坐标以组件框（182x22）左上角为原点（外层已平移到求解器盒体）。
+     * **单元格几何 = 原版精确值**（1.20.1 Gui.renderHotbar 字节码逐条核实）:
+     * 格体 i = 20x20 @ (1+20i, 1);物品内容 = 格体+(2,2)（即原版 (3+20i, 3)）;
+     * 选中框 = 格体+(-2,-2) 尺寸 24x22（即原版 (-1+20i, -1),框内缘恰好包住格体）——
+     * 旧实现内容用 (1+20i,3)、选中框用内容+(-2,-4),与格体错位即"选中框和槽位没对准"。
+     * 每槽独立:offset/scale/opacity/背景+渐变/边框/动态HUD/隐藏（HotbarSlot）。
      */
     private static void renderHotbar(GuiGraphics g, Minecraft mc, Player player,
-                                     ComponentLayout c, float compAlpha) {
+                                     ComponentLayout c, float compAlpha, String key) {
         var inv = player.getInventory();
         var pose = g.pose();
         for (int i = 0; i < 9; i++) {
             var s = c.hotbarSlot(i);
             if (s.hidden) continue;
-            float eff = compAlpha * (Math.max(0, Math.min(100, s.opacity)) / 100f);
-            if (eff <= 0.01f) continue;
             var stack = i < inv.items.size() ? inv.items.get(i) : net.minecraft.world.item.ItemStack.EMPTY;
+            // 透明度 = 组件级 × 槽级 × 槽位动态HUD（物品签名无变化 N 秒后淡出）
+            float eff = compAlpha * (Math.max(0, Math.min(100, s.opacity)) / 100f)
+                    * slotIdleAlpha(key, i, stack, s.idleFadeSecs);
+            if (eff <= 0.01f) continue;
             boolean sel = inv.selected == i;
-            int sx = 1 + i * 20 + s.offsetX; // 槽位左上（16x16,局部坐标）
-            int sy = 3 + s.offsetY;
+            int cx = 1 + i * 20 + s.offsetX; // 格体左上（20x20,局部坐标）
+            int cy = 1 + s.offsetY;
             pose.pushPose();
-            pose.translate(sx + 8, sy + 8, 0); // 以槽中心为原点（缩放/绘制统一）
+            pose.translate(cx + 10, cy + 10, 0); // 以格体中心为原点
             float sc = (float) Math.max(0.25, Math.min(4.0, s.scale));
             if (Math.abs(sc - 1f) > 1e-3f) pose.scale(sc, sc, 1f);
-            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, eff); // 通道 alpha 统一由 shader 应用（颜色 alpha 保持原值,避免双乘）
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, eff);
             try {
-                // 背景（默认原版深色底;bgColor2 非空 = 渐变）
+                // 背景（bgColor 留空=默认深色底;"#00000000"=完全透明,可见世界）
                 int bg1 = parseOr(s.bgColor, 0x900B1018);
                 if (s.bgColor2 != null && !s.bgColor2.isBlank()) {
                     int bg2 = parseOr(s.bgColor2, bg1);
-                    drawSlotGradient(g, -8, -8, 16, 16, s.gradientDir, bg1, bg2);
+                    drawSlotGradient(g, -10, -10, 20, 20, s.gradientDir, bg1, bg2);
                 } else {
-                    g.fill(-8, -8, 8, 8, bg1);
+                    g.fill(-10, -10, 10, 10, bg1);
                 }
-                // 边框
-                drawSlotBorder(g, -8, -8, 16, 16, s.borderStyle, parseOr(s.borderColor, 0x66FFFFFF));
-                // 选中框（原版 highlights;随该槽偏移/缩放）
-                if (sel) g.blit(WIDGETS_TEX, -10, -12, 0, 22, 24, 22, 256, 256);
-                // 物品 + 数量/耐久
+                drawSlotBorder(g, -10, -10, 20, 20, s.borderStyle, parseOr(s.borderColor, 0x66FFFFFF));
+                // 选中框（原版 highlights (0,22)24x22:格体+(-2,-2),框内缘包住格体）
+                if (sel) g.blit(WIDGETS_TEX, -12, -12, 0, 22, 24, 22, 256, 256);
+                // 物品 + 数量/耐久（内容=格体+(2,2),即原版 (3+20i,3)）
                 if (!stack.isEmpty()) {
                     g.renderItem(stack, -8, -8);
                     g.renderItemDecorations(mc.font, stack, -8, -8);
@@ -973,14 +976,34 @@ public final class CustomHudRenderer {
                 pose.popPose();
             }
         }
-        if (compAlpha < 1f) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, compAlpha); // 与进入时一致（外层 finally 复位）
+        if (compAlpha < 1f) com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1f, 1f, 1f, compAlpha);
     }
 
-    /** 解析颜色;空串/非法回退 fallback */
+    /** 槽位动态HUD跟踪（键 = 组件键#槽号 → 物品签名/上次变化时刻） */
+    private static final java.util.Map<String, String> SLOT_IDLE_LAST = new java.util.HashMap<>();
+    private static final java.util.Map<String, Long> SLOT_IDLE_AT = new java.util.HashMap<>();
+
+    /** 槽位动态HUD:物品（种类/数量/耐久）无变化 N 秒后淡出至 5%,变化瞬间恢复 */
+    private static float slotIdleAlpha(String key, int idx, net.minecraft.world.item.ItemStack stack, int idleSecs) {
+        if (idleSecs <= 0) return 1f;
+        String sig = stack.isEmpty() ? ""
+                : stack.getItem() + "x" + stack.getCount() + "d" + stack.getDamageValue();
+        String k = key + "#" + idx;
+        long now = System.currentTimeMillis();
+        String last = SLOT_IDLE_LAST.put(k, sig);
+        if (!sig.equals(last)) SLOT_IDLE_AT.put(k, now);
+        long changedAt = SLOT_IDLE_AT.getOrDefault(k, now);
+        long dt = now - changedAt;
+        if (dt <= idleSecs * 1000L) return 1f;
+        return Math.max(0.05f, 1f - Math.min(1f, (dt - idleSecs * 1000L) / 600f));
+    }
+
+    /** 解析颜色;空串/非法回退 fallback。**全透明 (#00xxxxxx) 是合法值**——旧实现把解析结果 0
+     *  当失败回退默认色,"背景不能设成透明色"根因（实测反馈） */
     private static int parseOr(String hex, int fallback) {
         if (hex == null || hex.isBlank()) return fallback;
-        int v = ColorHelper.parseColor(hex);
-        return v == 0 ? fallback : v;
+        Integer v = ColorHelper.parseColorSafe(hex);
+        return v == null ? fallback : v;
     }
 
     /** 槽位背景渐变:0=垂直 1=水平(逐列) 2=对角(逐列+纵向微移) */

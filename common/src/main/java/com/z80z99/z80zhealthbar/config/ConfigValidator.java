@@ -216,6 +216,7 @@ public final class ConfigValidator {
                     hs.opacity = clamp(hs.opacity, 0, 100);
                     hs.gradientDir = clamp(hs.gradientDir, 0, 2);
                     hs.borderStyle = clamp(hs.borderStyle, 0, 3);
+                    hs.idleFadeSecs = clamp(hs.idleFadeSecs, 0, 60);
                 }
             }
             cl.iconOffsetY = clamp(cl.iconOffsetY, -500, 500);

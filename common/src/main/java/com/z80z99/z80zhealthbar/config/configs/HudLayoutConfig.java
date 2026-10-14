@@ -105,6 +105,8 @@ public class HudLayoutConfig {
             public String borderColor = "";
             /** 隐藏该槽（不绘制背景与物品） */
             public boolean hidden = false;
+            /** 该槽动态HUD（秒）:物品（种类/数量/耐久）无变化 N 秒后淡出至 5%（0=关） */
+            public int idleFadeSecs = 0;
 
             public HotbarSlot copy() {
                 HotbarSlot s = new HotbarSlot();
@@ -113,6 +115,7 @@ public class HudLayoutConfig {
                 s.bgColor = bgColor; s.bgColor2 = bgColor2;
                 s.gradientDir = gradientDir; s.borderStyle = borderStyle;
                 s.borderColor = borderColor; s.hidden = hidden;
+                s.idleFadeSecs = idleFadeSecs;
                 return s;
             }
         }

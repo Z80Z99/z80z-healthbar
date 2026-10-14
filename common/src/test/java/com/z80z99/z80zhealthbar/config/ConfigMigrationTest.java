@@ -84,6 +84,13 @@ class ConfigMigrationTest {
         assertEquals("#FF112233", main.hotbarSlot(0).bgColor);
         assertEquals(0, main.hotbarSlot(1).offsetX);
         assertEquals(1.0, main.hotbarSlot(8).scale, 1e-9);
+        // copy 深拷贝槽位数组（含新增字段）——复制组件/多实例不丢每槽设置
+        main.hotbarSlot(3).idleFadeSecs = 7;
+        main.hotbarSlot(3).bgColor = "#00000000"; // 透明色是合法值
+        var dupe = main.copy();
+        assertEquals(7, dupe.hotbarSlot(3).idleFadeSecs);
+        assertEquals("#00000000", dupe.hotbarSlot(3).bgColor);
+        assertNotSame(main.hotbarSlot(3), dupe.hotbarSlot(3));
     }
 
     @Test
