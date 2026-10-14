@@ -586,6 +586,8 @@
   "z80zhealthbar.editor.cat_compat": "Compat stats",
   "z80zhealthbar.hud.component.hotbar": "Hotbar slot",
   "z80zhealthbar.editor.hotbar.slot_note": "Hotbar slot: the vanilla hotbar is replaced by this in Custom mode. Add all 9 (hotbar#1..#9) and position them to rebuild the whole bar your way.",
+  "z80zhealthbar.editor.hotbar.slots_section": "Slots (independent sub-components, not removable)",
+  "z80zhealthbar.editor.hotbar.slot_title": "Current slot",
   "z80zhealthbar.editor.hotbar.note": "Hotbar (9 slots in one component): replaces the vanilla hotbar once enabled. Pick the slot above; the settings below apply to that slot only.",
   "z80zhealthbar.editor.hotbar.slot": "Edit slot",
   "z80zhealthbar.editor.hotbar.slot.fmt": "Slot {0}",

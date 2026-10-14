@@ -586,6 +586,8 @@
   "z80zhealthbar.editor.cat_compat": "兼容状态",
   "z80zhealthbar.hud.component.hotbar": "快捷栏槽位",
   "z80zhealthbar.editor.hotbar.slot_note": "快捷栏槽位：取消原版物品栏后由本模组重绘。添加 9 个（hotbar#1..#9）后按建议位置摆放,即可整体自定义。",
+  "z80zhealthbar.editor.hotbar.slots_section": "槽位（每格独立子组件，不可删除）",
+  "z80zhealthbar.editor.hotbar.slot_title": "当前槽位",
   "z80zhealthbar.editor.hotbar.note": "快捷栏（9 槽单组件）：取消原版物品栏后由本模组重绘。上方选择要编辑的槽位，下方参数只影响该槽。",
   "z80zhealthbar.editor.hotbar.slot": "编辑槽位",
   "z80zhealthbar.editor.hotbar.slot.fmt": "第 {0} 格",

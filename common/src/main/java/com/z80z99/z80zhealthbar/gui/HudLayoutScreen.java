@@ -161,7 +161,7 @@ public final class HudLayoutScreen extends Screen {
     private record PW(AbstractWidget widget, int relX) {}
 
     /** 面板页：LIST = 清单+全局操作;EDIT = 对象参数页;ADD = 类型选择;GROUP = 分组成员;SUB_TEXT/SUB_ICON = 子组件页 */
-    private enum PanelPage { LIST, EDIT, ADD, GROUP, SUB_TEXT, SUB_ICON }
+    private enum PanelPage { LIST, EDIT, ADD, GROUP, SUB_TEXT, SUB_ICON, HOTBAR_SLOT }
 
     private PanelPage panelPage = PanelPage.LIST;
     /** GROUP 页当前查看的分组名 */
@@ -358,6 +358,7 @@ public final class HudLayoutScreen extends Screen {
             case GROUP -> buildGroupPage();
             case SUB_TEXT -> buildSubText();
             case SUB_ICON -> buildSubIcon();
+            case HOTBAR_SLOT -> buildHotbarSlotPage();
             case EDIT -> {
                 if (asteor && selectedAsteorBar == null) { panelPage = PanelPage.LIST; buildAsteorList(); }
                 else if (asteor) buildAsteorEdit();
@@ -469,6 +470,7 @@ public final class HudLayoutScreen extends Screen {
                 panelPage = PanelPage.EDIT;
                 rebuildWidgets();
             }));
+            appendHotbarSlotRows(key, mc); // hotbar:9 槽缩进子行（独立子组件,不可删除）
             // 子组件是否拆分由主组件锚点字段判定（拆分数据存在主组件字段,map 无独立键）;
             // 已分组的父组件其子件收纳在组页,列表不再重复显示
             boolean textDetached = mc != null && mc.showText && mc.textAnchorParsed() != null
@@ -627,6 +629,7 @@ public final class HudLayoutScreen extends Screen {
                 panelPage = PanelPage.EDIT;
                 rebuildWidgets();
             }));
+            appendHotbarSlotRows(key, cc); // hotbar 在组内同样展开槽子行
             // 组合收纳拆分子件：文本/图标作为组合成员列出（配置在父件字段,无独立键）
             if (cc.showText && cc.textAnchorParsed() != null) {
                 String td = displayNameOf(key) + " · "
@@ -664,6 +667,66 @@ public final class HudLayoutScreen extends Screen {
     }
 
     /** 文本子组件页：主组件的文本部件参数（独立层级,互不干扰） */
+    /** hotbar 主组件行下方追加 9 个槽位子组件行（缩进;直达各槽独立编辑页） */
+    private void appendHotbarSlotRows(String key, ComponentLayout c) {
+        if (c == null || !HudLayoutConfig.HOTBAR.equals(HudLayoutConfig.typeOf(key, c))) return;
+        for (int i = 0; i < 9; i++) {
+            final int slotIdx = i;
+            String label = displayNameOf(key) + " · " + Component.translatable(
+                    "z80zhealthbar.editor.hotbar.slot.fmt", i + 1).getString();
+            panelEntries.add(listRow(() -> "   " + label, "z80zhealthbar.editor.adjust", () -> {
+                selected = key;
+                hotbarEditSlot = slotIdx;
+                panelPage = PanelPage.HOTBAR_SLOT;
+                rebuildWidgets();
+            }));
+        }
+    }
+
+    /** hotbar 槽位编辑页（独立子组件页:参数只作用于该槽;**无删除/复制动作**——槽是固定子件） */
+    private void buildHotbarSlotPage() {
+        ComponentLayout c = layout().get(baseKey(selected));
+        panelEntries.add(backRow());
+        panelEntries.add(new PEntry(null, "z80zhealthbar.editor.hotbar.slot_title",
+                () -> Component.translatable("z80zhealthbar.editor.hotbar.slot.fmt",
+                        hotbarEditSlot + 1).getString()));
+        java.util.function.Supplier<com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout.HotbarSlot> hsLive =
+                () -> c.hotbarSlot(hotbarEditSlot);
+        panelEntries.add(toggle("z80zhealthbar.editor.hotbar.hidden",
+                () -> hsLive.get().hidden, v -> hsLive.get().hidden = v));
+        panelEntries.add(stepper("z80zhealthbar.editor.pos_x",
+                () -> hsLive.get().offsetX, v -> hsLive.get().offsetX = (int) Math.round(v), -200, 200, 1));
+        panelEntries.add(stepper("z80zhealthbar.editor.pos_y",
+                () -> hsLive.get().offsetY, v -> hsLive.get().offsetY = (int) Math.round(v), -200, 200, 1));
+        panelEntries.add(stepper1("z80zhealthbar.editor.component_scale",
+                () -> hsLive.get().scale, v -> hsLive.get().scale = v, 0.25, 4.0, 0.05));
+        panelEntries.add(stepper("z80zhealthbar.editor.opacity",
+                () -> hsLive.get().opacity, v -> hsLive.get().opacity = (int) Math.round(v), 0, 100, 5));
+        panelEntries.add(stepper("z80zhealthbar.editor.idle_fade",
+                () -> hsLive.get().idleFadeSecs, v -> hsLive.get().idleFadeSecs = (int) Math.round(v), 0, 60, 1));
+        // 背景与渐变
+        panelEntries.add(new PEntry("z80zhealthbar.editor.section.color", null, null));
+        panelEntries.add(colorRow("z80zhealthbar.editor.hotbar.bg", () -> hsLive.get().bgColor, v -> hsLive.get().bgColor = v));
+        panelEntries.add(colorRow("z80zhealthbar.editor.hotbar.bg2", () -> hsLive.get().bgColor2, v -> hsLive.get().bgColor2 = v));
+        panelEntries.add(cycler("z80zhealthbar.editor.hotbar.grad",
+                () -> Component.translatable("z80zhealthbar.editor.hotbar.grad." + hsLive.get().gradientDir).getString(),
+                () -> hsLive.get().gradientDir = (hsLive.get().gradientDir + 1) % 3));
+        // 边框
+        panelEntries.add(new PEntry("z80zhealthbar.editor.section.border", null, null));
+        panelEntries.add(cycler("z80zhealthbar.editor.hotbar.border",
+                () -> Component.translatable("z80zhealthbar.editor.hotbar.border." + hsLive.get().borderStyle).getString(),
+                () -> hsLive.get().borderStyle = (hsLive.get().borderStyle + 1) % 4));
+        panelEntries.add(colorRow("z80zhealthbar.editor.hotbar.border_color",
+                () -> hsLive.get().borderColor, v -> hsLive.get().borderColor = v));
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.hotbar.reset_slot").getString(),
+                "z80zhealthbar.editor.hotbar.reset", () -> {
+                    c.hotbarSlot(hotbarEditSlot);
+                    c.hotbarSlots.set(hotbarEditSlot, new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout.HotbarSlot());
+                    markDirty();
+                }));
+    }
+
     private void buildSubText() {
         ComponentLayout c = layout().get(baseKey(selected));
         panelEntries.add(backRow());
@@ -1053,50 +1116,10 @@ public final class HudLayoutScreen extends Screen {
         // 类型过滤：无该部件的类型不显示入口（如经验无状态图标,compat 无文本无图标）
         String selType = HudLayoutConfig.typeOf(selected, c);
         if (selType.equals(HudLayoutConfig.HOTBAR)) {
-            // hotbar 特判:槽位序号说明 + 重置到推荐位（相对原版位置的偏移归零）
-            int hn = 1;
+            // 槽位是固定子件:本页只放"整条"参数（位置/缩放等在通用节）,槽位经下方 9 行子组件进入
             panelEntries.add(PEntry.note("z80zhealthbar.editor.hotbar.note"));
-            // 槽位选择（1..9 循环）——下方所有参数作用于当前选择的槽位
-            panelEntries.add(cycler("z80zhealthbar.editor.hotbar.slot",
-                    () -> Component.translatable("z80zhealthbar.editor.hotbar.slot.fmt", hotbarEditSlot + 1).getString(),
-                    () -> hotbarEditSlot = (hotbarEditSlot + 1) % 9));
-            // **实时访问器**——旧实现构建面板时捕获槽对象,切换选择器后参数仍写旧槽
-            // （实测"编辑槽位功能不生效/只编辑到某个槽"的根因）
-            java.util.function.Supplier<com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout.HotbarSlot> hsLive =
-                    () -> c.hotbarSlot(hotbarEditSlot);
-            panelEntries.add(toggle("z80zhealthbar.editor.hotbar.hidden",
-                    () -> hsLive.get().hidden, v -> hsLive.get().hidden = v));
-            panelEntries.add(stepper("z80zhealthbar.editor.pos_x",
-                    () -> hsLive.get().offsetX, v -> hsLive.get().offsetX = (int) Math.round(v), -200, 200, 1));
-            panelEntries.add(stepper("z80zhealthbar.editor.pos_y",
-                    () -> hsLive.get().offsetY, v -> hsLive.get().offsetY = (int) Math.round(v), -200, 200, 1));
-            panelEntries.add(stepper1("z80zhealthbar.editor.component_scale",
-                    () -> hsLive.get().scale, v -> hsLive.get().scale = v, 0.25, 4.0, 0.05));
-            panelEntries.add(stepper("z80zhealthbar.editor.opacity",
-                    () -> hsLive.get().opacity, v -> hsLive.get().opacity = (int) Math.round(v), 0, 100, 5));
-            panelEntries.add(stepper("z80zhealthbar.editor.idle_fade",
-                    () -> hsLive.get().idleFadeSecs, v -> hsLive.get().idleFadeSecs = (int) Math.round(v), 0, 60, 1));
-            // 背景与渐变
-            panelEntries.add(new PEntry("z80zhealthbar.editor.section.color", null, null));
-            panelEntries.add(colorRow("z80zhealthbar.editor.hotbar.bg", () -> hsLive.get().bgColor, v -> hsLive.get().bgColor = v));
-            panelEntries.add(colorRow("z80zhealthbar.editor.hotbar.bg2", () -> hsLive.get().bgColor2, v -> hsLive.get().bgColor2 = v));
-            panelEntries.add(cycler("z80zhealthbar.editor.hotbar.grad",
-                    () -> Component.translatable("z80zhealthbar.editor.hotbar.grad." + hsLive.get().gradientDir).getString(),
-                    () -> hsLive.get().gradientDir = (hsLive.get().gradientDir + 1) % 3));
-            // 边框
-            panelEntries.add(new PEntry("z80zhealthbar.editor.section.border", null, null));
-            panelEntries.add(cycler("z80zhealthbar.editor.hotbar.border",
-                    () -> Component.translatable("z80zhealthbar.editor.hotbar.border." + hsLive.get().borderStyle).getString(),
-                    () -> hsLive.get().borderStyle = (hsLive.get().borderStyle + 1) % 4));
-            panelEntries.add(colorRow("z80zhealthbar.editor.hotbar.border_color",
-                    () -> hsLive.get().borderColor, v -> hsLive.get().borderColor = v));
-            panelEntries.add(listRow(
-                    () -> Component.translatable("z80zhealthbar.editor.hotbar.reset_slot").getString(),
-                    "z80zhealthbar.editor.hotbar.reset", () -> {
-                        c.hotbarSlot(hotbarEditSlot); // 确保列表就绪
-                        c.hotbarSlots.set(hotbarEditSlot, new com.z80z99.z80zhealthbar.config.configs.HudLayoutConfig.ComponentLayout.HotbarSlot());
-                        markDirty();
-                    }));
+            panelEntries.add(new PEntry("z80zhealthbar.editor.hotbar.slots_section", null, null));
+            appendHotbarSlotRows(selected, c);
             addComponentActions(selected);
             panelEntries.add(backRow());
             return;
@@ -1811,7 +1834,7 @@ public final class HudLayoutScreen extends Screen {
                         hbGrabY = (int) mouseY;
                         hbStartOffX = sl.offsetX;
                         hbStartOffY = sl.offsetY;
-                        panelPage = PanelPage.EDIT;
+                        panelPage = PanelPage.HOTBAR_SLOT; // 直达该槽的独立子组件页
                         rebuildWidgets();
                         return true;
                     }
