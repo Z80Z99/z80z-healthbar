@@ -94,6 +94,8 @@ public final class HudLayoutScreen extends Screen {
     private int hotbarDragSlot = -1;
     private int hbGrabX, hbGrabY, hbStartOffX, hbStartOffY;
     private float hbDragScale = 1f;
+    /** 本次槽拖拽是否已产生真实位移（区分"点击进页"与"拖动"——纯点击松手后进槽编辑页） */
+    private boolean hbDragMoved = false;
 
     public HudLayoutScreen(Screen parent) {
         super(Component.translatable("z80zhealthbar.editor.title"));
@@ -470,7 +472,6 @@ public final class HudLayoutScreen extends Screen {
                 panelPage = PanelPage.EDIT;
                 rebuildWidgets();
             }));
-            appendHotbarSlotRows(key, mc); // hotbar:9 槽缩进子行（独立子组件,不可删除）
             // 子组件是否拆分由主组件锚点字段判定（拆分数据存在主组件字段,map 无独立键）;
             // 已分组的父组件其子件收纳在组页,列表不再重复显示
             boolean textDetached = mc != null && mc.showText && mc.textAnchorParsed() != null
@@ -629,7 +630,6 @@ public final class HudLayoutScreen extends Screen {
                 panelPage = PanelPage.EDIT;
                 rebuildWidgets();
             }));
-            appendHotbarSlotRows(key, cc); // hotbar 在组内同样展开槽子行
             // 组合收纳拆分子件：文本/图标作为组合成员列出（配置在父件字段,无独立键）
             if (cc.showText && cc.textAnchorParsed() != null) {
                 String td = displayNameOf(key) + " · "
@@ -667,24 +667,6 @@ public final class HudLayoutScreen extends Screen {
     }
 
     /** 文本子组件页：主组件的文本部件参数（独立层级,互不干扰） */
-    /** hotbar 主组件行下方追加**已添加**槽位的子组件行（缩进;直达各槽独立编辑页。
-     *  未添加（hidden）的槽位不列行——与文本/图标子件同形式,经主组件页"添加"行启用） */
-    private void appendHotbarSlotRows(String key, ComponentLayout c) {
-        if (c == null || !HudLayoutConfig.HOTBAR.equals(HudLayoutConfig.typeOf(key, c))) return;
-        for (int i = 0; i < 9; i++) {
-            final int slotIdx = i;
-            if (c.hotbarSlot(i).hidden) continue; // 未添加的槽位不出现在列表
-            String label = displayNameOf(key) + " · " + Component.translatable(
-                    "z80zhealthbar.editor.hotbar.slot.fmt", i + 1).getString();
-            panelEntries.add(listRow(() -> "   " + label, "z80zhealthbar.editor.adjust", () -> {
-                selected = key;
-                hotbarEditSlot = slotIdx;
-                panelPage = PanelPage.HOTBAR_SLOT;
-                rebuildWidgets();
-            }));
-        }
-    }
-
     /** hotbar 槽位编辑页（独立子组件页:参数只作用于该槽;**无删除/复制动作**——槽是固定子件） */
     private void buildHotbarSlotPage() {
         ComponentLayout c = layout().get(baseKey(selected));
@@ -1856,44 +1838,41 @@ public final class HudLayoutScreen extends Screen {
         }
         Map<String, int[]> sizes = CustomHudRenderer.measureAll(layout(), minecraft == null ? null : minecraft.player);
         Map<String, HudLayoutSolver.Box> boxes = HudLayoutSolver.solve(layout(), sizes, width, height);
+        // hotbar 槽位优先命中（**不看组件框**——槽位可被拖出框外,必须能重新抓回。
+        // 旧实现把槽位命中放在"点击须在组件框内"的内层判定,槽位拖出框后永远点不到 = "无法拖动"根因）
+        for (Map.Entry<String, ComponentLayout> ce : layout().components.entrySet()) {
+            var hbComp = ce.getValue();
+            if (hbComp == null || !HudLayoutConfig.HOTBAR.equals(
+                    HudLayoutConfig.typeOf(ce.getKey(), hbComp))) continue;
+            if (hbComp.modeParsed() == HudLayoutConfig.ComponentMode.OFF) continue;
+            var hbBox = boxes.get(ce.getKey());
+            if (hbBox == null) continue;
+            float k = (float) hbComp.scale;
+            for (int si = 0; si < 9; si++) {
+                var sl = hbComp.hotbarSlot(si);
+                if (sl.hidden) continue; // 未添加的槽位不可点选
+                double gx = hbBox.x() + (1 + si * 20 + sl.offsetX) * k;
+                double gy = hbBox.y() + (1 + sl.offsetY) * k;
+                if (mouseX >= gx && mouseX < gx + 20 * k && mouseY >= gy && mouseY < gy + 20 * k) {
+                    selected = ce.getKey();
+                    hotbarEditSlot = si;
+                    hotbarDragSlot = si;
+                    hbDragMoved = false;
+                    hbDragScale = k;
+                    hbGrabX = (int) mouseX;
+                    hbGrabY = (int) mouseY;
+                    hbStartOffX = sl.offsetX;
+                    hbStartOffY = sl.offsetY;
+                    // 页面切换延后到松手且未拖动时（拖拽优先,拖动中面板不跳动）
+                    rebuildWidgets();
+                    return true;
+                }
+            }
+        }
         for (Map.Entry<String, HudLayoutSolver.Box> e : boxes.entrySet()) {
             HudLayoutSolver.Box box = e.getValue();
             if (mouseX >= box.x() && mouseX <= box.x() + box.width()
                     && mouseY >= box.y() && mouseY <= box.y() + box.height()) {
-                // hotbar:先测点击是否落在某个槽格上（含槽偏移,scale 换算）——
-                // 命中则选中该槽并进入槽拖拽（子组件式交互,免步进微调）
-                String hbKey = e.getKey();
-                var hbComp = layout().peek(hbKey);
-                if (hbComp != null && HudLayoutConfig.HOTBAR.equals(
-                        HudLayoutConfig.typeOf(hbKey, hbComp))) {
-                    float k = (float) hbComp.scale;
-                    int hitSlot = -1;
-                    for (int si = 0; si < 9; si++) {
-                        var sl = hbComp.hotbarSlot(si);
-                        if (sl.hidden) continue; // 未添加的槽位不可点选
-                        double gx = box.x() + (1 + si * 20 + sl.offsetX) * k;
-                        double gy = box.y() + (1 + sl.offsetY) * k;
-                        if (mouseX >= gx && mouseX < gx + 20 * k
-                                && mouseY >= gy && mouseY < gy + 20 * k) {
-                            hitSlot = si;
-                            break;
-                        }
-                    }
-                    if (hitSlot >= 0) {
-                        selected = hbKey;
-                        hotbarEditSlot = hitSlot;
-                        var sl = hbComp.hotbarSlot(hitSlot);
-                        hotbarDragSlot = hitSlot;
-                        hbDragScale = k;
-                        hbGrabX = (int) mouseX;
-                        hbGrabY = (int) mouseY;
-                        hbStartOffX = sl.offsetX;
-                        hbStartOffY = sl.offsetY;
-                        panelPage = PanelPage.HOTBAR_SLOT; // 直达该槽的独立子组件页
-                        rebuildWidgets();
-                        return true;
-                    }
-                }
                 boolean changed = !e.getKey().equals(selected);
                 selected = e.getKey();
                 dragging = true;
@@ -1958,6 +1937,9 @@ public final class HudLayoutScreen extends Screen {
             var hbC = layout().peek(selected);
             if (hbC != null && HudLayoutConfig.HOTBAR.equals(HudLayoutConfig.typeOf(selected, hbC))) {
                 var sl = hbC.hotbarSlot(hotbarDragSlot);
+                if (Math.abs((int) mouseX - hbGrabX) > 2 || Math.abs((int) mouseY - hbGrabY) > 2) {
+                    hbDragMoved = true; // 超过阈值才算拖动（点击进页 vs 拖动移位的分界）
+                }
                 float k = hbDragScale <= 0.01f ? 1f : hbDragScale;
                 sl.offsetX = Math.max(-500, Math.min(500,
                         hbStartOffX + Math.round(((int) mouseX - hbGrabX) / k)));
@@ -1977,8 +1959,14 @@ public final class HudLayoutScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (hotbarDragSlot >= 0 && !hbDragMoved && editingCustom()) {
+            // 纯点击（未拖动）→ 进入该槽的独立编辑页;拖动过则只完成移位,页面不变
+            panelPage = PanelPage.HOTBAR_SLOT;
+            rebuildWidgets();
+        }
         dragging = false;
         hotbarDragSlot = -1;
+        hbDragMoved = false;
         draggingAsteorBar = null;
         draggingAsteorIcon = false;
         draggingAsteorText = false;
