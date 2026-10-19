@@ -1,6 +1,18 @@
 # Z80Z Health Bar (z80zhealthbar)
 
-Minecraft 1.20.1 综合生命值与状态栏 MOD —— 整合 mobhealthbar / Mob Plaques / AsteorBar 三者功能与视觉体验的净室重实现（行为参考，零代码/零素材复用，见 [docs/third-party-licenses.md](docs/third-party-licenses.md)）。
+A Minecraft 1.20.1 health bar and player HUD mod for Forge and Fabric — entity health display, a fully customisable player HUD, an in-game layout editor and optional AppleSkin / Thirst Was Taken / ParCool integration.
+
+Minecraft 1.20.1 · Forge 47.x or Fabric Loader 0.15.11+ · Java 17 · Client and server
+
+本项目是 mobhealthbar / Mob Plaques / AsteorBar 三者功能与视觉体验的净室重实现（行为参考，零代码/零素材复用，见 [docs/third-party-licenses.md](docs/third-party-licenses.md)）。
+
+## 安装
+
+1. 安装 **Forge 47.x** 或 **Fabric Loader 0.15.11+**（Fabric 版另需 Fabric API）。
+2. 从 [Releases](https://github.com/Z80Z99/z80z-healthbar/releases) 下载对应加载器的 jar，放入 `mods` 文件夹。
+3. 启动游戏。Forge 版零额外依赖，无需 Architectury API。
+
+进入设置：Forge 模组列表的 **Config** 按钮、Fabric 的 ModMenu，或在「按键绑定」中绑定打开设置的按键。
 
 ## 功能总览
 
@@ -19,9 +31,9 @@ Minecraft 1.20.1 综合生命值与状态栏 MOD —— 整合 mobhealthbar / Mo
 - `CUSTOM`：六大组件（生命/饥饿/氧气/经验/护甲/坐骑）逐项选 长条/图标/关闭 + 9 锚点 + 拖拽偏移 + 缩放 + 间距 + 文本开关，另含兼容状态组件组
 
 **游戏内界面**
-- 五页设置界面（主页/实体/HUD/兼容/高级）：Forge Mod 列表 Config 按钮、Fabric ModMenu、快捷键均可进入
+- 五页设置界面（主页/实体/HUD/兼容/高级），所有改动即时生效
 - HUD 布局编辑器：点击拖拽、滚轮缩放、方向键微调、锚点/模式/间距切换、对齐辅助线、组件级/整体重置；预览与运行时共用同一布局求解器
-- 7 个可改键位（默认 K/M/B，其余未绑定；避开原 MOD 的 H/J/F8/F10）
+- 7 个可改键位：`K` 切换玩家 HUD、`M` 切换实体血条，其余默认未绑定（避开原 MOD 的 H/J/F8/F10）
 - 简体中文 + English 全量 lang；配置校验（非法值夹取回退）、v1→v2 迁移、导入导出（剪贴板）
 
 **第三方兼容（优先级：AppleSkin > Thirst Was Taken > ParCool!）**
@@ -34,42 +46,22 @@ Minecraft 1.20.1 综合生命值与状态栏 MOD —— 整合 mobhealthbar / Mo
 - Minecraft 1.20.1
 - Forge 47.x **或** Fabric Loader 0.15.11+（Fabric 版另需 Fabric API）
 - **无需 Architectury API**（网络层为平台原生实现；Forge 版零额外依赖）
+- 服务端安装后才会同步饱和度、消耗值和实体吸收等数据
 
-## 不重启调试工作流
+## 配置
 
-1. **配置改动（JSON）——已内置热重载**：外部编辑 `run/client/config/z80zhealthbar.json` 保存后约 0.3 秒自动生效（文件监视器 + CRC 去重）；也可在"控制设置→Z80Z 血条"绑定"从磁盘重新加载配置"键手动触发。渲染路径每帧读配置，重载即下一帧生效。
-2. **资源改动（贴图/语言）**：改开发资源包或 JAR 内资源后按 **F3+T** 重载资源即可。
-3. **Java 方法体改动**：用 IntelliJ IDEA 以 **Debug 模式**启动（导入 Gradle 项目后先执行 `gradlew genIntellijRuns` 生成运行配置，再 Debug 运行 `Forge Client`），改完代码 Build（Ctrl+F9 或 Ctrl+Shift+F9）→ 弹出"重新加载已更改的类"确认；断点/单步全程可用。局限性：不能增删方法/字段（见第 4 条）。
-4. **Java 结构改动（增删方法/字段）——DCEVM 免重启**：
-   - 装一个 **JetBrains Runtime 17**（内置 DCEVM）：IDEA 自带 `<IDEA安装目录>\jbr`（需为 17），或从 [JetBrainsRuntime Releases](https://github.com/JetBrains/JetBrainsRuntime/releases) 下载 `jbr_jcef-17.0.x`；
-   - 让 Gradle 能发现它：在**用户级** `~/.gradle/gradle.properties`（勿写入项目）加 `org.gradle.java.installations.paths=C:/path/to/jbr`；
-   - 把项目根目录 `gradle-local.properties`（已 gitignore）里的 `hotswap.enable=true` 取消注释——runClient 会自动改用 JBR 并加 `-XX:+AllowEnhancedClassRedefinition`；
-   - 重新 `gradlew genIntellijRuns`（运行配置会烘焙进 VM 参数），然后照第 3 条 Debug + Build 重载即可；结构性改动同样即时生效。
-   - 仍需重启的改动：**mixin 类本体**（注入不会重新应用）、**新增/删除类文件**、依赖与 mods.toml 等元数据。
-5. **JAR/classpath 变更**（新增依赖、改 mods.toml 等）：必须重启。
-6. **快速启动（可选）**：`gradle-local.properties` 里 `dev.world=<存档名>` 后，runClient 经 Quick Play（`--quickPlaySingleplayer`）跳过主菜单直入存档；需要重启的调试也建议开着。
+配置文件为 `config/z80zhealthbar.json`，也可通过游戏内设置界面修改和导出。外部编辑保存后约 0.3 秒自动热重载。
 
-## 构建
+## 从源码构建
 
-```
+需要 JDK 17：
+
+```bash
 ./gradlew build
 ```
 
-产物：`forge/build/libs/z80zhealthbar-forge-1.0.128-1.20.1.jar`、`fabric/build/libs/z80zhealthbar-fabric-1.0.128-1.20.1.jar`（含 sources）。测试：`./gradlew :common:test`。
-
-## 项目结构
-
-```
-common/    平台无关：status 数据层 / mobdisplay 样式 / overlay HUD / layout 求解器 /
-           config / compat / platform 抽象 / gui（设置+编辑器）/ mixin
-forge/     Forge 入口、事件、SimpleChannel、RenderType 工厂
-fabric/    Fabric 入口、事件、原生 networking、access widener、ModMenu
-docs/      审计报告 / 许可证 / 架构 / 测试 / 完成度报告
-scripts/   GenTextures.java（自制贴图生成器）
-```
-
-跨版本移植：渲染/网络/键位/配置均经 `platform/` 接口隔离；1.21.x 移植时替换平台实现（见 docs/architecture.md）。
+产物位于 `forge/build/libs/` 和 `fabric/build/libs/`。开发调试、热重载和项目结构见 [docs/development.md](docs/development.md)。
 
 ## 许可证
 
-MIT（见 LICENSE）。本项目不包含也不授权三个来源 MOD 的任何代码或素材。
+MIT（见 [LICENSE](LICENSE)）。本项目不包含也不授权三个来源 MOD 的任何代码或素材。

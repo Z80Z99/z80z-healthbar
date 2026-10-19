@@ -3,11 +3,11 @@
 	"id": "z80zhealthbar",
 	"version": "${version}",
 	"name": "Z80Z Health Bar",
-	"description": "Unified mob health display and player HUD replacement mod. Features dual display modes (bars + plaques), full player HUD customization, and 20+ mod compatibilities.",
-	"authors": ["z80z"],
+	"description": "Unified mob health display and player HUD replacement mod. Entity health bars, a customisable HUD and layout editor, plus optional AppleSkin, Thirst Was Taken and ParCool integration.",
+	"authors": ["Z80Z99"],
 	"contact": {
-		"homepage": "https://github.com/z80z/z80zhealthbar",
-		"sources": "https://github.com/z80z/z80zhealthbar"
+		"homepage": "https://github.com/Z80Z99/z80z-healthbar",
+		"sources": "https://github.com/Z80Z99/z80z-healthbar"
 	},
 	"license": "MIT",
 	"environment": "*",
