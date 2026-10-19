@@ -87,7 +87,7 @@ tasks.named('processResources', ProcessResources).configure {
 		mod_id: 'z80zhealthbar',
 		mod_name: 'Z80Z Health Bar',
 		mod_version: project.version,
-		mod_authors: 'z80z',
+		mod_authors: 'Z80Z99',
 		mod_description: 'Unified mob health display and player HUD replacement mod'
 	]
 
