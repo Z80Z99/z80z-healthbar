@@ -42,7 +42,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'z80zhealthbar'
+rootProject.name = 'z80z-healthbar'
 include 'common'
 include 'fabric'
 include 'forge'
