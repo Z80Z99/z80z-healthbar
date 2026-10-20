@@ -91,7 +91,8 @@ public final class CompatAdapters {
     private static int colorOf(String modId, String key) {
         return switch (modId) {
             case "appleskin" -> key.equals("exhaustion") ? 0xFFFFAA00 : 0xFFFFD070;
-            case "thirst" -> 0xFF4488FF;
+            // 润泽度用金色（与饱和度同语义:喝水后的缓冲层）
+            case "thirst" -> key.equals("quenched") ? 0xFFFFC94D : 0xFF4488FF;
             case "parcool" -> 0xFF66CC66;
             default -> 0xFFAAAAAA;
         };
@@ -167,6 +168,8 @@ public final class CompatAdapters {
         private static final String CAP_TOKEN_FIELD = "PLAYER_THIRST";
         private static final String CAP_INTERFACE = "dev.ghen.thirst.foundation.common.capability.IThirst";
         private static final String[] CAP_METHODS = {"getThirst"};
+        /** 润泽度（Quenched,0..20）= TWT 的"饱和度"：喝水先补它,满了再转口渴值 */
+        private static final String[] CAP_METHODS_QUENCHED = {"getQuenched"};
         /** 旧版静态 API（ThirstHelper 在 1.4.x 只有物品侧查询,留作兜底） */
         private static final String[] CLASSES = {
                 "dev.ghen.thirst.api.thirst.ThirstHelper",
@@ -205,7 +208,14 @@ public final class CompatAdapters {
         @Override
         public Float readStat(String key) {
             var player = net.minecraft.client.Minecraft.getInstance().player;
-            if (player == null || !key.equals("thirst")) return null;
+            if (player == null) return null;
+            if (key.equals("quenched")) {
+                // 润泽度：仅 capability 通道有（1.4.x 旧静态 API 无此方法）
+                return com.z80z99.z80zhealthbar.overlay.parts.compat.ReflectionHelperCompat
+                        .capabilityNumber(CAP_TOKEN_HOLDER, CAP_TOKEN_FIELD, CAP_INTERFACE,
+                                CAP_METHODS_QUENCHED, player);
+            }
+            if (!key.equals("thirst")) return null;
             Float v = com.z80z99.z80zhealthbar.overlay.parts.compat.ReflectionHelperCompat
                     .capabilityNumber(CAP_TOKEN_HOLDER, CAP_TOKEN_FIELD, CAP_INTERFACE, CAP_METHODS, player);
             if (v != null) return v;

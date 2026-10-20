@@ -378,7 +378,15 @@ public final class CustomHudRenderer {
         // 是每帧热路径,上一版无条件读取是无谓开销,自查修正）
         boolean wantThirst = template.contains("{thirst");
         boolean wantStamina = template.contains("{stamina");
-        Float thirstV = null, thirstMaxV = null, staminaV = null, staminaMaxV = null;
+        boolean wantQuenched = template.contains("{quenched");
+        Float thirstV = null, thirstMaxV = null, quenchedV = null, quenchedMaxV = null;
+        Float staminaV = null, staminaMaxV = null;
+        if (wantQuenched) {
+            quenchedV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readValue("thirst", "quenched");
+            if (quenchedV != null) {
+                quenchedMaxV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readMax("thirst", "quenched");
+            }
+        }
         if (wantThirst) {
             if (pv) {
                 thirstV = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.thirst;
@@ -425,6 +433,8 @@ public final class CustomHudRenderer {
                 // 兼容模组变量（口渴/体力;未安装对应模组 → "—"）
                 .replace("{thirst}", thirstV == null ? "—" : fmt(thirstV))
                 .replace("{thirst_max}", thirstMaxV == null ? "—" : fmt(thirstMaxV))
+                .replace("{quenched}", quenchedV == null ? "—" : fmt(quenchedV))
+                .replace("{quenched_max}", quenchedMaxV == null ? "—" : fmt(quenchedMaxV))
                 .replace("{stamina}", staminaV == null ? "—" : fmt(staminaV))
                 .replace("{stamina_max}", staminaMaxV == null ? "—" : fmt(staminaMaxV));
     }
@@ -443,6 +453,40 @@ public final class CustomHudRenderer {
     }
 
     // ============== 组件渲染（局部坐标原点 = 组件框左上角，未缩放单位） ==============
+
+    /** 第二层数值的段几何（生命吸收 / 饱食饱和度 / 口渴润泽度共用）。
+     *  @param mainSmoothAbs  主值平滑后的绝对值（dispR*max / foodDisp*max / thirst 平滑值）
+     *  @param secondSmoothAbs 第二层平滑后的绝对值（absDisp*max / satDisp*satMax）
+     *  @param totalAbs       追加模式的分母（max(主容量, 主绝对+第二层绝对)）
+     *  @param mainRatio/secondRatio 覆盖/细条模式下各自占自身容量的比例
+     *  @return null=关闭或不显示;否则 {主段宽, 第二段起, 第二段止}（像素,已钳在 innerW 内）。
+     *  模式:0=覆盖（第二层从 0 起按自身比例）,1=右侧追加（容量扩展）,
+     *  2/3=顶/底细条（几何同覆盖,绘制方自己压扁）,4=关闭 */
+    private static int[] secondLayerGeom(int innerW, float mainSmoothAbs, float secondSmoothAbs,
+                                         float totalAbs, float mainRatio, float secondRatio,
+                                         int mode, boolean visible) {
+        if (!visible || mode == 4) return null;
+        if (mode == 1) {
+            float total = Math.max(1f, totalAbs);
+            int mainW = Math.round(Mth.clamp(mainSmoothAbs / total, 0f, 1f) * innerW);
+            int end = Math.round(Mth.clamp((mainSmoothAbs + secondSmoothAbs) / total, 0f, 1f) * innerW);
+            end = Math.min(innerW, Math.max(mainW, end));
+            return new int[]{mainW, mainW, end};
+        }
+        int mainW = Math.round(Mth.clamp(mainRatio, 0f, 1f) * innerW);
+        int secondW = Math.round(Mth.clamp(secondRatio, 0f, 1f) * innerW);
+        return new int[]{mainW, 0, Math.min(innerW, secondW)};
+    }
+
+    /** 第二层细条绘制（模式 2=顶部 3=底部）;其余模式由调用方按正常段绘制 */
+    private static void drawSecondStrip(GuiGraphics g, int x, int y, int w, int h,
+                                        int start, int end, int color, int mode) {
+        if (mode != 2 && mode != 3 || end <= start) return;
+        int ih = HudBarPainter.innerHeight(h);
+        int stripH = Math.max(1, ih / 3);
+        int y0 = HudBarPainter.fillTop(y, h) + (mode == 3 ? ih - stripH : 0);
+        g.fill(x + HudBarPainter.INSET + start, y0, x + HudBarPainter.INSET + end, y0 + stripH, color);
+    }
 
     private static void renderHealth(GuiGraphics g, Minecraft mc, Player p, ComponentLayout c) {
         var colors = ConfigManager.getConfig().colors;
@@ -469,7 +513,7 @@ public final class CustomHudRenderer {
             if (full < hearts && health - full * 2 > 0f) {
                 GuiHelper.drawTexturedRect(ICONS, g, full * 9, 0, 61, 0, 9, 9);
             }
-            if (absorption > 0) {
+            if (absorption > 0 && Math.max(0, Math.min(4, c.absorptionMode)) != 4) {
                 int abs = (int) Math.ceil(absorption / 2f);
                 for (int i = 0; i < abs; i++) {
                     GuiHelper.drawTexturedRect(ICONS, g, (hearts + i) * 9, 0, 160, 0, 9, 9);
@@ -514,13 +558,19 @@ public final class CustomHudRenderer {
         }
         int hitShift = dxFxCfg.enabled && dxFxCfg.hitShake
                 ? HudFx.shakeByMode(dxFxCfg.shakeMode, nowMs, fxSt.flash(), fxSt.lastDamage()) : 0;
+        int absMode = Math.max(0, Math.min(4, c.absorptionMode));
         int innerW = HudBarPainter.innerWidth(w);
-        int healthW = Math.round(dispR * compress * innerW);
+        int[] absGeom = secondLayerGeom(innerW, dispR * max, absDisp * max,
+                Math.max(max, health + absorption), dispR, absDisp, absMode, absorption > 0);
+        // 容量压缩只在「右侧追加」模式生效;覆盖/细条/关闭下主条保持满量程
+        boolean absAppend = absMode == 1 && absGeom != null;
+        float mainCompress = absAppend ? compress : 1f;
+        int healthW = Math.round(dispR * mainCompress * innerW);
         if (c.showBar) {
             // 伤害残影：[当前填充, 掉血前血量] 区域白色渐隐（dynamicFx.ghost 控制）
             if (dxFxCfg.enabled && dxFxCfg.ghost) {
                 float ghostA = Mth.clamp(fxSt.ghostAlpha(), 0f, 1f);
-                int preHitW = Math.min(innerW, Math.round(Mth.clamp(fxSt.preHit(), 0f, 1f) * compress * innerW));
+                int preHitW = Math.min(innerW, Math.round(Mth.clamp(fxSt.preHit(), 0f, 1f) * mainCompress * innerW));
                 if (preHitW > healthW && ghostA > 0f) {
                     HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, preHitW,
                             ColorHelper.modifyAlpha(ColorHelper.parseColor(dxFxCfg.ghostColor),
@@ -529,22 +579,23 @@ public final class CustomHudRenderer {
             }
             HudBarPainter.drawFillWidth(g, 0, 0, w, h, healthW, dynColor, hitShift);
             drawSheen(g, w, h, healthW);
-            if (absorption > 0) {
-                // 金段终点按 (平滑生命+平滑吸收)/total 一次取整——两段各自取整会累计丢 1~2px,
-                // 满血+吸收（总量正好撑满条）时条尾出现细缝（实测"没有填满条"）
-                int absEnd = Math.min(innerW, Math.max(healthW,
-                        Math.round((dispR * max + absDisp * max) / total * innerW)));
-                HudBarPainter.drawSegment(g, 0, 0, w, h, healthW, absEnd,
-                        fill2Of(c, ColorHelper.parseColor(colors.absorption)));
-                // 吸收残影：[金段终点, 消耗前终点] 白色渐隐（锚定当前填充右侧,随填充一起收缩）
-                if (dxFxCfg.enabled && dxFxCfg.ghost) {
+            if (absGeom != null) {
+                int absColor = fill2Of(c, ColorHelper.parseColor(colors.absorption));
+                if (absMode == 2 || absMode == 3) {
+                    drawSecondStrip(g, 0, 0, w, h, absGeom[1], absGeom[2], absColor, absMode);
+                } else {
+                    // 追加(1):金段接在主段后;覆盖(0):金段从左侧叠在主段上
+                    HudBarPainter.drawSegment(g, 0, 0, w, h, absGeom[1], absGeom[2], absColor);
+                }
+                // 吸收残影（仅追加模式：锚定金段终点,随填充一起收缩）
+                if (absAppend && dxFxCfg.enabled && dxFxCfg.ghost) {
                     float gA = Mth.clamp(absFx.ghostAlpha(), 0f, 1f);
                     float pre = Mth.clamp(absFx.preHit(), 0f, 1f);
                     if (gA > 0f && pre > absDisp) {
                         int ghostW = Math.round((pre - absDisp) * max / total * innerW);
-                        int ghostEnd = Math.min(innerW, absEnd + ghostW);
-                        if (ghostEnd > absEnd) {
-                            HudBarPainter.drawSegment(g, 0, 0, w, h, absEnd, ghostEnd,
+                        int ghostEnd = Math.min(innerW, absGeom[2] + ghostW);
+                        if (ghostEnd > absGeom[2]) {
+                            HudBarPainter.drawSegment(g, 0, 0, w, h, absGeom[2], ghostEnd,
                                     ColorHelper.modifyAlpha(ColorHelper.parseColor(dxFxCfg.ghostColor),
                                             (int) (gA * 255)));
                         }
@@ -630,37 +681,18 @@ public final class CustomHudRenderer {
             int innerW = HudBarPainter.innerWidth(w);
             // 饱和度显示方式（组件级可选;0=覆盖 1=右侧追加(吸收式) 2=顶部细条 3=底部细条 4=关闭）
             int satMode = Math.max(0, Math.min(4, c.saturationMode));
-            boolean satVisible = sat > 0.01f && satMode != 4;
             int goldColor = fill2Of(c, ColorHelper.parseColor(colors.saturation));
-            int foodW = Math.round(foodDisp * innerW);
-            if (satVisible && satMode == 1) {
-                // 右侧追加（与血条吸收段同几何）：容量扩展 total = max(上限, 饱食+饱和),
-                // 棕段=饱食/total、金段接其后——"把缓冲层放在后面"的可选样式
-                float total = Math.max(max, food + sat);
-                foodW = Math.round(Mth.clamp(foodDisp * max / total, 0f, 1f) * innerW);
-                int satEnd = Math.round(Mth.clamp((foodDisp * max + satDisp * satMax) / total, 0f, 1f) * innerW);
-                HudBarPainter.drawFillWidth(g, 0, 0, w, h, foodW, color);
-                HudBarPainter.drawSegment(g, 0, 0, w, h, foodW, Math.min(innerW, satEnd), goldColor);
-            } else {
-                HudBarPainter.drawFillWidth(g, 0, 0, w, h, foodW, color);
-                if (satVisible) {
-                    int satW = Math.round(satDisp * innerW);
-                    if (satMode == 2 || satMode == 3) {
-                        // 顶部/底部细条：内嵌细带（不遮主填充,饱和度作为"薄缓冲层"呈现）
-                        int ih = HudBarPainter.innerHeight(h);
-                        int stripH = Math.max(1, ih / 3);
-                        int y0 = HudBarPainter.fillTop(0, h)
-                                + (satMode == 3 ? ih - stripH : 0);
-                        if (satW > 0) {
-                            g.fill(HudBarPainter.INSET, y0,
-                                    HudBarPainter.INSET + Math.min(innerW, satW), y0 + stripH, goldColor);
-                        }
-                    } else {
-                        // 覆盖（AppleSkin 式,默认）：从左侧覆盖在饱食度填充之上
-                        if (satW > 0) {
-                            HudBarPainter.drawSegment(g, 0, 0, w, h, 0, Math.min(innerW, satW), goldColor);
-                        }
-                    }
+            // 与生命吸收段共用同一套段几何（像素结果与重构前一致）
+            int[] satGeom = secondLayerGeom(innerW, foodDisp * max, satDisp * satMax,
+                    Math.max(max, food + sat), foodDisp, satDisp, satMode, sat > 0.01f);
+            int foodW = satGeom != null && satMode == 1 ? satGeom[0] : Math.round(foodDisp * innerW);
+            HudBarPainter.drawFillWidth(g, 0, 0, w, h, foodW, color);
+            if (satGeom != null) {
+                if (satMode == 2 || satMode == 3) {
+                    drawSecondStrip(g, 0, 0, w, h, satGeom[1], satGeom[2], goldColor, satMode);
+                } else {
+                    // 追加(1):金段接在主段后;覆盖(0):金段从左侧叠在主段上
+                    HudBarPainter.drawSegment(g, 0, 0, w, h, satGeom[1], satGeom[2], goldColor);
                 }
             }
             // 消耗值预告：exhaustion→4 临近一次扣除（扣饱和度/饱食度）;>3 时条尾微光呼吸,
@@ -867,8 +899,37 @@ public final class CustomHudRenderer {
             if (c.showBar) {
                 drawCard(g, 0, y, w, h);
                 if (stat.max() != null && stat.max() > 0) {
-                    HudBarPainter.drawRatioFill(g, 0, y, w, h,
-                            (float) Math.max(0d, Math.min(1d, stat.value() / stat.max())), fillOf(c, stat.color()));
+                    float mainRatio = (float) Math.max(0d, Math.min(1d, stat.value() / stat.max()));
+                    // 口渴行的第二层 = 润泽度（0..20,对应原版饱和度;显示方式与饱食度饱和度同 5 档）
+                    float quenched = 0f;
+                    if (stat.key().equals("thirst.thirst")) {
+                        Float q = com.z80z99.z80zhealthbar.compat.CompatAdapters
+                                .readValue("thirst", "quenched");
+                        quenched = q == null ? 0f : q;
+                    }
+                    int qMode = Math.max(0, Math.min(4, c.quenchedMode));
+                    int innerW = HudBarPainter.innerWidth(w);
+                    int mainColor = fillOf(c, stat.color());
+                    int[] qGeom = quenched > 0.01f
+                            ? secondLayerGeom(innerW, stat.value(), quenched,
+                                    Math.max(stat.max(), stat.value() + quenched),
+                                    mainRatio, Math.min(1f, quenched / stat.max()), qMode, true)
+                            : null;
+                    if (qGeom != null && qMode == 1) {
+                        // 右侧追加：容量扩展，主段缩短、润泽金段接在尾部（同血条吸收段）
+                        HudBarPainter.drawFillWidth(g, 0, y, w, h, qGeom[0], mainColor);
+                    } else {
+                        HudBarPainter.drawRatioFill(g, 0, y, w, h, mainRatio, mainColor);
+                    }
+                    if (qGeom != null) {
+                        int qColor = fill2Of(c, ColorHelper.parseColor(
+                                ConfigManager.getConfig().colors.saturation));
+                        if (qMode == 2 || qMode == 3) {
+                            drawSecondStrip(g, 0, y, w, h, qGeom[1], qGeom[2], qColor, qMode);
+                        } else {
+                            HudBarPainter.drawSegment(g, 0, y, w, h, qGeom[1], qGeom[2], qColor);
+                        }
+                    }
                 }
             }
             if (c.showText) {

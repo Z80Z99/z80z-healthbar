@@ -231,6 +231,8 @@ public final class ConfigValidator {
             // 饱和度显示方式（0=覆盖 1=右追加 2=顶部细条 3=底部细条 4=关闭）：不钳制时
             // 编辑器的循环行从越界值起跳（存 7 显示"关闭",点一下跳到"底部细条"）
             cl.saturationMode = clamp(cl.saturationMode, 0, 4);
+            cl.absorptionMode = clamp(cl.absorptionMode, 0, 4);
+            cl.quenchedMode = clamp(cl.quenchedMode, 0, 4);
             cl.selStyle = clamp(cl.selStyle, 0, 4);
             cl.selDir = clamp(cl.selDir, 0, 1);
             cl.selBorder = clamp(cl.selBorder, 0, 3);

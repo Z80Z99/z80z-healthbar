@@ -1330,6 +1330,16 @@ public final class HudLayoutScreen extends Screen {
                     () -> c.barWidth, v -> c.barWidth = (int) Math.round(v), 40, 400, 4));
             panelEntries.add(stepper("z80zhealthbar.editor.bar_height",
                     () -> c.barHeight, v -> c.barHeight = (int) Math.round(v), 5, 16, 1));
+            // 吸收段显示方式（仅生命;与饱和度同 5 档,默认右侧追加 = 历史行为）
+            if (HudLayoutConfig.typeOf(selected, c).equals(HudLayoutConfig.HEALTH)) {
+                panelEntries.add(cycler("z80zhealthbar.editor.absorption_mode",
+                        () -> Component.translatable("z80zhealthbar.editor.sat_mode."
+                                + Math.max(0, Math.min(4, c.absorptionMode))).getString(),
+                        () -> {
+                            c.absorptionMode = (c.absorptionMode + 1) % 5;
+                            markDirty();
+                        }));
+            }
         }
 
         // ---- 子组件入口（文本/图标各一个独立参数页,与主组件互不干扰） ----
@@ -1435,6 +1445,16 @@ public final class HudLayoutScreen extends Screen {
                         () -> c.textOffsetY, v -> c.textOffsetY = (int) Math.round(v), -999, 999, 1));
                 panelEntries.add(stepper1("z80zhealthbar.editor.text_scale",
                         () -> c.textScale, v -> c.textScale = v, 0.25, 3.0, 0.1));
+            }
+            // 润泽度显示方式（仅口渴单行组件;TWT 的"饱和度",与饱食度饱和度同 5 档）
+            if (selType.equals("compat_thirst")) {
+                panelEntries.add(cycler("z80zhealthbar.editor.quenched_mode",
+                        () -> Component.translatable("z80zhealthbar.editor.sat_mode."
+                                + Math.max(0, Math.min(4, c.quenchedMode))).getString(),
+                        () -> {
+                            c.quenchedMode = (c.quenchedMode + 1) % 5;
+                            markDirty();
+                        }));
             }
             // 动作（复制/删除/重置/分组）：此前 compat 分支提前 return,添加的 compat_* 组件
             // 在编辑器内无法删除/复制（实测"加上去就撤不掉",只能手改 JSON）
