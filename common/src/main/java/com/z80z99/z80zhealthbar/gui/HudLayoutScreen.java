@@ -201,7 +201,7 @@ public final class HudLayoutScreen extends Screen {
     private record PW(AbstractWidget widget, int relX) {}
 
     /** 面板页：LIST = 清单+全局操作;EDIT = 对象参数页;ADD = 类型选择;GROUP = 分组成员;SUB_TEXT/SUB_ICON = 子组件页 */
-    private enum PanelPage { LIST, EDIT, ADD, GROUP, SUB_TEXT, SUB_ICON, HOTBAR_SLOT, DATASOURCE_LIST, DATASOURCE_TYPE }
+    private enum PanelPage { LIST, EDIT, ADD, GROUP, SUB_TEXT, SUB_ICON, HOTBAR_SLOT, DATASOURCE_LIST, DATASOURCE_TYPE, DATASOURCE_MODPICK }
 
     private PanelPage panelPage = PanelPage.LIST;
     /** GROUP 页当前查看的分组名 */
@@ -514,6 +514,7 @@ public final class HudLayoutScreen extends Screen {
             case HOTBAR_SLOT -> buildHotbarSlotPage();
             case DATASOURCE_LIST -> buildDatasourceList();
             case DATASOURCE_TYPE -> buildDatasourceType();
+            case DATASOURCE_MODPICK -> buildDatasourceModPick();
             case EDIT -> {
                 if (asteor && selectedAsteorBar == null) { panelPage = PanelPage.LIST; buildAsteorList(); }
                 else if (asteor) buildAsteorEdit();
@@ -868,6 +869,61 @@ public final class HudLayoutScreen extends Screen {
         };
     }
 
+    /** 目标模组选择页的过滤串 + 打开时缓存的已装模组列表（避免每帧枚举加载器） */
+    private String modPickFilter = "";
+    private List<com.z80z99.z80zhealthbar.platform.ModEntry> modPickCache;
+    /** 正在为哪个数据源选择模组（按 id 存,避免 rebuild 后引用失效） */
+    private String modPickSourceId = "";
+
+    /** 数据源 · 目标模组选择页:过滤行 + 已装模组列表（点击即写入 src.modId） */
+    private void buildDatasourceModPick() {
+        var src = datasourceOf("compat_custom_" + modPickSourceId);
+        if (src == null) {
+            panelEntries.add(backRow());
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.missing"));
+            return;
+        }
+        if (modPickCache == null) {
+            modPickCache = com.z80z99.z80zhealthbar.platform.PlatformService.get() == null
+                    ? java.util.List.of()
+                    : com.z80z99.z80zhealthbar.platform.PlatformService.get().installedMods();
+        }
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.datasource.modpick_back").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    panelPage = PanelPage.EDIT;
+                    modPickCache = null;
+                    rebuildWidgets();
+                }));
+        panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.modpick_title", null, null));
+        panelEntries.add(textInput("z80zhealthbar.editor.datasource.modpick_search",
+                () -> modPickFilter, v -> modPickFilter = v));
+        String f = modPickFilter == null ? "" : modPickFilter.trim().toLowerCase(Locale.ROOT);
+        int shown = 0;
+        for (var m : modPickCache) {
+            String id = m.id() == null ? "" : m.id();
+            String dn = m.displayName() == null ? "" : m.displayName();
+            if (!f.isEmpty()
+                    && !id.toLowerCase(Locale.ROOT).contains(f)
+                    && !dn.toLowerCase(Locale.ROOT).contains(f)) continue;
+            shown++;
+            if (shown > 200) break; // 行数上限保护（面板本身可滚动,但控件数需收敛）
+            final String pickId = id;
+            final String label = dn.isEmpty() || dn.equalsIgnoreCase(id) ? id : dn + " §7(" + id + ")";
+            panelEntries.add(listRow(() -> label, "z80zhealthbar.editor.adjust", () -> {
+                src.modId = pickId;
+                markDirty();
+                ConfigManager.saveConfig();
+                panelPage = PanelPage.EDIT;
+                modPickCache = null;
+                rebuildWidgets();
+            }));
+        }
+        if (shown == 0) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.modpick_empty"));
+        }
+    }
+
     /** 组件类型 compat_custom_<id> → 绑定的数据源配置（找不到返回 null） */
     private static com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource datasourceOf(String selType) {
         String raw = selType.substring("compat_custom_".length());
@@ -886,6 +942,16 @@ public final class HudLayoutScreen extends Screen {
                 () -> src.displayName == null ? "" : src.displayName, v -> src.displayName = v));
         panelEntries.add(textInput("z80zhealthbar.custom_sources.field.mod",
                 () -> src.modId == null ? "" : src.modId, v -> src.modId = v.trim()));
+        // 从已装模组列表选择（避免手敲 modId 出错;手动输入仍可用）
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.datasource.pick_entry").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    modPickSourceId = src.id;
+                    modPickFilter = "";
+                    modPickCache = null;
+                    panelPage = PanelPage.DATASOURCE_MODPICK;
+                    rebuildWidgets();
+                }));
         panelEntries.add(cycler("z80zhealthbar.custom_sources.field.channel",
                 () -> Component.translatable("z80zhealthbar.editor.datasource.type." + src.channel).getString(),
                 () -> {
@@ -969,8 +1035,15 @@ public final class HudLayoutScreen extends Screen {
             return "§c" + Component.translatable("z80zhealthbar.custom_sources.diag.read_failed").getString();
         }
         Float m = adapter.resolveMax(minecraft.player);
+        String modName = "";
+        if (src.modId != null && !src.modId.isBlank() && com.z80z99.z80zhealthbar.platform.PlatformService.get() != null) {
+            for (var e : com.z80z99.z80zhealthbar.platform.PlatformService.get().installedMods()) {
+                if (src.modId.equals(e.id())) { modName = e.displayName(); break; }
+            }
+        }
         return "§a" + String.format(Locale.ROOT, "%.1f", v)
-                + (m == null ? "" : " / " + String.format(Locale.ROOT, "%.1f", m));
+                + (m == null ? "" : " / " + String.format(Locale.ROOT, "%.1f", m))
+                + (modName.isBlank() ? "" : " §7(" + modName + ")");
     }
 
     /** 拆分即组合：拆分子件（文本/图标锚点脱离"跟随"）时,父组件自动并入以其类型命名的组合;

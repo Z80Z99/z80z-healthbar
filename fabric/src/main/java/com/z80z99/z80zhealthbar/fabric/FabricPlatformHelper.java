@@ -40,6 +40,22 @@ public class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public java.util.List<com.z80z99.z80zhealthbar.platform.ModEntry> installedMods() {
+        var out = new java.util.ArrayList<com.z80z99.z80zhealthbar.platform.ModEntry>();
+        try {
+            for (var container : FabricLoader.getInstance().getAllMods()) {
+                var meta = container.getMetadata();
+                out.add(new com.z80z99.z80zhealthbar.platform.ModEntry(meta.getId(), meta.getName()));
+            }
+        } catch (Throwable ignored) {
+        }
+        out.sort(java.util.Comparator.comparing(
+                com.z80z99.z80zhealthbar.platform.ModEntry::displayName,
+                String.CASE_INSENSITIVE_ORDER));
+        return out;
+    }
+
+    @Override
     public void sendToPlayer(ServerPlayer player, ResourceLocation packetId,
                              Consumer<FriendlyByteBuf> writer) {
         FriendlyByteBuf buf = new FriendlyByteBuf(PacketByteBufs.create());

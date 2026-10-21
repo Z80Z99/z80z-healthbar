@@ -249,3 +249,5 @@ z80zhealthbar/
 - **版本 1.0.131（2026-10-21）**：同步迭代序号（通用数据源框架,见上条）。
 - **数据源创建流程移入编辑器（2026-10-21）**：用户反馈"做成 添加组件→数据源→选择数据源→数据类型 的流程,不需要那么多预置"。重做创建主路径:PanelPage 新增 DATASOURCE_LIST/DATASOURCE_TYPE 两页——添加页兼容分类尾部改为单一「数据源…」入口 → 选择页（已建源列表点击即添加条组件 + 新建入口）→ 数据类型页（5 通道逐行点选,点选即建源+建组件+跳编辑页,自动避让 id）。数据源参数全部移入 compat_custom_* 组件编辑页（显示名/mod id/通道/按通道动态字段/上限/颜色/接管/overlayId,改即存）,并带**实时读数诊断动态行**——为此 note 行新增 labelDyn 动态文本支持（renderPanelTexts/layoutPanel 同步,每帧重测行数）。管理页预置按钮与 Presets 类删除;管理页保留列表/启停/删除。绑定源被删时编辑页显示兜底提示。lang 删 preset_* 两键,增 datasource.* 十余键。
 - **版本 1.0.132（2026-10-21）**：同步迭代序号（数据源创建流程,见上条）。
+- **目标模组改为列表选择（2026-10-21）**：用户反馈"手动输入改成下拉列表选择可行吗"。平台层新增 ModEntry(id/displayName) 与 IPlatformHelper.installedMods()（Forge ModList.getMods→IModInfo;Fabric getAllMods→metadata,均按显示名排序,异常返回空表）。两处接入:(1) 设置页数据源表单 modId 框旁「列表」按钮 → 内嵌选择视图:搜索框(id/显示名 contains 过滤)+ 6 行/页滚动(▲▼)+ 点击填入;(2) HUD 编辑器 compat_custom 参数区「从已装模组列表选择…」→ 新 PanelPage.DATASOURCE_MODPICK:过滤行 + 逐行 listRow（显示名 + id）,点击写入 src.modId 并返回,列表打开时缓存一次避免每帧枚举。读数成功时诊断行追加「（模组: 显示名）」直接佐证 id 正确。手动输入保留兜底（目标模组未装时可先配参数）。lang 增 pick/modpick 系列键。
+- **版本 1.0.133（2026-10-21）**：同步迭代序号（模组列表选择,见上条）。

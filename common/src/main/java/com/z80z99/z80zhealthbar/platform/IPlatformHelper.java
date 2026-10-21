@@ -24,6 +24,12 @@ public interface IPlatformHelper {
     String getModVersion(String modId);
 
     /**
+     * 全部已安装模组（id + 展示名,按展示名排序）。自定义数据源的目标模组选择列表用。
+     * 服务端/非客户端环境返回空列表。
+     */
+    java.util.List<ModEntry> installedMods();
+
+    /**
      * 服务端发送一个自定义 S2C 包到指定玩家。
      * 由平台实现负责封包（Forge SimpleChannel / Fabric ServerPlayNetworking）。
      */

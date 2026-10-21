@@ -829,5 +829,15 @@
   "z80zhealthbar.editor.datasource.item_mode.2": "物品方法",
   "z80zhealthbar.editor.datasource.params_section": "数据源参数（改动即时保存）",
   "z80zhealthbar.editor.datasource.missing": "绑定的数据源已被删除——本组件不再显示数据。可在「添加组件 → 数据源」重建。",
-  "z80zhealthbar.custom_sources.field.overlay_id": "接管 overlay id（如 thirst:thirst_level,可空）"
+  "z80zhealthbar.custom_sources.field.overlay_id": "接管 overlay id（如 thirst:thirst_level,可空）",
+  "z80zhealthbar.custom_sources.pick.from_list": "列表",
+  "z80zhealthbar.custom_sources.pick.title": "选择目标模组",
+  "z80zhealthbar.custom_sources.pick.search": "搜索 id 或显示名…",
+  "z80zhealthbar.custom_sources.pick.back": "返回表单",
+  "z80zhealthbar.custom_sources.pick.empty": "没有匹配的模组——可清空搜索,或直接手填 modId。",
+  "z80zhealthbar.editor.datasource.pick_entry": "从已装模组列表选择…",
+  "z80zhealthbar.editor.datasource.modpick_title": "选择目标模组",
+  "z80zhealthbar.editor.datasource.modpick_back": "← 返回数据源参数",
+  "z80zhealthbar.editor.datasource.modpick_search": "搜索 id 或显示名…",
+  "z80zhealthbar.editor.datasource.modpick_empty": "没有匹配的模组。"
 }

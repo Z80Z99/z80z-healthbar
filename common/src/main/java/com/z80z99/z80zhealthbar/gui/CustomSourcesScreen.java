@@ -31,6 +31,11 @@ public final class CustomSourcesScreen extends Screen {
     private int panelX, panelY;
     private int selected = -1;      // 当前编辑的源索引
     private boolean creating;
+    /** 目标模组选择视图（内嵌于编辑表单下方） */
+    private boolean modPicking;
+    private String modSearch = "";
+    private int modScroll;
+    private List<com.z80z99.z80zhealthbar.platform.ModEntry> modCache;
 
     // 编辑表单控件（仅编辑态可见）
     private EditBox idBox, modBox, nameBox, holderBox, fieldBox, ifaceBox, readBox, valueBox, maxBox, overlayBox;
@@ -116,14 +121,20 @@ public final class CustomSourcesScreen extends Screen {
         idBox = textField(x0, y, 128, s.id, v -> s.id = v.trim().toLowerCase(java.util.Locale.ROOT));
         nameBox = textField(x1, y, 196, s.name(), v -> s.displayName = v);
         y += ROW_H;
-        modBox = textField(x0, y, 128, s.modId, v -> s.modId = v.trim());
+        modBox = textField(x0, y, 96, s.modId, v -> s.modId = v.trim());
+        addRenderableWidget(Button.builder(Component.translatable("z80zhealthbar.custom_sources.pick.from_list"),
+                        b -> { modPicking = true; modSearch = ""; modScroll = 0; rebuild(); })
+                .bounds(x0 + 100, y, 44, 18).build());
         channelBtn = Button.builder(Component.translatable("z80zhealthbar.custom_sources.channel_short",
                         channelName(s.channel)),
                 b -> { s.channel = (s.channel + 1) % 5; rebuild(); })
                 .bounds(x1, y, 196, 18).build();
         addRenderableWidget(channelBtn);
         y += ROW_H;
-
+        if (modPicking) {
+            buildModPicker(x0, y);
+            return;
+        }
         switch (s.channel) {
             case 0 -> {
                 holderBox = textField(x0, y, 330, s.holderClass, v -> s.holderClass = v.trim());
@@ -207,8 +218,63 @@ public final class CustomSourcesScreen extends Screen {
                 .bounds(panelX + W - 70, panelY + H - 26, 60, 18).build());
     }
 
-    private EditBox textField(int x, int y, int w, String initial, Consumer<String> setter) {
-        var box = new EditBox(font, x, y, w, 18, Component.empty());
+    /** 内嵌模组选择：搜索框 + 可滚动列表（每行 显示名 + id,点击填入 modId） */
+    private void buildModPicker(int x0, int y) {
+        var s = sources.get(selected);
+        if (modCache == null) {
+            modCache = com.z80z99.z80zhealthbar.platform.PlatformService.get() == null
+                    ? List.of()
+                    : com.z80z99.z80zhealthbar.platform.PlatformService.get().installedMods();
+        }
+        var search = new EditBox(font, x0, y, 240, 18,
+                Component.translatable("z80zhealthbar.custom_sources.pick.search"));
+        search.setMaxLength(64);
+        search.setValue(modSearch);
+        search.setResponder(v -> { modSearch = v; modScroll = 0; rebuild(); });
+        addRenderableWidget(search);
+        addRenderableWidget(Button.builder(Component.translatable("z80zhealthbar.custom_sources.pick.back"),
+                        b -> { modPicking = false; rebuild(); })
+                .bounds(x0 + 248, y, 82, 18).build());
+        y += ROW_H;
+
+        String f = modSearch == null ? "" : modSearch.trim().toLowerCase(java.util.Locale.ROOT);
+        List<com.z80z99.z80zhealthbar.platform.ModEntry> hits = new ArrayList<>();
+        for (var m : modCache) {
+            String id = m.id() == null ? "" : m.id();
+            String dn = m.displayName() == null ? "" : m.displayName();
+            if (!f.isEmpty()
+                    && !id.toLowerCase(java.util.Locale.ROOT).contains(f)
+                    && !dn.toLowerCase(java.util.Locale.ROOT).contains(f)) continue;
+            hits.add(m);
+        }
+        int visible = 6; // 一次显示 6 行（滚动切换）
+        int maxScroll = Math.max(0, hits.size() - visible);
+        modScroll = Math.max(0, Math.min(modScroll, maxScroll));
+        for (int i = modScroll; i < Math.min(hits.size(), modScroll + visible); i++) {
+            var m = hits.get(i);
+            String label = (m.displayName() == null || m.displayName().isBlank()
+                    || m.displayName().equalsIgnoreCase(m.id()) ? m.id()
+                    : m.displayName() + " §7(" + m.id() + ")");
+            addRenderableWidget(Button.builder(Component.literal(label), b -> {
+                        s.modId = m.id();
+                        modPicking = false;
+                        modCache = null;
+                        ConfigManager.saveConfig();
+                        rebuild();
+                    }).bounds(x0, y, 330, 18).build());
+            y += ROW_H;
+        }
+        if (hits.isEmpty()) {
+            // 无结果提示（绘制在 render 的标签区,这里只留空）
+        }
+        // 滚动按钮
+        addRenderableWidget(Button.builder(Component.literal("▲"), b -> { modScroll = Math.max(0, modScroll - visible); rebuild(); })
+                .bounds(x0 + 336, panelY + 30, 12, 18).build());
+        addRenderableWidget(Button.builder(Component.literal("▼"), b -> { modScroll = modScroll + visible; rebuild(); })
+                .bounds(x0 + 336, panelY + 50, 12, 18).build());
+    }
+
+    private EditBox textField(int x, int y, int w, String initial, Consumer<String> setter) {        var box = new EditBox(font, x, y, w, 18, Component.empty());
         box.setMaxLength(160);
         box.setValue(initial == null ? "" : initial);
         box.setResponder(s -> {
@@ -256,6 +322,20 @@ public final class CustomSourcesScreen extends Screen {
                     panelX + 235, panelY + H - 76, W - 240, 0xFF8898A8);
         } else {
             renderEditorLabels(g);
+            if (modPicking && modCache != null) {
+                String f = modSearch == null ? "" : modSearch.trim().toLowerCase(java.util.Locale.ROOT);
+                boolean any = false;
+                for (var m : modCache) {
+                    String id = m.id() == null ? "" : m.id();
+                    String dn = m.displayName() == null ? "" : m.displayName();
+                    if (f.isEmpty() || id.toLowerCase(java.util.Locale.ROOT).contains(f)
+                            || dn.toLowerCase(java.util.Locale.ROOT).contains(f)) { any = true; break; }
+                }
+                if (!any) {
+                    g.drawString(font, Component.translatable("z80zhealthbar.custom_sources.pick.empty"),
+                            panelX + 12, panelY + H - 132, 0xFFE0B060);
+                }
+            }
         }
     }
 

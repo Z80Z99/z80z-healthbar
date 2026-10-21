@@ -81,6 +81,23 @@ public class ForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public java.util.List<com.z80z99.z80zhealthbar.platform.ModEntry> installedMods() {
+        var out = new java.util.ArrayList<com.z80z99.z80zhealthbar.platform.ModEntry>();
+        try {
+            for (IModInfo info : ModList.get().getMods()) {
+                out.add(new com.z80z99.z80zhealthbar.platform.ModEntry(
+                        info.getModId(), info.getDisplayName()));
+            }
+        } catch (Throwable ignored) {
+            // 服务端/过早调用:返回空列表
+        }
+        out.sort(java.util.Comparator.comparing(
+                com.z80z99.z80zhealthbar.platform.ModEntry::displayName,
+                String.CASE_INSENSITIVE_ORDER));
+        return out;
+    }
+
+    @Override
     public void sendToPlayer(ServerPlayer player, ResourceLocation packetId,
                              Consumer<FriendlyByteBuf> writer) {
         FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());

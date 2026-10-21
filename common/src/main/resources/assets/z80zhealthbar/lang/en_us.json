@@ -829,5 +829,15 @@
   "z80zhealthbar.editor.datasource.item_mode.2": "Item method",
   "z80zhealthbar.editor.datasource.params_section": "Source parameters (saved instantly)",
   "z80zhealthbar.editor.datasource.missing": "The bound data source was deleted - this component shows no data. Rebuild it via Add component > Data sources.",
-  "z80zhealthbar.custom_sources.field.overlay_id": "Takeover overlay id (e.g. thirst:thirst_level, optional)"
+  "z80zhealthbar.custom_sources.field.overlay_id": "Takeover overlay id (e.g. thirst:thirst_level, optional)",
+  "z80zhealthbar.custom_sources.pick.from_list": "List",
+  "z80zhealthbar.custom_sources.pick.title": "Pick target mod",
+  "z80zhealthbar.custom_sources.pick.search": "Search id or name...",
+  "z80zhealthbar.custom_sources.pick.back": "Back to form",
+  "z80zhealthbar.custom_sources.pick.empty": "No matching mod - clear the search, or type the modId manually.",
+  "z80zhealthbar.editor.datasource.pick_entry": "Pick from installed mods...",
+  "z80zhealthbar.editor.datasource.modpick_title": "Pick target mod",
+  "z80zhealthbar.editor.datasource.modpick_back": "< Back to source params",
+  "z80zhealthbar.editor.datasource.modpick_search": "Search id or name...",
+  "z80zhealthbar.editor.datasource.modpick_empty": "No matching mod."
 }
