@@ -72,10 +72,41 @@ public final class ConfigValidator {
             if (s.readMethod == null) s.readMethod = "";
             if (s.valueMethod == null) s.valueMethod = "";
             if (s.maxMethod == null) s.maxMethod = "";
+            if (s.readParamTypes == null) s.readParamTypes = "";
+            if (s.readArgs == null) s.readArgs = "";
+            if (s.valueParamTypes == null) s.valueParamTypes = "";
+            if (s.valueArgs == null) s.valueArgs = "";
             if (s.staticMax < 0) s.staticMax = 0;
             // 数量上限(审计 S2:旧写法循环内每轮只删当时的第 33 个,34+ 渐进丢失)
             if (index >= 32) { it.remove(); continue; }
             index++;
+        }
+        validateDatasourceLabels(c);
+    }
+
+    /** 数据源标签表:最多 500 条,键必须含 '#',键/值长度钳制,空值移除。
+     *  标签只用于显示,非法条目直接丢弃即可（不影响任何读数）。 */
+    private static void validateDatasourceLabels(CustomSourceConfig c) {
+        if (c.datasourceLabels == null) {
+            c.datasourceLabels = new java.util.LinkedHashMap<>();
+            return;
+        }
+        java.util.Iterator<java.util.Map.Entry<String, String>> it = c.datasourceLabels.entrySet().iterator();
+        int kept = 0;
+        while (it.hasNext()) {
+            var e = it.next();
+            String k = e.getKey();
+            String v = e.getValue();
+            if (k == null || v == null || k.isBlank() || v.isBlank() || !k.contains("#")) {
+                it.remove();
+                continue;
+            }
+            if (k.length() > 300) {
+                it.remove();
+                continue;
+            }
+            if (v.length() > 64) e.setValue(v.substring(0, 64));
+            if (++kept > 500) it.remove();
         }
     }
 

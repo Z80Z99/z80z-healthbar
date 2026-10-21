@@ -22,6 +22,13 @@ public class CustomSourceConfig {
 
     public List<CustomSource> customSources = new ArrayList<>();
 
+    /**
+     * 成员标签表:键 = "完整类名#成员名"（如 dev.ghen.thirst...IThirst#getThirst）,值 = 人类可读名。
+     * <p>仅用于扫描页/参数页的**显示**,永不参与方法解析——标签错乱不会影响读数。
+     * 来源优先级:本表 → 目标模组 jar 内语言文件 → 驼峰分词。AI 只负责产出本表内容。
+     */
+    public java.util.Map<String, String> datasourceLabels = new java.util.LinkedHashMap<>();
+
     /** 手持物品通道的取值方式 */
     public static final int ITEM_VANILLA_DURABILITY = 0; // 原版耐久:max - damage
     public static final int ITEM_NBT_INT = 1;            // NBT 整型:readMethod = NBT key
@@ -65,10 +72,24 @@ public class CustomSourceConfig {
         public String overlayId = "";
         /** 是否取消对方原版 HUD（仅 Forge 生效;需保证本模组有条在渲染） */
         public boolean takeover = false;
+        /**
+         * 读取方法的参数类型（"/"分隔的全限定名或基本类型名;空 = 无参）。
+         * 扫描带参数方法时自动填入,用户可在参数页修改。
+         */
+        public String readParamTypes = "";
+        /** 读取方法的实参（"/"分隔;语法见 ArgLiteralParser） */
+        public String readArgs = "";
+        /** 方法链第二段（valueMethod）的参数类型（"/"分隔;空 = 无参） */
+        public String valueParamTypes = "";
+        /** 方法链第二段的实参（"/"分隔） */
+        public String valueArgs = "";
 
         /** 按 channel 检查必填字段是否齐全（不齐全 = 配置未完成,适配器自动失效） */
         public boolean paramsComplete() {
             if (isBlank(id) || !ID_PATTERN.matcher(id).matches()) return false;
+            // 参数声明与实参数量必须一致（空参数类型 = 无参,实参也必须为空）
+            if (splitCount(readParamTypes) != splitCount(readArgs)) return false;
+            if (splitCount(valueParamTypes) != splitCount(valueArgs)) return false;
             if (channel == 4) {
                 if (itemMode == ITEM_NBT_INT) return !isBlank(readMethod);
                 return itemMode != ITEM_METHOD || !isBlank(readMethod);
@@ -77,6 +98,12 @@ public class CustomSourceConfig {
             if (isBlank(holderClass) || isBlank(readMethod)) return false;
             if (channel == 0 && (isBlank(holderField) || isBlank(ifaceClass))) return false;
             return channel != 2 || !isBlank(valueMethod);
+        }
+
+        /** "/"分隔列表的条目数（空串 = 0;保留空段以便发现 "a//b" 这类配置错误） */
+        private static int splitCount(String list) {
+            if (isBlank(list)) return 0;
+            return list.split("/", -1).length;
         }
 
         /** 显示名（空回退 id） */

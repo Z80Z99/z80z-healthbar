@@ -98,6 +98,26 @@ public class ForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public Path modJarPath(String modId) {
+        try {
+            var file = ModList.get().getModFileById(modId);
+            if (file == null) return null;
+            return file.getFile().getFilePath();
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @Override
+    public ClassLoader modClassLoader(String modId) {
+        // Forge 1.20.1 的 IModFile 不暴露类加载器;所有模组由同一个 TransformingClassLoader
+        // 解析,当前线程上下文加载器即它。回退到本模组类加载器（同一父链）。
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        if (cl != null) return cl;
+        return ForgePlatformHelper.class.getClassLoader();
+    }
+
+    @Override
     public void sendToPlayer(ServerPlayer player, ResourceLocation packetId,
                              Consumer<FriendlyByteBuf> writer) {
         FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());

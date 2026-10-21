@@ -75,7 +75,16 @@ public final class ForgeClientEvents {
             // hotbar 接管重绘发生在其自身分支内,晚于 VIGNETTE,不会闪烁）
             if (event.getOverlay() == VanillaGuiOverlay.VIGNETTE.type()) {
                 HudRenderer.render(event.getGuiGraphics(), event.getPartialTick());
+                // 数据源后台探测面板（无界面时绘制;渲染路径零反射）
+                com.z80z99.z80zhealthbar.datasource.ProbeOverlay.render(event.getGuiGraphics());
             }
+        }
+
+        /** 客户端 tick:驱动数据源探测采样（会话未激活时仅一次布尔判断） */
+        @SubscribeEvent
+        public static void onClientTick(net.minecraftforge.event.TickEvent.ClientTickEvent event) {
+            if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
+            com.z80z99.z80zhealthbar.datasource.ProbeOverlay.tick();
         }
     }
 }

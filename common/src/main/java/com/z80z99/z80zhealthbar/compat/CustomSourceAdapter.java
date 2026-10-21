@@ -74,6 +74,9 @@ public final class CustomSourceAdapter implements CompatibilityAdapter {
         Player p = net.minecraft.client.Minecraft.getInstance().player;
         if (p == null) return null;
         try {
+            boolean hasArgs = (src.readParamTypes != null && !src.readParamTypes.isBlank())
+                    || (src.valueParamTypes != null && !src.valueParamTypes.isBlank());
+            if (hasArgs) return readWithArgs(p);
             return switch (src.channel) {
                 case 0 -> ReflectionHelperCompat.capabilityNumber(
                         src.holderClass, src.holderField, src.ifaceClass,
@@ -94,6 +97,21 @@ public final class CustomSourceAdapter implements CompatibilityAdapter {
         } catch (Throwable t) {
             return null; // 配置写错绝不崩游戏
         }
+    }
+
+    /** 带参数方法的读取路径（仅通道 1/2/3;通道 0/4 不支持参数,返回 null 由诊断行报读取失败） */
+    private Float readWithArgs(Player p) {
+        return switch (src.channel) {
+            case 1 -> ReflectionHelperCompat.staticNumberWithArgs(
+                    src.holderClass, src.readMethod, p,
+                    src.readParamTypes, src.readArgs);
+            case 2 -> ReflectionHelperCompat.instanceNumberWithArgs(
+                    src.holderClass, src.readMethod, src.readParamTypes, src.readArgs,
+                    src.valueMethod, src.valueParamTypes, src.valueArgs, p);
+            case 3 -> ReflectionHelperCompat.playerMethodNumberWithArgs(
+                    src.readMethod, src.readParamTypes, src.readArgs, p);
+            default -> null;
+        };
     }
 
     /** 上限:maxMethod（同通道）→ staticMax → 原版耐久模式自带 max → null（仅文本）。

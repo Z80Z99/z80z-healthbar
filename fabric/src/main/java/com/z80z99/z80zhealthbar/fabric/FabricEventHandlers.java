@@ -28,6 +28,13 @@ public final class FabricEventHandlers {
             }
             HudRenderer.onPreRender(mc.gui);
             HudRenderer.render(graphics, tickDelta);
+            // 数据源后台探测面板（无界面时绘制;渲染路径零反射）
+            com.z80z99.z80zhealthbar.datasource.ProbeOverlay.render(graphics);
+        });
+
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // 会话未激活时仅一次布尔判断
+            com.z80z99.z80zhealthbar.datasource.ProbeOverlay.tick();
         });
 
         Z80ZHealthBar.LOGGER.info("Fabric event handlers registered");

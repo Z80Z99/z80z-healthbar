@@ -257,4 +257,168 @@ public final class ReflectionHelperCompat {
         CLASS_CACHE.clear();
         MISSING_CLASSES.clear();
     }
+
+    // ===== 带参数方法支持（扫描器选中的 getStat(StatType) 类 API） =====
+
+    /** 基本类型名 → Class；非基本类型返回 null */
+    private static Class<?> primitiveType(String name) {
+        return switch (name) {
+            case "int" -> int.class;
+            case "long" -> long.class;
+            case "float" -> float.class;
+            case "double" -> double.class;
+            case "boolean" -> boolean.class;
+            case "short" -> short.class;
+            case "byte" -> byte.class;
+            case "char" -> char.class;
+            default -> null;
+        };
+    }
+
+    /** 类型名 → Class（基本类型 / java.lang 包装与 String / 全限定类名） */
+    private static Class<?> typeByName(String name) {
+        Class<?> prim = primitiveType(name);
+        if (prim != null) return prim;
+        return switch (name) {
+            case "java.lang.Integer" -> Integer.class;
+            case "java.lang.Long" -> Long.class;
+            case "java.lang.Float" -> Float.class;
+            case "java.lang.Double" -> Double.class;
+            case "java.lang.Boolean" -> Boolean.class;
+            case "java.lang.Short" -> Short.class;
+            case "java.lang.Byte" -> Byte.class;
+            case "java.lang.Character" -> Character.class;
+            case "java.lang.String", "String" -> String.class;
+            default -> findClass(name);
+        };
+    }
+
+    /** 解析 "/" 分隔的参数类型串；空 = 无参,任一类型无法解析返回 null */
+    public static java.util.List<Class<?>> resolveParamTypes(String paramTypes) {
+        java.util.List<Class<?>> out = new java.util.ArrayList<>();
+        String s = paramTypes == null ? "" : paramTypes.trim();
+        if (s.isEmpty()) return out;
+        for (String raw : s.split("/", -1)) {
+            Class<?> c = typeByName(raw.trim());
+            if (c == null) return null;
+            out.add(c);
+        }
+        return out;
+    }
+
+    /** 按参数类型名查找方法（缓存复用 findMethod）;参数非法返回 null */
+    public static Method findMethodByTypes(String owner, String name, String paramTypes) {
+        java.util.List<Class<?>> params = resolveParamTypes(paramTypes);
+        if (params == null) return null;
+        return findMethod(owner, name, params.toArray(new Class<?>[0]));
+    }
+
+    /** 实参串 → 反射参数数组；类型/实参数量不符或字面量非法返回 null */
+    public static Object[] resolveArgs(String paramTypes, String args) {
+        java.util.List<Class<?>> types = resolveParamTypes(paramTypes);
+        var parsed = com.z80z99.z80zhealthbar.datasource.ArgLiteralParser.parseList(args);
+        if (types == null || parsed == null || parsed.size() != types.size()) return null;
+        Object[] out = new Object[types.size()];
+        for (int i = 0; i < out.length; i++) {
+            Object v = com.z80z99.z80zhealthbar.datasource.ArgLiteralParser
+                    .coerce(parsed.get(i), types.get(i));
+            if (v == null) return null;
+            out[i] = v;
+        }
+        return out;
+    }
+
+    /** 通道 1 带参：static readMethod(Player, args…) → Number */
+    public static Float staticNumberWithArgs(String className, String methodName, Player player,
+                                             String paramTypes, String args) {
+        Object[] extra = resolveArgs(paramTypes, args);
+        if (extra == null) return null;
+        Method m = findMethodWithPlayer(className, methodName, extra);
+        if (m == null) return null;
+        try {
+            Object[] full = new Object[extra.length + 1];
+            full[0] = player;
+            System.arraycopy(extra, 0, full, 1, extra.length);
+            Object r = m.invoke(null, full);
+            return r instanceof Number n ? n.floatValue() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 通道 2 带参：工厂(Player, args…) → 实例,再调 valueMethod(args2…) → Number */
+    public static Float instanceNumberWithArgs(String className, String factoryMethod,
+                                               String factoryParamTypes, String factoryArgs,
+                                               String valueMethod, String valueParamTypes,
+                                               String valueArgs, Player player) {
+        Object[] factoryExtra = resolveArgs(factoryParamTypes, factoryArgs);
+        Object[] valueExtra = resolveArgs(valueParamTypes, valueArgs);
+        if (factoryExtra == null || valueExtra == null) return null;
+        Method factory = findMethodWithPlayer(className, factoryMethod, factoryExtra);
+        if (factory == null) return null;
+        try {
+            Object[] full = new Object[factoryExtra.length + 1];
+            full[0] = player;
+            System.arraycopy(factoryExtra, 0, full, 1, factoryExtra.length);
+            Object instance = factory.invoke(null, full);
+            if (instance == null) return null;
+            Method vm = findMethod(instance.getClass().getName(), valueMethod, paramClasses(valueExtra));
+            if (vm == null) return null;
+            Object r = vm.invoke(instance, valueExtra);
+            return r instanceof Number n ? n.floatValue() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 通道 3 带参：Player 实例方法(args…) → Number */
+    public static Float playerMethodNumberWithArgs(String methodName, String paramTypes,
+                                                   String args, Player player) {
+        Object[] extra = resolveArgs(paramTypes, args);
+        if (extra == null) return null;
+        Class<?>[] sig = paramClasses(extra);
+        Method m = findMethod(player.getClass().getName(), methodName, sig);
+        if (m == null) m = findMethod("net.minecraft.world.entity.player.Player", methodName, sig);
+        if (m == null) return null;
+        try {
+            Object r = m.invoke(player, extra);
+            return r instanceof Number n ? n.floatValue() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 查找签名 (Player, args…) 或 (具体玩家类, args…) 的方法 */
+    private static Method findMethodWithPlayer(String owner, String name, Object[] extra) {
+        Class<?>[] trailing = paramClasses(extra);
+        Class<?>[] full = new Class<?>[trailing.length + 1];
+        full[0] = Player.class;
+        System.arraycopy(trailing, 0, full, 1, trailing.length);
+        Method m = findMethod(owner, name, full);
+        if (m != null) return m;
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc != null && mc.player != null) {
+            full[0] = mc.player.getClass();
+            m = findMethod(owner, name, full);
+        }
+        return m;
+    }
+
+    /** 实参数组 → 方法签名类型数组（包装类型还原为基本类型以匹配签名） */
+    private static Class<?>[] paramClasses(Object[] args) {
+        Class<?>[] out = new Class<?>[args.length];
+        for (int i = 0; i < args.length; i++) {
+            Object a = args[i];
+            if (a instanceof Integer) out[i] = int.class;
+            else if (a instanceof Long) out[i] = long.class;
+            else if (a instanceof Float) out[i] = float.class;
+            else if (a instanceof Double) out[i] = double.class;
+            else if (a instanceof Boolean) out[i] = boolean.class;
+            else if (a instanceof Short) out[i] = short.class;
+            else if (a instanceof Byte) out[i] = byte.class;
+            else if (a instanceof Character) out[i] = char.class;
+            else out[i] = a == null ? Object.class : a.getClass();
+        }
+        return out;
+    }
 }

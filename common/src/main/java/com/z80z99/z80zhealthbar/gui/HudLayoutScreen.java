@@ -17,6 +17,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 
+import java.lang.reflect.Method;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -57,6 +58,8 @@ public final class HudLayoutScreen extends Screen {
     private static final int CYCLE_W = 84;
     /** 行内控件区左缘（(?) 说明标记不得越过此处,否则会盖住控件并抢走点击） */
     private static final int CONTROL_LEFT = 76;
+    /** 扫描页选择按钮宽（比动作行 84px 窄,给签名/标签留足宽度） */
+    private static final int PICK_W = 48;
 
     private final Screen parent;
     private String selected = HudLayoutConfig.HEALTH;
@@ -206,7 +209,7 @@ public final class HudLayoutScreen extends Screen {
     private record PW(AbstractWidget widget, int relX) {}
 
     /** 面板页：LIST = 清单+全局操作;EDIT = 对象参数页;ADD = 类型选择;GROUP = 分组成员;SUB_TEXT/SUB_ICON = 子组件页 */
-    private enum PanelPage { LIST, EDIT, ADD, GROUP, SUB_TEXT, SUB_ICON, HOTBAR_SLOT, DATASOURCE_LIST, DATASOURCE_TYPE, DATASOURCE_MODPICK }
+    private enum PanelPage { LIST, EDIT, ADD, GROUP, SUB_TEXT, SUB_ICON, HOTBAR_SLOT, DATASOURCE_LIST, DATASOURCE_TYPE, DATASOURCE_MODPICK, SCAN_CLASS, SCAN_MEMBERS }
 
     private PanelPage panelPage = PanelPage.LIST;
     /** 上次构建面板时的页面（用于检测换页并重置滚动） */
@@ -220,10 +223,23 @@ public final class HudLayoutScreen extends Screen {
     /** (?) 命中区（每帧渲染时重建:视口外的行不记录） */
     private record HelpHit(int x, int y, int w, int h, String key) {}
     private final List<HelpHit> helpHits = new ArrayList<>();
+    /** 动态说明:每帧渲染时填充（key = "@dyn:<id>" → 文本） */
+    private final java.util.Map<String, Supplier<String>> dynTooltips = new java.util.HashMap<>();
+
+    /** 解析动态说明文本（找不到映射时返回空串,浮框仍会显示但无内容） */
+    private String resolveDynTooltip(String key) {
+        Supplier<String> s = dynTooltips.get(key);
+        if (s == null) return "";
+        try {
+            String v = s.get();
+            return v == null ? "" : v;
+        } catch (Throwable t) {
+            return "";
+        }
+    }
 
     /** 行标签 → 说明键（.label 后缀剥离;语言文件无译文时返回 null = 不画 (?)） */
-    private String tooltipKeyFor(String labelKey) {
-        if (labelKey == null) return null;
+    private String tooltipKeyFor(String labelKey) {        if (labelKey == null) return null;
         String base = labelKey.endsWith(".label")
                 ? labelKey.substring(0, labelKey.length() - ".label".length()) : labelKey;
         String tk = base + ".tooltip";
@@ -235,7 +251,10 @@ public final class HudLayoutScreen extends Screen {
      *  全屏轻压暗 → 弹框弹在面板**外侧**（面板偏右→左侧,偏左→右侧,与 (?) 行对齐）——
      *  与面板行文字零重叠;两侧都放不下才回退 (?) 下方。绘制于 render 末尾（最后一层） */
     private void renderHelpBox(GuiGraphics g) {
-        var lines = font.split(Component.translatable(helpKey), Math.min(330, width - 60));
+        Component helpText = helpKey != null && helpKey.startsWith("@dyn:")
+                ? Component.literal(resolveDynTooltip(helpKey))
+                : Component.translatable(helpKey);
+        var lines = font.split(helpText, Math.min(330, width - 60));
         int lineH = 10, pad = 6;
         int textW = 0;
         for (var l : lines) textW = Math.max(textW, font.width(l));
@@ -385,6 +404,10 @@ public final class HudLayoutScreen extends Screen {
         Supplier<Integer> swatchArgb;
         /** note 说明行（按面板内宽换行绘制、按行数占高）——显式标记,不再靠 value==null 猜 */
         boolean note;
+        /** 动态说明文本（非空时优先于 labelKey 的 .tooltip 查表;扫描页的完整签名/推荐理由用） */
+        Supplier<String> tooltipDyn;
+        /** 动态说明的稳定标识（tooltipDyn 非空时由 build 阶段分配） */
+        String dynTooltipId;
         final List<PW> widgets = new ArrayList<>();
         int relY;
         int valueRight = -1;
@@ -530,6 +553,8 @@ public final class HudLayoutScreen extends Screen {
             case DATASOURCE_LIST -> buildDatasourceList();
             case DATASOURCE_TYPE -> buildDatasourceType();
             case DATASOURCE_MODPICK -> buildDatasourceModPick();
+            case SCAN_CLASS -> buildScanClassPage();
+            case SCAN_MEMBERS -> buildScanMembersPage();
             case EDIT -> {
                 if (asteor && selectedAsteorBar == null) { panelPage = PanelPage.LIST; buildAsteorList(); }
                 else if (asteor) buildAsteorEdit();
@@ -588,9 +613,22 @@ public final class HudLayoutScreen extends Screen {
         return e;
     }
 
+    /** 扫描页选择行：窄按钮（48px）+ 动态标签 + 动态说明。
+     *  现有 listRow 按钮 84px,在 156px 最小面板下标签只剩 68px——签名/标签会被压得看不清。 */
+    private PEntry pickRow(Supplier<String> name, Supplier<String> btnText, Runnable action,
+                           Supplier<String> tooltip) {
+        PEntry e = new PEntry(null, null, null);
+        e.labelDyn = name;
+        e.tooltipDyn = tooltip;
+        e.dynTooltipId = "pick" + (dynTooltipSeq++);
+        FlatButton b = new FlatButton(PICK_W, BTN_H, () -> Component.literal(btnText.get()), action);
+        addRenderableWidget(b);
+        e.widgets.add(new PW(b, panelW - 4 - PICK_W));
+        return e;
+    }
+
     /** 颜色行：标签 + 当前色小色块（空 = 继承默认→空框）,点击"编辑"打开颜色轮盘;写回即持久化。
-     *  色值不再拼进标签——"标签: 8位hex"串起来曾溢出到右侧按钮下（用户反馈"文字显示不全"） */
-    private PEntry colorRow(String labelKey, Supplier<String> get, java.util.function.Consumer<String> set) {
+     *  色值不再拼进标签——"标签: 8位hex"串起来曾溢出到右侧按钮下（用户反馈"文字显示不全"） */    private PEntry colorRow(String labelKey, Supplier<String> get, java.util.function.Consumer<String> set) {
         PEntry e = listRow(() -> Component.translatable(labelKey).getString(),
                 "z80zhealthbar.editor.color.edit", () -> minecraft.setScreen(new ColorWheelScreen(this,
                         Component.translatable(labelKey).getString(), get.get(), v -> {
@@ -1018,6 +1056,26 @@ public final class HudLayoutScreen extends Screen {
     /** 正在为哪个数据源选择模组（按 id 存,避免 rebuild 后引用失效） */
     private String modPickSourceId = "";
 
+    // ===== 数据源扫描页状态 =====
+    /** 正在扫描哪个数据源（id,避免 rebuild 后引用失效） */
+    private String scanSourceId = "";
+    /** 类列表过滤串 */
+    private String scanFilter = "";
+    /** 已选中的类（全名） */
+    private String scanClass = "";
+    /** 类名缓存（打开类页时枚举一次） */
+    private java.util.List<String> scanClassCache;
+    /** 成员扫描结果（打开成员页时解析一次;含实测值） */
+    private com.z80z99.z80zhealthbar.datasource.ModMemberScanner.Result scanMembers;
+    /** 成员页候选的实测值与标签（与候选一一对应,打开页面时算一次） */
+    private final java.util.Map<String, Float> scanValues = new java.util.HashMap<>();
+    private final java.util.Map<String, Float> scanMaxValues = new java.util.HashMap<>();
+    private final java.util.Map<String, String> scanLabels = new java.util.HashMap<>();
+    /** 语言文件索引（按 jar 缓存,页面打开时加载一次） */
+    private com.z80z99.z80zhealthbar.datasource.ModLangIndex scanLang;
+    /** 动态 tooltip 自增 id */
+    private int dynTooltipSeq;
+
     /** 数据源 · 目标模组选择页:过滤行 + 已装模组列表（点击即写入 src.modId） */
     private void buildDatasourceModPick() {
         var src = datasourceOf("compat_custom_" + modPickSourceId);
@@ -1067,9 +1125,608 @@ public final class HudLayoutScreen extends Screen {
         }
     }
 
+    // ================= 数据源扫描页 =================
+
+    /** 该模组是否有内建等价预置（thirst/appleskin/parcool） */
+    private static boolean hasBuiltinPreset(String modId) {
+        if (modId == null) return false;
+        String m = modId.trim().toLowerCase(java.util.Locale.ROOT);
+        return m.equals("thirst") || m.equals("appleskin") || m.equals("parcool");
+    }
+
+    /** 面板底部的瞬时提示（沿用原版 overlay message,3 秒淡出） */
+    private void toast(String langKey, Object... args) {
+        if (minecraft == null || minecraft.gui == null) return;
+        minecraft.gui.setOverlayMessage(Component.translatable(langKey, args), false);
+    }
+
+    /** 扫描入口是否可用：通道 4 不需要扫描;modId 为空/未装时给出说明 */
+    private boolean scanAvailable(com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src) {
+        if (src == null || src.channel == 4) return false;
+        String modId = src.modId == null ? "" : src.modId.trim();
+        if (modId.isEmpty()) return false;
+        var ps = com.z80z99.z80zhealthbar.platform.PlatformService.get();
+        return ps != null && ps.isModLoaded(modId);
+    }
+
+    /** 已尝试扫描的路径（类页为空时显示,便于排查 dev/启动器目录布局） */
+    private String scanPathInfo = "";
+
+    /** 解析目标模组的扫描根路径：平台 jar/目录路径 → 类加载器兜底 → null */
+    private java.nio.file.Path resolveScanRoot(
+            com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src) {
+        var ps = com.z80z99.z80zhealthbar.platform.PlatformService.get();
+        if (ps == null || src == null) return null;
+        java.nio.file.Path p = ps.modJarPath(src.modId);
+        if (p != null && java.nio.file.Files.exists(p)) return p;
+        // dev/某些启动器：ModList 不提供可读路径,退回类加载器定位
+        ClassLoader loader = ps.modClassLoader(src.modId);
+        java.nio.file.Path alt = com.z80z99.z80zhealthbar.datasource.ModClassScanner
+                .locateFromClassLoader(loader, "com.z80z99.z80zhealthbar.Z80ZHealthBar", src.modId);
+        return alt;
+    }
+
+    /** 数据源 · 类列表页:搜索 + 按包分组的类名（点击进入成员页） */
+    private void buildScanClassPage() {
+        var src = datasourceOf("compat_custom_" + scanSourceId);
+        if (src == null) {
+            panelEntries.add(backRow());
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.missing"));
+            return;
+        }
+        if (scanClassCache == null) {
+            java.nio.file.Path root = resolveScanRoot(src);
+            scanPathInfo = root == null ? "(none)" : root.toString();
+            scanClassCache = com.z80z99.z80zhealthbar.datasource.ModClassScanner.scanClasses(root);
+            scanLang = com.z80z99.z80zhealthbar.datasource.ModLangIndex
+                    .load(root, minecraft != null && minecraft.getLanguageManager() != null
+                            ? minecraft.getLanguageManager().getSelected() : "zh_cn");
+        }
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.datasource.scan_back_params").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    panelPage = PanelPage.EDIT;
+                    rebuildWidgets();
+                }));
+        String modName = cachedModName(src.modId);
+        String title = Component.translatable("z80zhealthbar.editor.datasource.scan_class_title",
+                modName.isBlank() ? src.modId : modName).getString();
+        panelEntries.add(new PEntry(null, null, () -> title));
+        if (scanClassCache.isEmpty()) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.scan_empty"));
+            panelEntries.add(PEntry.dynNote(() -> "§8" + scanPathInfo));
+            return;
+        }
+        panelEntries.add(textInput("z80zhealthbar.editor.datasource.scan_search",
+                () -> scanFilter, v -> scanFilter = v));
+        var filtered = com.z80z99.z80zhealthbar.datasource.ModClassScanner
+                .filter(scanClassCache, scanFilter);
+        if (filtered.isEmpty()) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.scan_no_match"));
+            return;
+        }
+        var sorted = com.z80z99.z80zhealthbar.datasource.ModClassScanner
+                .sortForDisplay(filtered, scanFilter);
+        int shown = 0;
+        String lastPkg = null;
+        for (String cls : sorted) {
+            if (shown >= com.z80z99.z80zhealthbar.datasource.ModClassScanner.MAX_CLASSES) break;
+            String pkg = com.z80z99.z80zhealthbar.datasource.ModClassScanner.packageOf(cls);
+            if (!pkg.equals(lastPkg)) {
+                lastPkg = pkg;
+                String pkgLabel = pkg.isEmpty() ? "(default)" : pkg;
+                panelEntries.add(new PEntry(null, null, () -> "§7" + pkgLabel));
+            }
+            String simple = com.z80z99.z80zhealthbar.datasource.ModClassScanner.simpleName(cls);
+            final String full = cls;
+            panelEntries.add(pickRow(() -> simple,
+                    () -> Component.translatable("z80zhealthbar.editor.datasource.scan_view").getString(),
+                    () -> openScanMembers(src.id, full),
+                    () -> full));
+            shown++;
+        }
+    }
+
+    /** 进入成员页：扫描一次类成员 + 实测所有候选（页面打开时一次,不每帧反射） */
+    private void openScanMembers(String sourceId, String className) {
+        scanSourceId = sourceId;
+        scanClass = className;
+        scanValues.clear();
+        scanMaxValues.clear();
+        scanLabels.clear();
+        var src = datasourceOf("compat_custom_" + sourceId);
+        ClassLoader loader = com.z80z99.z80zhealthbar.platform.PlatformService.get() == null
+                ? null : com.z80z99.z80zhealthbar.platform.PlatformService.get()
+                        .modClassLoader(src == null ? "" : src.modId);
+        scanMembers = com.z80z99.z80zhealthbar.datasource.ModMemberScanner.scan(className, loader);
+        if (src != null) materializeMemberProbes(src, className);
+        panelPage = PanelPage.SCAN_MEMBERS;
+        rebuildWidgets();
+    }
+
+    /** 为扫描出的候选建临时源并实测一次（值/上限/标签），结果存进 scan* 映射 */
+    private void materializeMemberProbes(com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src,
+                                         String className) {
+        if (scanMembers == null) return;
+        var lang = scanLang;
+        for (var c : scanMembers.valueMethods()) {
+            var temp = com.z80z99.z80zhealthbar.datasource.CandidateProbe.tempSource(
+                    src.modId, src.channel, className, src.holderField, src.ifaceClass, c.name(), src.valueMethod);
+            Float v = com.z80z99.z80zhealthbar.datasource.CandidateProbe.read(temp);
+            String key = className + "#" + c.name();
+            scanValues.put(key, v);
+            scanLabels.put(key, com.z80z99.z80zhealthbar.datasource.LabelResolver
+                    .resolve(className, c.name(), lang));
+            // 上限:配置已有 maxMethod 时沿用,否则找同名族 max 方法
+            String maxName = src.maxMethod;
+            if (maxName == null || maxName.isBlank()) {
+                maxName = guessMaxMethod(scanMembers, c.name());
+            }
+            if (maxName != null && !maxName.isBlank()) {
+                var maxTemp = com.z80z99.z80zhealthbar.datasource.CandidateProbe.tempSource(
+                        src.modId, src.channel, className, src.holderField, src.ifaceClass, maxName, src.valueMethod);
+                scanMaxValues.put(key, com.z80z99.z80zhealthbar.datasource.CandidateProbe.read(maxTemp));
+            }
+        }
+        for (var ch : scanMembers.chains()) {
+            String key = className + "#" + ch.objectMethod() + "." + ch.valueMethod();
+            var temp = com.z80z99.z80zhealthbar.datasource.CandidateProbe.tempSource(
+                    src.modId, src.channel, className, src.holderField, src.ifaceClass,
+                    ch.objectMethod(), ch.valueMethod());
+            scanValues.put(key, com.z80z99.z80zhealthbar.datasource.CandidateProbe.read(temp));
+            scanLabels.put(key, com.z80z99.z80zhealthbar.datasource.LabelResolver
+                    .resolve(className, ch.valueMethod(), lang));
+        }
+    }
+
+    /** 在已扫描的上限方法里找与值方法同名的 max（getThirst → getMaxThirst / getThirstMax） */
+    private static String guessMaxMethod(com.z80z99.z80zhealthbar.datasource.ModMemberScanner.Result r,
+                                         String valueMethod) {
+        if (r == null || valueMethod == null) return null;
+        String base = valueMethod;
+        for (String prefix : new String[]{"get", "is", "has"}) {
+            if (base.length() > prefix.length() && base.startsWith(prefix)) {
+                base = base.substring(prefix.length());
+                break;
+            }
+        }
+        String lower = base.toLowerCase(java.util.Locale.ROOT);
+        for (String maxName : r.maxMethodNames()) {
+            String n = maxName.toLowerCase(java.util.Locale.ROOT);
+            if (n.contains(lower)) return maxName;
+        }
+        return r.maxMethodNames().size() == 1 ? r.maxMethodNames().get(0) : null;
+    }
+
+    /** 数据源 · 成员页:值方法（含实测值/推荐）/方法链/上限方法/静态字段/带参数方法 */
+    private void buildScanMembersPage() {
+        var src = datasourceOf("compat_custom_" + scanSourceId);
+        if (src == null || scanMembers == null) {
+            panelEntries.add(backRow());
+            panelEntries.add(PEntry.note("z80z99.z80zhealthbar.editor.datasource.missing"));
+            return;
+        }
+        String simple = com.z80z99.z80zhealthbar.datasource.ModClassScanner.simpleName(scanClass);
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.datasource.scan_back_classes").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    panelPage = PanelPage.SCAN_CLASS;
+                    rebuildWidgets();
+                }));
+        panelEntries.add(new PEntry(null, null, () -> "§f" + simple));
+        if (scanMembers.loadError() != null) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.scan_load_failed"));
+            return;
+        }
+
+        // 后台探测状态（会话常驻;换类时提示旧会话仍在跑）
+        appendProbeStatus(src, simple);
+
+        // ---- 值方法（实测 + 推荐排序）----
+        if (!scanMembers.valueMethods().isEmpty()) {
+            panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.scan_values_section", null, null));
+            var ranked = rankValueCandidates(src);
+            for (var r : ranked) {
+                var c = r.candidate();
+                String key = scanClass + "#" + c.name();
+                Float v = scanValues.get(key);
+                Float m = scanMaxValues.get(key);
+                String label = scanLabels.getOrDefault(key, c.name());
+                String valueText = formatProbeValue(v, m);
+                boolean changed = ProbeSessionChanged(key);
+                Supplier<String> line = () -> (r.recommended() ? "§a★ " : changed ? "§e↑ " : "")
+                        + label + (changed ? " §7(探测变化)" : "")
+                        + " §8[" + c.returnType() + "]" + " §f" + valueText;
+                Supplier<String> tip = () -> buildCandidateTooltip(scanClass, c, v, m, r);
+                panelEntries.add(pickRow(line,
+                        () -> Component.translatable("z80zhealthbar.editor.datasource.scan_use").getString(),
+                        () -> applyScannedValue(src, scanClass, c.name(), null),
+                        tip));
+            }
+        }
+
+        // ---- 方法链（对象读取 → 值方法）----
+        if (!scanMembers.chains().isEmpty()) {
+            panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.scan_chains_section", null, null));
+            for (var ch : scanMembers.chains()) {
+                String key = scanClass + "#" + ch.objectMethod() + "." + ch.valueMethod();
+                Float v = scanValues.get(key);
+                String label = scanLabels.getOrDefault(key, ch.valueMethod());
+                Supplier<String> line = () -> label + " §8[" + ch.valueReturnType() + "] §f"
+                        + formatProbeValue(v, null) + " §8(" + ch.objectMethod() + ")";
+                panelEntries.add(pickRow(line,
+                        () -> Component.translatable("z80zhealthbar.editor.datasource.scan_use").getString(),
+                        () -> applyScannedValue(src, scanClass, ch.objectMethod(), ch.valueMethod()),
+                        () -> scanClass + "#" + ch.objectMethod() + "\n"
+                                + ch.objectMethod() + "() → " + ch.valueMethod() + "() : " + ch.valueReturnType()));
+            }
+        }
+
+        // ---- 上限方法（配置 maxMethod 用）----
+        if (!scanMembers.maxMethodNames().isEmpty()) {
+            panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.scan_max_section", null, null));
+            for (String maxName : scanMembers.maxMethodNames()) {
+                var temp = com.z80z99.z80zhealthbar.datasource.CandidateProbe.tempSource(
+                        src.modId, src.channel, scanClass, src.holderField, src.ifaceClass, maxName, src.valueMethod);
+                Float mv = com.z80z99.z80zhealthbar.datasource.CandidateProbe.read(temp);
+                Supplier<String> line = () -> maxName + " §f" + formatProbeValue(mv, null);
+                panelEntries.add(pickRow(line,
+                        () -> Component.translatable("z80zhealthbar.editor.datasource.scan_use").getString(),
+                        () -> {
+                            src.maxMethod = maxName;
+                            markDirty();
+                            rebuildWidgets();
+                        },
+                        () -> scanClass + "#" + maxName));
+            }
+        }
+
+        // ---- Capability 静态字段（通道 0 写回 holderField）----
+        if (!scanMembers.capabilityFields().isEmpty()) {
+            panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.scan_fields_section", null, null));
+            for (var f : scanMembers.capabilityFields()) {
+                Supplier<String> line = () -> f.name() + " §8[" + f.fieldType() + "]";
+                panelEntries.add(pickRow(line,
+                        () -> Component.translatable("z80zhealthbar.editor.datasource.scan_use").getString(),
+                        () -> {
+                            src.holderClass = scanClass;
+                            src.holderField = f.name();
+                            if (src.channel == 0 && (src.ifaceClass == null || src.ifaceClass.isBlank())) {
+                                String iface = guessCapabilityInterface(scanClass, f.name());
+                                if (iface != null) src.ifaceClass = iface;
+                            }
+                            markDirty();
+                            rebuildWidgets();
+                        },
+                        () -> scanClass + "#" + f.name() + " : " + f.fieldType()));
+            }
+        }
+
+        // ---- 带参数方法（选中后自动填参数类型与默认实参）----
+        if (!scanMembers.paramMethods().isEmpty()) {
+            panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.scan_params_section", null, null));
+            for (var c : scanMembers.paramMethods()) {
+                Supplier<String> line = () -> c.name() + "(…) §8[" + c.returnType() + "]";
+                Supplier<String> tip = () -> scanClass + "#" + c.name()
+                        + "\n" + parameterSignature(c);
+                panelEntries.add(pickRow(line,
+                        () -> Component.translatable("z80zhealthbar.editor.datasource.scan_use").getString(),
+                        () -> applyScannedParamMethod(src, scanClass, c),
+                        tip));
+            }
+        }
+
+        // ---- AI 标签导入/导出（只翻译,不改方法名）----
+        panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.scan_label_section", null, null));
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.datasource.scan_label_export").getString(),
+                "z80zhealthbar.editor.adjust", this::exportLabelsToClipboard));
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.datasource.scan_label_import").getString(),
+                "z80zhealthbar.editor.adjust", this::importLabelsFromClipboard));
+    }
+
+    /** 探测状态行（会话在后台跑时显示进度与结果） */
+    private void appendProbeStatus(com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src,
+                                   String simpleClass) {
+        if (!com.z80z99.z80zhealthbar.datasource.ProbeSession.hasSession()) return;
+        String sessionKey = com.z80z99.z80zhealthbar.datasource.ProbeSession.sessionKey();
+        boolean sameClass = sessionKey.equals(scanClass);
+        if (!sameClass) {
+            panelEntries.add(PEntry.dynNote(() -> "§e"
+                    + Component.translatable("z80zhealthbar.editor.datasource.probe_other",
+                    com.z80z99.z80zhealthbar.datasource.ProbeSession.title()).getString()));
+            panelEntries.add(listRow(
+                    () -> Component.translatable("z80zhealthbar.editor.datasource.probe_stop").getString(),
+                    "z80zhealthbar.editor.adjust", () -> {
+                        com.z80z99.z80zhealthbar.datasource.ProbeSession.stop(System.currentTimeMillis());
+                        rebuildWidgets();
+                    }));
+            return;
+        }
+        panelEntries.add(PEntry.dynNote(() -> {
+            
+            String state = com.z80z99.z80zhealthbar.datasource.ProbeSession.isStopped()
+                    ? Component.translatable("z80zhealthbar.editor.datasource.probe_stopped_short").getString()
+                    : Component.translatable("z80zhealthbar.editor.datasource.probe_running_short").getString();
+            return "§b" + state + " §7" + com.z80z99.z80zhealthbar.datasource.ProbeSession.elapsedSeconds(System.currentTimeMillis()) + "s · "
+                    + com.z80z99.z80zhealthbar.datasource.ProbeSession.changedCount() + "/" + com.z80z99.z80zhealthbar.datasource.ProbeSession.candidates().size()
+                    + " " + Component.translatable("z80zhealthbar.editor.datasource.probe_changed").getString();
+        }));
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.datasource.probe_start").getString(),
+                "z80zhealthbar.editor.adjust", () -> startProbeForCurrentClass(src, simpleClass)));
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.datasource.probe_reset").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    com.z80z99.z80zhealthbar.datasource.ProbeSession
+                            .resetBaseline(System.currentTimeMillis());
+                    rebuildWidgets();
+                }));
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.datasource.probe_stop").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    com.z80z99.z80zhealthbar.datasource.ProbeSession
+                            .stop(System.currentTimeMillis());
+                    rebuildWidgets();
+                }));
+    }
+
+    /** 某个候选在当前探测会话里是否已变化（成员页置顶/高亮用） */
+    private boolean ProbeSessionChanged(String key) {
+        
+        if (!com.z80z99.z80zhealthbar.datasource.ProbeSession.hasSession() || !com.z80z99.z80zhealthbar.datasource.ProbeSession.sessionKey().equals(scanClass)) return false;
+        String member = key.contains("#") ? key.substring(key.indexOf('#') + 1) : key;
+        for (var c : com.z80z99.z80zhealthbar.datasource.ProbeSession.candidates()) {
+            if (c.label != null && c.label.contains(member) && c.changed()) return true;
+        }
+        return false;
+    }
+
+    /** 开始探测：把当前值方法都加入会话（最多 20 个） */
+    private void startProbeForCurrentClass(
+            com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src, String simpleClass) {
+        if (scanMembers == null) return;
+        var labels = new java.util.ArrayList<String>();
+        var readers = new java.util.ArrayList<java.util.function.Function<Void, Float>>();
+        for (var c : scanMembers.valueMethods()) {
+            String key = scanClass + "#" + c.name();
+            String label = scanLabels.getOrDefault(key, c.name());
+            var temp = com.z80z99.z80zhealthbar.datasource.CandidateProbe.tempSource(
+                    src.modId, src.channel, scanClass, src.holderField, src.ifaceClass, c.name(), src.valueMethod);
+            labels.add(label);
+            readers.add(com.z80z99.z80zhealthbar.datasource.CandidateProbe.readerOf(temp));
+        }
+        if (labels.isEmpty()) return;
+        com.z80z99.z80zhealthbar.datasource.ProbeSession.start(
+                scanClass, simpleClass, labels, readers, System.currentTimeMillis());
+        rebuildWidgets();
+    }
+
+    /** 推荐排序：把扫描出的值方法连同实测值交给 CandidateRanker */
+    private java.util.List<ScanRanked> rankValueCandidates(
+            com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src) {
+        var inputs = new java.util.ArrayList<com.z80z99.z80zhealthbar.datasource.CandidateRanker.Input>();
+        var byName = new java.util.HashMap<String, com.z80z99.z80zhealthbar.datasource.ModMemberScanner.Candidate>();
+        for (var c : scanMembers.valueMethods()) {
+            String key = scanClass + "#" + c.name();
+            inputs.add(new com.z80z99.z80zhealthbar.datasource.CandidateRanker.Input(
+                    c.name(), c.returnType(), scanValues.get(key), scanMaxValues.get(key)));
+            byName.put(c.name(), c);
+        }
+        var ranked = com.z80z99.z80zhealthbar.datasource.CandidateRanker.rank(inputs);
+        var out = new java.util.ArrayList<ScanRanked>();
+        for (var r : ranked) {
+            var c = byName.get(r.input().methodName());
+            if (c != null) out.add(new ScanRanked(c, r.label(), r.recommended(), r.reasons()));
+        }
+        return out;
+    }
+
+    private record ScanRanked(com.z80z99.z80zhealthbar.datasource.ModMemberScanner.Candidate candidate,
+                              String label, boolean recommended, java.util.List<String> reasons) {}
+
+    /** 候选 tooltip：完整签名 + 实测值 + 推荐理由 */
+    private String buildCandidateTooltip(String className,
+                                         com.z80z99.z80zhealthbar.datasource.ModMemberScanner.Candidate c,
+                                         Float v, Float m, ScanRanked r) {
+        StringBuilder sb = new StringBuilder(className).append('#').append(c.name())
+                .append("\n").append(c.name()).append("() : ").append(c.returnType());
+        sb.append("\n").append(Component.translatable("z80zhealthbar.editor.datasource.scan_value")
+                .getString()).append(": ").append(formatProbeValue(v, m));
+        if (r != null && !r.reasons().isEmpty()) {
+            sb.append("\n").append(Component.translatable("z80zhealthbar.editor.datasource.scan_why")
+                    .getString()).append(": ");
+            for (int i = 0; i < r.reasons().size(); i++) {
+                if (i > 0) sb.append(", ");
+                String key = com.z80z99.z80zhealthbar.datasource.CandidateRanker
+                        .reasonKey(r.reasons().get(i));
+                sb.append(key.isEmpty() ? r.reasons().get(i) : Component.translatable(key).getString());
+            }
+        }
+        return sb.toString();
+    }
+
+    private String parameterSignature(
+            com.z80z99.z80zhealthbar.datasource.ModMemberScanner.Candidate c) {
+        try {
+            Method m = c.method();
+            String types = com.z80z99.z80zhealthbar.datasource.ModMemberScanner.paramTypesOf(m);
+            return types.replace("/", ", ");
+        } catch (Throwable t) {
+            return "?";
+        }
+    }
+
+    /** 实测值显示："17 / 20"、"17"、"—" */
+    private static String formatProbeValue(Float v, Float m) {
+        if (v == null) return "§8—";
+        String s = Math.abs(v - Math.round(v)) < 0.05f
+                ? String.valueOf(Math.round(v))
+                : String.format(java.util.Locale.ROOT, "%.1f", v);
+        if (m != null && m > 0) {
+            String ms = Math.abs(m - Math.round(m)) < 0.05f
+                    ? String.valueOf(Math.round(m))
+                    : String.format(java.util.Locale.ROOT, "%.1f", m);
+            return s + " / " + ms;
+        }
+        return s;
+    }
+
+    /** 写回扫描结果到数据源配置（不写盘,依赖编辑器显式保存） */
+    private void applyScannedValue(com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src,
+                                   String className, String readMethod, String valueMethod) {
+        if (src == null || className == null || readMethod == null) return;
+        if (valueMethod == null) {
+            // 值方法直读
+            switch (src.channel) {
+                case 0 -> {
+                    src.holderClass = className;
+                    if (src.holderField == null || src.holderField.isBlank()) {
+                        // 未选字段时,若该类只有一个 capability 字段则自动填
+                        var fields = scanMembers == null ? null : scanMembers.capabilityFields();
+                        if (fields != null && fields.size() == 1) {
+                            src.holderField = fields.get(0).name();
+                            String iface = guessCapabilityInterface(className, src.holderField);
+                            if (iface != null) src.ifaceClass = iface;
+                        }
+                    }
+                    src.readMethod = readMethod;
+                }
+                case 1 -> {
+                    src.holderClass = className;
+                    src.readMethod = readMethod;
+                }
+                case 3 -> src.readMethod = readMethod;
+                default -> src.readMethod = readMethod;
+            }
+        } else {
+            // 方法链:readMethod 取对象,valueMethod 取值
+            src.holderClass = className;
+            src.readMethod = readMethod;
+            src.valueMethod = valueMethod;
+        }
+        // 上限方法为空时自动补（仅唯一候选时,避免猜错）
+        if (src.maxMethod == null || src.maxMethod.isBlank()) {
+            String guessed = guessMaxMethod(scanMembers, valueMethod == null ? readMethod : valueMethod);
+            if (guessed != null) src.maxMethod = guessed;
+        }
+        // 显示名为空时用标签
+        if (src.displayName == null || src.displayName.isBlank()) {
+            String key = className + "#" + (valueMethod == null ? readMethod : valueMethod);
+            String label = scanLabels.get(key);
+            if (label != null && !label.isBlank()) src.displayName = label;
+        }
+        markDirty();
+        rebuildWidgets();
+    }
+
+    /** 带参数方法写回：自动填类型串与默认实参（用户可在参数页改） */
+    private void applyScannedParamMethod(
+            com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src,
+            String className,
+            com.z80z99.z80zhealthbar.datasource.ModMemberScanner.Candidate c) {
+        try {
+            Method m = c.method();
+            String types = com.z80z99.z80zhealthbar.datasource.ModMemberScanner.paramTypesOf(m);
+            String args = com.z80z99.z80zhealthbar.datasource.ModMemberScanner.defaultArgsOf(m);
+            switch (src.channel) {
+                case 1 -> {
+                    src.holderClass = className;
+                    src.readMethod = c.name();
+                    src.readParamTypes = types;
+                    src.readArgs = args;
+                }
+                case 2 -> {
+                    src.holderClass = className;
+                    src.readMethod = c.name();
+                    src.readParamTypes = types;
+                    src.readArgs = args;
+                }
+                default -> {
+                    src.readMethod = c.name();
+                    src.readParamTypes = types;
+                    src.readArgs = args;
+                }
+            }
+            markDirty();
+            rebuildWidgets();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 猜测 capability 接口（从字段泛型实参取;取不到返回 null 让用户手填） */
+    private String guessCapabilityInterface(String holderClass, String fieldName) {
+        try {
+            ClassLoader loader = com.z80z99.z80zhealthbar.platform.PlatformService.get() == null
+                    ? null : com.z80z99.z80zhealthbar.platform.PlatformService.get()
+                            .modClassLoader(datasourceOf("compat_custom_" + scanSourceId).modId);
+            Class<?> holder = Class.forName(holderClass, false, loader);
+            var f = holder.getField(fieldName);
+            var generic = f.getGenericType();
+            if (generic instanceof java.lang.reflect.ParameterizedType pt) {
+                var args = pt.getActualTypeArguments();
+                if (args.length > 0 && args[0] instanceof Class<?> iface) return iface.getName();
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    /** 导出当前类的候选给 AI 翻译（剪贴板;只含标签清单） */
+    private void exportLabelsToClipboard() {
+        if (scanMembers == null || minecraft == null) return;
+        var src = datasourceOf("compat_custom_" + scanSourceId);
+        var items = new java.util.ArrayList<com.z80z99.z80zhealthbar.datasource.LabelExchange.Item>();
+        for (var c : scanMembers.valueMethods()) {
+            String key = scanClass + "#" + c.name();
+            String langHint = null;
+            if (scanLang != null) langHint = scanLang.lookup(c.name());
+            items.add(new com.z80z99.z80zhealthbar.datasource.LabelExchange.Item(
+                    scanClass, c.name(), c.returnType(), scanValues.get(key),
+                    scanMaxValues.get(key), langHint));
+        }
+        String json = com.z80z99.z80zhealthbar.datasource.LabelExchange.exportJson(
+                src == null ? "" : src.modId, cachedModName(src == null ? "" : src.modId), "",
+                scanClass, items);
+        minecraft.keyboardHandler.setClipboard(json);
+        toast("z80zhealthbar.editor.datasource.scan_label_exported");
+    }
+
+    /** 导入 AI 翻译结果（只接受当前候选集内的键） */
+    private void importLabelsFromClipboard() {
+        if (scanMembers == null || minecraft == null) return;
+        var allowed = new java.util.HashSet<String>();
+        for (var c : scanMembers.valueMethods()) allowed.add(scanClass + "#" + c.name());
+        for (var ch : scanMembers.chains()) {
+            allowed.add(scanClass + "#" + ch.objectMethod() + "." + ch.valueMethod());
+        }
+        var res = com.z80z99.z80zhealthbar.datasource.LabelExchange
+                .importJson(minecraft.keyboardHandler.getClipboard(), allowed);
+        if (res == null) {
+            toast("z80z99.z80zhealthbar.editor.datasource.scan_label_import_failed");
+            return;
+        }
+        int added = com.z80z99.z80zhealthbar.datasource.LabelResolver.merge(res.labels());
+        if (added > 0) {
+            markDirty();
+            // 刷新标签缓存
+            for (var e : res.labels().entrySet()) {
+                scanLabels.put(e.getKey(), e.getValue());
+            }
+            rebuildWidgets();
+        }
+        if (res.ignored() > 0) {
+            toast("z80z99.z80zhealthbar.editor.datasource.scan_label_import_partial",
+                    String.valueOf(added), String.valueOf(res.ignored()));
+        } else if (added > 0) {
+            toast("z80z99.z80zhealthbar.editor.datasource.scan_label_imported",
+                    String.valueOf(added));
+        }
+    }
+
     /** 组件类型 compat_custom_<id> → 绑定的数据源配置（找不到返回 null） */
-    private static com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource datasourceOf(String selType) {
-        String raw = selType.substring("compat_custom_".length());
+    private static com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource datasourceOf(String selType) {        String raw = selType.substring("compat_custom_".length());
         var cs = ConfigManager.getConfig().customSources;
         if (cs == null || cs.customSources == null) return null;
         for (var s : cs.customSources) {
@@ -1095,6 +1752,25 @@ public final class HudLayoutScreen extends Screen {
                     panelPage = PanelPage.DATASOURCE_MODPICK;
                     rebuildWidgets();
                 }));
+        // 扫描该模组的类（类名/方法名靠反射枚举,免手填;标签可交给 AI 翻译）
+        if (scanAvailable(src)) {
+            panelEntries.add(listRow(
+                    () -> Component.translatable("z80zhealthbar.editor.datasource.scan_entry").getString(),
+                    "z80zhealthbar.editor.adjust", () -> {
+                        scanSourceId = src.id;
+                        scanFilter = "";
+                        scanClassCache = null;
+                        scanMembers = null;
+                        panelPage = PanelPage.SCAN_CLASS;
+                        rebuildWidgets();
+                    }));
+        } else if (src.channel != 4) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.scan_unavailable"));
+        }
+        // 预置优先级提示：该模组已有内建等价源时,扫描通常没必要
+        if (hasBuiltinPreset(src.modId)) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.preset_hint"));
+        }
         panelEntries.add(cycler("z80zhealthbar.custom_sources.field.channel",
                 () -> Component.translatable("z80zhealthbar.editor.datasource.type." + src.channel).getString(),
                 () -> {
@@ -1499,8 +2175,7 @@ public final class HudLayoutScreen extends Screen {
 
     /** 子组件页标题行（类型中文名 · 部件名） */
     private PEntry subTitleRow(String partKey) {
-        String base = HudLayoutConfig.baseKeyOf(baseKey(selected));
-        String disp = Component.translatable("z80zhealthbar.hud.component." + base).getString()
+        String disp = displayNameOf(baseKey(selected))
                 + " · " + Component.translatable(partKey).getString();
         return new PEntry(null, "z80zhealthbar.editor.selected_component", () -> disp);
     }
@@ -2299,8 +2974,7 @@ public final class HudLayoutScreen extends Screen {
                             ? Component.translatable("z80zhealthbar.editor.suffix_text").getString()
                             : e.getKey().endsWith(".icon")
                             ? Component.translatable("z80zhealthbar.editor.suffix_icon").getString() : "";
-                    String title = Component.translatable("z80zhealthbar.hud.component."
-                            + HudLayoutConfig.baseKeyOf(baseKey(e.getKey()))).getString() + suffix;
+                    String title = displayNameOf(e.getKey()) + suffix;
                     // 悬停标题变白提示可抓取拖动（命中区同式,见 mouseClicked 标题分支）
                     int tw = font.width(title);
                     boolean hoverTitle = mouseX >= box.x() + box.width() / 2 - tw / 2 - 2
@@ -2394,6 +3068,8 @@ public final class HudLayoutScreen extends Screen {
             case DATASOURCE_LIST -> Component.translatable("z80zhealthbar.editor.datasource.title").getString();
             case DATASOURCE_TYPE -> Component.translatable("z80zhealthbar.editor.datasource.type_title").getString();
             case DATASOURCE_MODPICK -> Component.translatable("z80zhealthbar.editor.datasource.modpick_title").getString();
+            case SCAN_CLASS -> Component.translatable("z80zhealthbar.editor.datasource.scan_class_title_crumb").getString();
+            case SCAN_MEMBERS -> com.z80z99.z80zhealthbar.datasource.ModClassScanner.simpleName(scanClass);
         };
         return page.isEmpty() ? root : root + " \u203A " + page;
     }
@@ -2527,7 +3203,13 @@ public final class HudLayoutScreen extends Screen {
             // 空间不足才前置"导致长标签行与短标签行的问号一左一右参差（实测反馈"统一设置项问号位置"）
             // tooltip 判定:labelKey 非空即可（旧实现要求 labelDyn==null,导致 colorRow/listRow
             // 传入的 tooltipKey 永不生效——44 个已写好的说明看不到 (?)）
-            String tk = e.labelKey == null ? null : tooltipKeyFor(e.labelKey);
+            String tk;
+            if (e.tooltipDyn != null) {
+                tk = "@dyn:" + e.dynTooltipId;
+                dynTooltips.put(tk, e.tooltipDyn);
+            } else {
+                tk = e.labelKey == null ? null : tooltipKeyFor(e.labelKey);
+            }
             int labelX = panelX + 18;
             int qx = tk != null ? panelX + 6 : -1;
             // 行标签按可用宽截断（…）:可用 = 行内最左控件左缘（无控件行 = 面板右缘-8）− 边距
@@ -2757,8 +3439,7 @@ public final class HudLayoutScreen extends Screen {
                         ? Component.translatable("z80zhealthbar.editor.suffix_text").getString()
                         : selected.endsWith(".icon")
                         ? Component.translatable("z80zhealthbar.editor.suffix_icon").getString() : "";
-                String title = Component.translatable("z80zhealthbar.hud.component."
-                        + HudLayoutConfig.baseKeyOf(baseKey(selected))).getString() + suffix;
+                String title = displayNameOf(selected) + suffix;
                 int tw = font.width(title);
                 int tx0 = sb.x() + sb.width() / 2 - tw / 2 - 2;
                 if (mouseX >= tx0 && mouseX < tx0 + tw + 4) {

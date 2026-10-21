@@ -56,6 +56,33 @@ public class FabricPlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public Path modJarPath(String modId) {
+        try {
+            var container = FabricLoader.getInstance().getModContainer(modId);
+            if (container.isEmpty()) return null;
+            for (Path p : container.get().getOrigin().getPaths()) {
+                if (p != null && java.nio.file.Files.isRegularFile(p)) return p;
+            }
+            return null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @Override
+    public ClassLoader modClassLoader(String modId) {
+        // Fabric 0.15 的 ModContainer 不暴露类加载器:所有模组共享 Knot 类加载器,
+        // 线程上下文加载器即它（模组类由同一加载器解析）
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        if (cl != null) return cl;
+        try {
+            return FabricLoader.class.getClassLoader();
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @Override
     public void sendToPlayer(ServerPlayer player, ResourceLocation packetId,
                              Consumer<FriendlyByteBuf> writer) {
         FriendlyByteBuf buf = new FriendlyByteBuf(PacketByteBufs.create());

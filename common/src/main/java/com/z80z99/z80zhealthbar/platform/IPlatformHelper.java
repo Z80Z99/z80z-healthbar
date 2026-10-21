@@ -30,6 +30,18 @@ public interface IPlatformHelper {
     java.util.List<ModEntry> installedMods();
 
     /**
+     * 目标模组的 jar 文件路径（数据源扫描器枚举 class 条目用）。
+     * 模组不存在、以目录形式加载、或加载器不提供时返回 null。
+     */
+    Path modJarPath(String modId);
+
+    /**
+     * 目标模组的类加载器（扫描器加载目标模组类用）。
+     * 取不到时由调用方回退到线程上下文类加载器。
+     */
+    ClassLoader modClassLoader(String modId);
+
+    /**
      * 服务端发送一个自定义 S2C 包到指定玩家。
      * 由平台实现负责封包（Forge SimpleChannel / Fabric ServerPlayNetworking）。
      */
