@@ -300,8 +300,11 @@ public class HudLayoutConfig {
         Map<String, ComponentLayout> fresh = presetComponents(preset);
         Map<String, ComponentLayout> merged = new LinkedHashMap<>(fresh);
         for (Map.Entry<String, ComponentLayout> e : components.entrySet()) {
+            // 自定义数据源组件(compat_custom_*)不在 ADDABLE_TYPES 里,indexOf=-1 曾使其
+            // 不满足 >=7 保留条件——应用任意预设即静默丢失全部数据源条(审计 S1,必修)
             if (e.getKey().contains("#") || ADDABLE_TYPES.indexOf(baseKeyOf(e.getKey())) >= 7
-                    || e.getKey().startsWith("text")) {
+                    || e.getKey().startsWith("text")
+                    || baseKeyOf(e.getKey()).startsWith("compat_custom_")) {
                 merged.put(e.getKey(), e.getValue()); // 自建实例与原子组件不被预设清掉
             }
         }

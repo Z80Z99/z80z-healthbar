@@ -41,14 +41,22 @@ public final class CompatHudTakeover {
     public static String adapterForOverlay(String namespace, String path) {
         if ("thirst".equals(namespace) && "thirst_level".equals(path)) return "thirst";
         if ("parcool".equals(namespace) && "hud.stamina.host".equals(path)) return "parcool";
-        String full = namespace + ":" + path;
+        // 无自定义接管源时早退:此前每 overlay 每帧仍会拼接字符串 + 扫 32 源(审计 P7)
         var cs = ConfigManager.getConfig().customSources;
-        if (cs != null && cs.customSources != null) {
-            for (var s : cs.customSources) {
-                if (s != null && s.enabled && s.takeover && s.overlayId != null
-                        && !s.overlayId.isBlank() && full.equals(s.overlayId.trim())) {
-                    return "custom_" + s.id;
-                }
+        if (cs == null || cs.customSources == null || cs.customSources.isEmpty()) return null;
+        boolean any = false;
+        for (var s : cs.customSources) {
+            if (s != null && s.enabled && s.takeover && s.overlayId != null && !s.overlayId.isBlank()) {
+                any = true;
+                break;
+            }
+        }
+        if (!any) return null;
+        String full = namespace + ":" + path;
+        for (var s : cs.customSources) {
+            if (s != null && s.enabled && s.takeover && s.overlayId != null
+                    && !s.overlayId.isBlank() && full.equals(s.overlayId.trim())) {
+                return "custom_" + s.id;
             }
         }
         return null;
@@ -170,5 +178,7 @@ public final class CompatHudTakeover {
     public static void onConfigReload() {
         ENSURED.clear();
         LAST_ON.clear();
+        // 反射缓存随配置失效:数据源类名/方法名改过、或目标模组刚装入时允许重新解析
+        com.z80z99.z80zhealthbar.overlay.parts.compat.ReflectionHelperCompat.clearCaches();
     }
 }

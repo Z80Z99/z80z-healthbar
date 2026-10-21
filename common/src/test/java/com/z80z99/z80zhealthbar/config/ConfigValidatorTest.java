@@ -298,4 +298,51 @@ class ConfigValidatorTest {
         bad.id = "Bad Id";
         assertFalse(bad.paramsComplete());
     }
+
+    /** 审计 S1:应用预设不得清掉用户的自定义数据源组件(compat_custom_*) */
+    @Test
+    void applyPresetKeepsCustomDatasourceComponents() {
+        HudLayoutConfig l = new HudLayoutConfig();
+        String k = l.addInstance("compat_custom_gundur");
+        assertNotNull(k);
+        l.applyPreset("CLASSIC");
+        assertTrue(l.components.containsKey(k), "compat_custom_* 必须被预设保留");
+    }
+
+    /** 审计 S2:数据源数量上限按索引修剪(旧实现 34+ 渐进丢失),且 _max 后缀被截断(S5) */
+    @Test
+    void customSourcesTrimAndMaxSuffix() {
+        Z80ZHealthBarConfig cfg = new Z80ZHealthBarConfig();
+        for (int i = 0; i < 34; i++) {
+            var s = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+            s.id = "src" + i;
+            s.channel = 4;
+            cfg.customSources.customSources.add(s);
+        }
+        var m = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+        m.id = "foo_max"; m.channel = 4;
+        cfg.customSources.customSources.add(m);
+
+        ConfigValidator.validate(cfg);
+
+        assertEquals(32, cfg.customSources.customSources.size(), "上限应精确为 32");
+        // 34 个 src + foo_max 共 35 项 -> 保留前 32,foo_max(第 35 个)被修剪;
+        // 单独验证 _max 截断逻辑
+        Z80ZHealthBarConfig c2 = new Z80ZHealthBarConfig();
+        var only = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+        only.id = "foo_max"; only.channel = 4;
+        c2.customSources.customSources.add(only);
+        ConfigValidator.validate(c2);
+        assertEquals("foo", c2.customSources.customSources.get(0).id, "_max 后缀应被截断");
+    }
+
+    /** 通道 3 方法链:valueMethod 参与读取;paramsComplete 仍只要求 readMethod */
+    @Test
+    void channel3ChainParams() {
+        var s = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+        s.id = "sat"; s.channel = 3; s.readMethod = "getFoodData";
+        assertTrue(s.paramsComplete());
+        s.valueMethod = "getSaturationLevel";
+        assertTrue(s.paramsComplete());
+    }
 }

@@ -26,7 +26,6 @@ public final class CustomSourcesScreen extends Screen {
     private static final int ROW_H = 20;
 
     private final Screen parent;
-    private final List<CustomSource> sources;
 
     private int panelX, panelY;
     private int selected = -1;      // 当前编辑的源索引
@@ -36,17 +35,47 @@ public final class CustomSourcesScreen extends Screen {
     private String modSearch = "";
     private int modScroll;
     private List<com.z80z99.z80zhealthbar.platform.ModEntry> modCache;
+    /** 保存防抖:打字时每键落盘曾导致渲染线程磁盘 IO(审计 P4)。dirty=true 才算待保存。 */
+    private boolean saveDirty;
+    private long saveDueAt;
 
-    // 编辑表单控件（仅编辑态可见）
-    private EditBox idBox, modBox, nameBox, holderBox, fieldBox, ifaceBox, readBox, valueBox, maxBox, overlayBox;
-    private Button channelBtn, itemModeBtn, maxFixedBtn, colorBtn, takeoverBtn;
+    /** 活引用:热重载会替换 config 实例,缓存的列表引用会写到旧对象(审计 S3) */
+    private List<CustomSource> sources() {
+        var cs = ConfigManager.getConfig().customSources;
+        if (cs == null) {
+            cs = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig();
+            ConfigManager.getConfig().customSources = cs;
+        }
+        if (cs.customSources == null) cs.customSources = new ArrayList<>();
+        return cs.customSources;
+    }
+
+    /** 标记待保存(500ms 防抖;关屏/返回时立即落盘) */
+    private void markSave() {
+        saveDirty = true;
+        saveDueAt = System.currentTimeMillis() + 500L;
+    }
+
+    private void flushSave() {
+        if (!saveDirty) return;
+        saveDirty = false;
+        ConfigManager.saveConfig();
+    }
+
+    @Override
+    public void removed() {
+        flushSave();
+        super.removed();
+    }
 
     public CustomSourcesScreen(Screen parent) {
         super(Component.translatable("z80zhealthbar.custom_sources.title"));
         this.parent = parent;
-        var cs = ConfigManager.getConfig().customSources;
-        this.sources = cs == null ? new ArrayList<>() : cs.customSources;
     }
+
+    // 编辑表单控件（仅编辑态可见）
+    private EditBox idBox, modBox, nameBox, holderBox, fieldBox, ifaceBox, readBox, valueBox, maxBox, overlayBox;
+    private Button channelBtn, itemModeBtn, maxFixedBtn, colorBtn, takeoverBtn;
 
     @Override
     protected void init() {
@@ -68,7 +97,7 @@ public final class CustomSourcesScreen extends Screen {
     }
 
     private void back() {
-        ConfigManager.saveConfig();
+        flushSave();
         if (minecraft != null) minecraft.setScreen(parent);
     }
 
@@ -76,9 +105,9 @@ public final class CustomSourcesScreen extends Screen {
 
     private void buildList() {
         int y = panelY + 30;
-        for (int i = 0; i < sources.size(); i++) {
+        for (int i = 0; i < sources().size(); i++) {
             final int idx = i;
-            var s = sources.get(i);
+            var s = sources().get(i);
             int rowY = y + i * ROW_H;
             if (rowY > panelY + H - 84) break;
             addRenderableWidget(Button.builder(Component.literal((s.enabled ? "§a● " : "§8○ ")
@@ -86,22 +115,22 @@ public final class CustomSourcesScreen extends Screen {
                     b -> { selected = idx; creating = false; rebuild(); })
                     .bounds(panelX + 12, rowY, W - 24 - 118, 18).build());
             addRenderableWidget(Button.builder(Component.translatable("z80zhealthbar.custom_sources.delete"),
-                            b -> { sources.remove(idx); ConfigManager.saveConfig(); rebuild(); })
+                            b -> { sources().remove(idx); markSave(); rebuild(); })
                     .bounds(panelX + W - 12 - 106, rowY, 50, 18).build());
             addRenderableWidget(Button.builder(Component.translatable(
                             s.enabled ? "z80zhealthbar.custom_sources.disable" : "z80zhealthbar.custom_sources.enable"),
-                            b -> { s.enabled = !s.enabled; ConfigManager.saveConfig(); rebuild(); })
+                            b -> { s.enabled = !s.enabled; markSave(); rebuild(); })
                     .bounds(panelX + W - 12 - 52, rowY, 52, 18).build());
         }
-        if (sources.size() < 32) {
+        if (sources().size() < 32) {
             addRenderableWidget(Button.builder(Component.translatable("z80zhealthbar.custom_sources.new"),
                             b -> {
                                 var s = new CustomSource();
-                                s.id = "source_" + (sources.size() + 1);
+                                s.id = "source_" + (sources().size() + 1);
                                 s.displayName = "";
                                 s.channel = 4; // 默认最常用的「手持物品」通道
-                                sources.add(s);
-                                selected = sources.size() - 1;
+                                sources().add(s);
+                                selected = sources().size() - 1;
                                 creating = true;
                                 rebuild();
                             })
@@ -114,7 +143,7 @@ public final class CustomSourcesScreen extends Screen {
     // ================= 编辑表单 =================
 
     private void buildEditor() {
-        var s = sources.get(selected);
+        var s = sources().get(selected);
         int x0 = panelX + 12, x1 = panelX + 150;
         int y = panelY + 30;
 
@@ -200,7 +229,7 @@ public final class CustomSourcesScreen extends Screen {
                         s.color == null || s.color.isBlank() ? "—" : s.color),
                 b -> minecraft.setScreen(new ColorWheelScreen(this,
                         Component.translatable("z80zhealthbar.custom_sources.color_label").getString(),
-                        s.color, v -> { s.color = v; ConfigManager.saveConfig(); rebuild(); })))
+                        s.color, v -> { s.color = v; markSave(); rebuild(); })))
                 .bounds(x0 + 118, y, 110, 18).build();
         addRenderableWidget(colorBtn);
         overlayBox = textField(x0 + 236, y, 94, s.overlayId, v -> s.overlayId = v.trim());
@@ -208,19 +237,19 @@ public final class CustomSourcesScreen extends Screen {
         takeoverBtn = Button.builder(Component.translatable("z80zhealthbar.custom_sources.takeover_short",
                         Component.translatable(s.takeover
                                 ? "z80zhealthbar.msg.on" : "z80zhealthbar.msg.off").getString()),
-                b -> { s.takeover = !s.takeover; ConfigManager.saveConfig(); rebuild(); })
+                b -> { s.takeover = !s.takeover; markSave(); rebuild(); })
                 .bounds(x0, y, 110, 18).build();
         addRenderableWidget(takeoverBtn);
 
         // 返回列表
         addRenderableWidget(Button.builder(Component.translatable("z80zhealthbar.custom_sources.back"),
-                        b -> { ConfigManager.saveConfig(); selected = -1; rebuild(); })
+                        b -> { markSave(); selected = -1; rebuild(); })
                 .bounds(panelX + W - 70, panelY + H - 26, 60, 18).build());
     }
 
     /** 内嵌模组选择：搜索框 + 可滚动列表（每行 显示名 + id,点击填入 modId） */
     private void buildModPicker(int x0, int y) {
-        var s = sources.get(selected);
+        var s = sources().get(selected);
         if (modCache == null) {
             modCache = com.z80z99.z80zhealthbar.platform.PlatformService.get() == null
                     ? List.of()
@@ -259,7 +288,7 @@ public final class CustomSourcesScreen extends Screen {
                         s.modId = m.id();
                         modPicking = false;
                         modCache = null;
-                        ConfigManager.saveConfig();
+                        markSave();
                         rebuild();
                     }).bounds(x0, y, 330, 18).build());
             y += ROW_H;
@@ -279,7 +308,7 @@ public final class CustomSourcesScreen extends Screen {
         box.setValue(initial == null ? "" : initial);
         box.setResponder(s -> {
             setter.accept(s);
-            ConfigManager.saveConfig();
+            markSave();
         });
         addRenderableWidget(box);
         return box;
@@ -299,6 +328,7 @@ public final class CustomSourcesScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        if (saveDirty && System.currentTimeMillis() >= saveDueAt) flushSave();
         renderBackground(g);
         g.fill(panelX, panelY, panelX + W, panelY + H, 0xF010151C);
         g.renderOutline(panelX, panelY, W, H, 0x907FD4FF);
@@ -306,7 +336,7 @@ public final class CustomSourcesScreen extends Screen {
         super.render(g, mouseX, mouseY, partialTick);
 
         if (selected < 0) {
-            if (sources.isEmpty()) {
+            if (sources().isEmpty()) {
                 g.drawWordWrap(font, Component.translatable("z80zhealthbar.custom_sources.empty"),
                         panelX + 14, panelY + 40, W - 28, 0xFFA8B8C8);
             }
@@ -332,7 +362,7 @@ public final class CustomSourcesScreen extends Screen {
     }
 
     private void renderEditorLabels(GuiGraphics g) {
-        var s = sources.get(selected);
+        var s = sources().get(selected);
         int x0 = panelX + 12, x1 = panelX + 150;
         int y = panelY + 30;
         label(g, "z80zhealthbar.custom_sources.field.id", x0, y - 9);

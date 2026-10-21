@@ -29,6 +29,10 @@ public class CustomSourceConfig {
 
     /** 单个自定义数据源（id 即模板变量名与组件键后缀） */
     public static class CustomSource {
+        /** id 合法性(预编译,每帧热路径不再重复编译正则——审计 P3) */
+        private static final java.util.regex.Pattern ID_PATTERN =
+                java.util.regex.Pattern.compile("[a-z0-9_]{1,24}");
+
         /** 总开关（关 = 三处消费端全部不出现） */
         public boolean enabled = true;
         /** 数据源 id:[a-z0-9_]{1,24};组件键 compat_custom_<id>,模板变量 {custom_<id>} */
@@ -47,7 +51,7 @@ public class CustomSourceConfig {
         public String ifaceClass = "";
         /** capability:值方法名;静态:静态方法名;实例:工厂方法名;通道3:玩家方法名;通道4(NBT):NBT key;通道4(物品方法):方法名 */
         public String readMethod = "";
-        /** 实例 only:实例上的值方法名 */
+        /** 实例 only:实例上的值方法名;通道 3 方法链:中间对象上的取值方法名 */
         public String valueMethod = "";
         /** 可选上限方法（同通道语义;失败回退 staticMax/无上限） */
         public String maxMethod = "";
@@ -64,7 +68,7 @@ public class CustomSourceConfig {
 
         /** 按 channel 检查必填字段是否齐全（不齐全 = 配置未完成,适配器自动失效） */
         public boolean paramsComplete() {
-            if (isBlank(id) || !id.matches("[a-z0-9_]{1,24}")) return false;
+            if (isBlank(id) || !ID_PATTERN.matcher(id).matches()) return false;
             if (channel == 4) {
                 if (itemMode == ITEM_NBT_INT) return !isBlank(readMethod);
                 return itemMode != ITEM_METHOD || !isBlank(readMethod);

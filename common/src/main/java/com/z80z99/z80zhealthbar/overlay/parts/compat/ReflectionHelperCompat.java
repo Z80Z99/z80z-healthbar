@@ -12,18 +12,14 @@ import java.lang.reflect.Method;
 public final class ReflectionHelperCompat {
     private ReflectionHelperCompat() {}
 
-    /** 依次尝试候选类路径与静态方法（Player → Number） */
+    /** 依次尝试候选类路径与静态方法（Player → Number）。类/方法查找走缓存(含失败 sentinel),
+     *  错误配置不再每帧抛 ClassNotFoundException(审计 S4) */
     public static Float staticNumber(String[] classNames, String[] methodNames, Player player) {
         for (String cn : classNames) {
-            Class<?> clazz;
-            try {
-                clazz = Class.forName(cn);
-            } catch (ClassNotFoundException e) {
-                continue;
-            }
             for (String mn : methodNames) {
+                Method m = findMethod(cn, mn, Player.class);
+                if (m == null) continue;
                 try {
-                    Method m = clazz.getMethod(mn, Player.class);
                     Object r = m.invoke(null, player);
                     if (r instanceof Number n) return n.floatValue();
                 } catch (Exception ignored) {
@@ -33,21 +29,19 @@ public final class ReflectionHelperCompat {
         return null;
     }
 
-    /** 工厂静态方法（Player → 实例）后调用实例方法（无参 → Number） */
+    /** 工厂静态方法（Player → 实例）后调用实例方法（无参 → Number）。查找走缓存 */
     public static Float instanceNumber(String className, String factoryMethod,
                                        String[] valueMethods, Player player) {
+        Method factory = findMethod(className, factoryMethod, Player.class);
+        if (factory == null) return null;
         try {
-            Class<?> clazz = Class.forName(className);
-            Method factory = clazz.getMethod(factoryMethod, Player.class);
             Object instance = factory.invoke(null, player);
             if (instance == null) return null;
             for (String vm : valueMethods) {
-                try {
-                    Method m = instance.getClass().getMethod(vm);
-                    Object r = m.invoke(instance);
-                    if (r instanceof Number n) return n.floatValue();
-                } catch (Exception ignored) {
-                }
+                Method m = findMethod(instance.getClass().getName(), vm);
+                if (m == null) continue;
+                Object r = m.invoke(instance);
+                if (r instanceof Number n) return n.floatValue();
             }
         } catch (Throwable t) {
             Z80ZHealthBar.LOGGER.debug("[Compat] unavailable: {}.{}", className, factoryMethod);
@@ -66,20 +60,23 @@ public final class ReflectionHelperCompat {
     public static Float capabilityNumber(String tokenHolderClass, String tokenField,
                                          String capabilityInterface, String[] valueMethods, Player player) {
         try {
-            Object token = Class.forName(tokenHolderClass).getField(tokenField).get(null);
-            Method getCap = player.getClass().getMethod("getCapability", token.getClass());
+            Class<?> holder = findClass(tokenHolderClass);
+            if (holder == null) return null;
+            Object token = holder.getField(tokenField).get(null);
+            Method getCap = findMethod(player.getClass().getName(), "getCapability", token.getClass());
+            if (getCap == null) return null;
             Object capOpt = getCap.invoke(player, token);
             // getCapability 返回 LazyOptional<IThirst> 包装——必须先解包成能力实例,
             // 直接在包装上反射数据方法必然 IllegalArgumentException（实测踩坑）
             Object cap = unwrapLazy(capOpt);
             if (cap == null) return null;
-            Class<?> itf = Class.forName(capabilityInterface);
+            Class<?> itf = findClass(capabilityInterface);
+            if (itf == null) return null;
             for (String vm : valueMethods) {
-                try {
-                    Object r = itf.getMethod(vm).invoke(cap);
-                    if (r instanceof Number n) return n.floatValue();
-                } catch (NoSuchMethodException ignored) {
-                }
+                Method m = findMethod(itf.getName(), vm);
+                if (m == null) continue;
+                Object r = m.invoke(cap);
+                if (r instanceof Number n) return n.floatValue();
             }
         } catch (Throwable t) {
             Z80ZHealthBar.LOGGER.debug("[Compat] capability unavailable: {}.{}", tokenHolderClass, tokenField);
@@ -109,6 +106,25 @@ public final class ReflectionHelperCompat {
     private static final java.util.Map<MethodKey, Method> METHOD_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Set<MethodKey> MISSING_METHODS =
             java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+    private static final java.util.Map<String, Class<?>> CLASS_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Set<String> MISSING_CLASSES =
+            java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
+    /** 缓存式类查找;失败缓存 sentinel(配置重载时 clearCaches 失效) */
+    private static Class<?> findClass(String name) {
+        if (name == null || name.isBlank()) return null;
+        Class<?> cached = CLASS_CACHE.get(name);
+        if (cached != null) return cached;
+        if (MISSING_CLASSES.contains(name)) return null;
+        try {
+            Class<?> c = Class.forName(name);
+            CLASS_CACHE.put(name, c);
+            return c;
+        } catch (Throwable t) {
+            MISSING_CLASSES.add(name);
+            return null;
+        }
+    }
 
     /** 缓存式静态方法查找（paramType 为参数类全名,/分隔多个参数）;失败缓存,不重复抛异常 */
     private static Method findMethod(String owner, String name, Class<?>... params) {
@@ -130,11 +146,29 @@ public final class ReflectionHelperCompat {
 
     /** 通道 3:Player 实例上的无参方法（如 player.experienceLevel 式的 getter） */
     public static Float playerMethodNumber(String methodName, Player player) {
+        Method m = findMethod(player.getClass().getName(), methodName);
+        if (m == null) m = findMethod("net.minecraft.world.entity.player.Player", methodName);
+        if (m == null) return null;
         try {
-            Method m = findMethod(player.getClass().getName(), methodName);
-            if (m == null) m = findMethod("net.minecraft.world.entity.player.Player", methodName);
-            if (m == null) return null;
             Object r = m.invoke(player);
+            return r instanceof Number n ? n.floatValue() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 通道 3 方法链:Player 实例方法返回中间对象,再调其无参方法取数值
+     *  （getFoodData → getSaturationLevel 式;饱和度/消耗值的数据路径） */
+    public static Float playerChainNumber(String playerMethod, String valueMethod, Player player) {
+        Method pm = findMethod(player.getClass().getName(), playerMethod);
+        if (pm == null) pm = findMethod("net.minecraft.world.entity.player.Player", playerMethod);
+        if (pm == null) return null;
+        try {
+            Object mid = pm.invoke(player);
+            if (mid == null) return null;
+            Method vm = findMethod(mid.getClass().getName(), valueMethod);
+            if (vm == null) return null;
+            Object r = vm.invoke(mid);
             return r instanceof Number n ? n.floatValue() : null;
         } catch (Throwable t) {
             return null;
@@ -193,7 +227,8 @@ public final class ReflectionHelperCompat {
         }
     }
 
-    /** 通道 4c:手持物品上的方法（无参 → Number;如 TACZ 的自定义 API） */
+    /** 通道 4c:手持物品上的方法（无参 → Number;先查 ItemStack 类/接口,再回退 Item 类——
+     *  1.20.1 ItemStack 无子类,modded API 多挂在 Item 上） */
     public static Float heldItemMethodNumber(String methodName, Player player) {
         try {
             var stack = player.getMainHandItem();
@@ -205,8 +240,10 @@ public final class ReflectionHelperCompat {
                     if (m != null) break;
                 }
             }
+            if (m == null) m = findMethod(stack.getItem().getClass().getName(), methodName);
             if (m == null) return null;
-            Object r = m.invoke(stack);
+            Object target = m.getDeclaringClass().isInstance(stack) ? stack : stack.getItem();
+            Object r = m.invoke(target);
             return r instanceof Number n ? n.floatValue() : null;
         } catch (Throwable t) {
             return null;
@@ -217,5 +254,7 @@ public final class ReflectionHelperCompat {
     public static void clearCaches() {
         METHOD_CACHE.clear();
         MISSING_METHODS.clear();
+        CLASS_CACHE.clear();
+        MISSING_CLASSES.clear();
     }
 }

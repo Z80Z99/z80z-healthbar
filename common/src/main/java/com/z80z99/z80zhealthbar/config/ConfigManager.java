@@ -16,7 +16,8 @@ import java.util.zip.CRC32;
 
 public final class ConfigManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static Z80ZHealthBarConfig config;
+    /** volatile:热重载线程写、渲染线程每帧读——原实现无可见性保证(审计 #13) */
+    private static volatile Z80ZHealthBarConfig config;
     /** 最近一次 saveConfig 写盘内容的 CRC（ConfigWatcher 用于识别"自己写的"并跳过重载，
      *  避免设置界面持有的配置对象被替换成孤立实例后丢失后续修改） */
     private static volatile long lastSavedCrc = -1;

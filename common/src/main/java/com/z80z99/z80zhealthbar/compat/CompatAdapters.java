@@ -69,7 +69,18 @@ public final class CompatAdapters {
     }
 
     /** 收集当前玩家全部可用状态（目标 MOD 未装/数据不可得/hook 关闭时自动跳过） */
+    /** collect() 50ms 帧缓存(按 config 引用代次失效)——renderCompat 对每个 compat 单行组件
+     *  每帧各调一次全量 collect 再丢弃 N-1 行(默认预设 4 次/帧,审计 P1)。 */
+    private static List<Stat> collectCache;
+    private static long collectCacheAt;
+    private static Object collectCacheCfg;
+
     public static List<Stat> collect(Player player) {
+        Object cfg = com.z80z99.z80zhealthbar.config.ConfigManager.getConfig();
+        long now = System.currentTimeMillis();
+        if (collectCache != null && cfg == collectCacheCfg && now - collectCacheAt < 50L) {
+            return collectCache;
+        }
         List<Stat> out = new ArrayList<>(4);
         for (CompatibilityAdapter adapter : all()) {
             if (!adapter.isAvailable()) continue;
@@ -88,11 +99,15 @@ public final class CompatAdapters {
                         colorOf(adapter, key), "z80zhealthbar.stat." + adapter.id() + "." + key, dn));
             }
         }
+        collectCache = out;
+        collectCacheAt = now;
+        collectCacheCfg = cfg;
         return out;
     }
 
     /**
      * 模板变量用：读取单个兼容状态值。未安装/未启用 hook/通道不兼容 → null（调用方渲染 "—"）。
+     * 单次 readStat 结果同时用作兼容判定——此前 isCompatible 内部再读一次 = 双份反射(审计 P2)。
      */
     public static Float readValue(String adapterId, String statKey) {
         CompatibilityAdapter a = byId(adapterId);
@@ -102,8 +117,9 @@ public final class CompatAdapters {
                 && !com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().compat.isHookEnabled(adapterId)) {
             return null;
         }
-        if (!a.isCompatible()) return null;
-        return a.readStat(statKey);
+        Float v = a.readStat(statKey);
+        if (v == null && !custom && !a.isCompatible()) return null; // 内建:通道不兼容
+        return v;
     }
 
     /** 模板变量用：读取单个兼容状态的上限（未安装/未启用 → null） */

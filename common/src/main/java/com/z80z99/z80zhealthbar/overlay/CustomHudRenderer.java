@@ -916,7 +916,9 @@ public final class CustomHudRenderer {
         var stats = com.z80z99.z80zhealthbar.compat.CompatAdapters.collect(p);
         if (stats.isEmpty()) return;
         if (statFilter != null) {
-            stats.removeIf(s -> !s.key().endsWith("." + statFilter));
+            // 前缀精确匹配(审计 #20:endsWith 后缀匹配会让 id 撞名的源重复出条,
+            // 如自定义 id=thirst 的键 custom_thirst.thirst 会混进内建 compat_thirst 行)
+            stats.removeIf(s -> !s.key().startsWith(statFilter + "."));
         }
         if (stats.isEmpty()) return;
         int w = c.barWidth, h = barH(c);

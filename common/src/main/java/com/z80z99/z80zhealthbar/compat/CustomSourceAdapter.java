@@ -16,6 +16,9 @@ import java.util.List;
 public final class CustomSourceAdapter implements CompatibilityAdapter {
 
     private final CustomSource src;
+    /** isCompatible 结果缓存(5s 失效重试;热路径防错误配置每帧全反射) */
+    private transient boolean compatibleCached;
+    private transient long compatibleCacheUntil;
 
     public CustomSourceAdapter(CustomSource src) {
         this.src = src;
@@ -45,6 +48,17 @@ public final class CustomSourceAdapter implements CompatibilityAdapter {
 
     @Override
     public boolean isCompatible() {
+        // 结果缓存:isCompatible 会做一次全反射,而它在 shouldCancelOverlay(每 overlay 每帧)
+        // 与 readValue(模板变量/第二层)路径上被高频调用——错误配置曾每帧抛异常风暴(审计 S4)。
+        // 配置热重载时由 onConfigReload → clearCaches 之外,这里按"上次探测时间"5s 失效重试。
+        long now = System.currentTimeMillis();
+        if (compatibleCacheUntil > now) return compatibleCached;
+        compatibleCached = probeCompatible();
+        compatibleCacheUntil = now + 5000L;
+        return compatibleCached;
+    }
+
+    private boolean probeCompatible() {
         // 通道 4 与原版 API 无第三方类依赖,恒可用;其余通道首次读取失败即视为不兼容
         if (src.channel == 4) return true;
         return readStat(src.id) != null || src.staticMax > 0;
@@ -66,7 +80,9 @@ public final class CustomSourceAdapter implements CompatibilityAdapter {
                         new String[]{src.readMethod}, p);
                 case 2 -> ReflectionHelperCompat.instanceNumber(
                         src.holderClass, src.readMethod, new String[]{src.valueMethod}, p);
-                case 3 -> ReflectionHelperCompat.playerMethodNumber(src.readMethod, p);
+                case 3 -> isBlank(src.valueMethod)
+                        ? ReflectionHelperCompat.playerMethodNumber(src.readMethod, p)
+                        : ReflectionHelperCompat.playerChainNumber(src.readMethod, src.valueMethod, p);
                 case 4 -> switch (src.itemMode) {
                     case 1 -> ReflectionHelperCompat.heldItemNbtInt(src.readMethod, p);
                     case 2 -> ReflectionHelperCompat.heldItemMethodNumber(src.readMethod, p);
@@ -95,7 +111,9 @@ public final class CustomSourceAdapter implements CompatibilityAdapter {
                             new String[]{src.maxMethod}, player);
                     case 2 -> ReflectionHelperCompat.instanceNumber(
                             src.holderClass, src.readMethod, new String[]{src.maxMethod}, player);
-                    case 3 -> ReflectionHelperCompat.playerMethodNumber(src.maxMethod, player);
+                    case 3 -> isBlank(src.valueMethod)
+                            ? ReflectionHelperCompat.playerMethodNumber(src.maxMethod, player)
+                            : ReflectionHelperCompat.playerChainNumber(src.readMethod, src.maxMethod, player);
                     case 4 -> ReflectionHelperCompat.heldItemMethodNumber(src.maxMethod, player);
                     default -> ReflectionHelperCompat.staticNumber(
                             new String[]{src.holderClass}, new String[]{src.maxMethod}, player);
@@ -106,4 +124,6 @@ public final class CustomSourceAdapter implements CompatibilityAdapter {
         }
         return src.staticMax > 0 ? src.staticMax : null;
     }
+
+    private static boolean isBlank(String s) { return s == null || s.isBlank(); }
 }

@@ -769,10 +769,12 @@ public final class HudLayoutScreen extends Screen {
                         "mount_text", "xp_text", "saturation_text", "text"},
                 {"z80zhealthbar.editor.cat_icons", "health_icon", "food_icon", "air_icon", "armor_icon", "mount_icon"},
                 {"z80zhealthbar.editor.cat_info", "coords_text", "fps_text", "biome_text", "time_text"},
-                {"z80zhealthbar.editor.cat_compat", "compat_saturation", "compat_exhaustion",
-                        "compat_thirst", "compat_stamina"},
+                // 兼容状态分类:四个内建条目已并入「数据源…」页的内建等价源区(按安装过滤),
+                // 此处仅保留数据源入口,避免同一数据出现两个添加入口
+                {"z80zhealthbar.editor.cat_compat"},
         };
         for (String[] cat : cats) {
+            // 分类可只有标题无条目(如 cat_compat:四内建条目已并入数据源页)
             panelEntries.add(new PEntry(cat[0], null, null));
             for (int i = 1; i < cat.length; i++) {
                 String type = cat[i];
@@ -805,7 +807,7 @@ public final class HudLayoutScreen extends Screen {
         }
     }
 
-    /** 数据源 · 选择页:已建数据源列表（点击 = 添加对应条组件）+ 新建入口 */
+    /** 数据源 · 选择页:已建数据源列表（点击 = 添加对应条组件）+ 内建等价源 + 新建入口 */
     private void buildDatasourceList() {
         panelEntries.add(backRow());
         panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.title", null, null));
@@ -829,12 +831,123 @@ public final class HudLayoutScreen extends Screen {
         } else {
             panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.empty"));
         }
+        // 内建等价源:仅在**对应 MOD 已安装**时出现（未装则不出现,避免点进去全是"—"）
+        var ps = com.z80z99.z80zhealthbar.platform.PlatformService.get();
+        boolean hasThirst = ps != null && ps.isModLoaded("thirst");
+        boolean hasAppleSkin = ps != null && ps.isModLoaded("appleskin");
+        boolean hasParcool = ps != null && ps.isModLoaded("parcool");
+        if (hasThirst || hasAppleSkin || hasParcool) {
+            panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.preset_section", null, null));
+            if (hasThirst) {
+                panelEntries.add(listRow(
+                        () -> Component.translatable("z80zhealthbar.hud.component.compat_thirst").getString()
+                                + " §7[Thirst Was Taken]",
+                        "z80zhealthbar.editor.add", () -> createPresetSource(Presets.thirst())));
+            }
+            if (hasAppleSkin) {
+                panelEntries.add(listRow(
+                        () -> Component.translatable("z80zhealthbar.hud.component.compat_saturation").getString()
+                                + " §7[AppleSkin]",
+                        "z80zhealthbar.editor.add", () -> createPresetSource(Presets.saturation())));
+                panelEntries.add(listRow(
+                        () -> Component.translatable("z80zhealthbar.hud.component.compat_exhaustion").getString()
+                                + " §7[AppleSkin]",
+                        "z80zhealthbar.editor.add", () -> createPresetSource(Presets.exhaustion())));
+            }
+            if (hasParcool) {
+                panelEntries.add(listRow(
+                        () -> Component.translatable("z80zhealthbar.hud.component.compat_stamina").getString()
+                                + " §7[ParCool]",
+                        "z80zhealthbar.editor.add", () -> createPresetSource(Presets.stamina())));
+            }
+        }
         panelEntries.add(listRow(
                 () -> Component.translatable("z80zhealthbar.editor.datasource.new").getString(),
                 "z80zhealthbar.editor.add", () -> {
                     panelPage = PanelPage.DATASOURCE_TYPE;
                     rebuildWidgets();
                 }));
+    }
+
+    /** 内建适配器的等价自定义源参数（与内建实现读取路径一致） */
+    private static final class Presets {
+        static com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource thirst() {
+            var s = newSource("thirst", "z80zhealthbar.hud.component.compat_thirst", 0);
+            s.modId = "thirst";
+            s.holderClass = "dev.ghen.thirst.foundation.common.capability.ModCapabilities";
+            s.holderField = "PLAYER_THIRST";
+            s.ifaceClass = "dev.ghen.thirst.foundation.common.capability.IThirst";
+            s.readMethod = "getThirst";
+            s.staticMax = 20f;
+            s.color = "#4488FF";
+            return s;
+        }
+
+        static com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource saturation() {
+            var s = newSource("saturation", "z80zhealthbar.hud.component.compat_saturation", 3);
+            s.modId = "appleskin";
+            s.readMethod = "getFoodData";       // 方法链:Player.getFoodData()
+            s.valueMethod = "getSaturationLevel";
+            s.staticMax = 20f;
+            s.color = "#FFD070";
+            return s;
+        }
+
+        static com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource exhaustion() {
+            var s = newSource("exhaustion", "z80zhealthbar.hud.component.compat_exhaustion", 3);
+            s.modId = "appleskin";
+            s.readMethod = "getFoodData";
+            s.valueMethod = "getExhaustionLevel";
+            s.staticMax = 4f;
+            s.color = "#FFAA00";
+            return s;
+        }
+
+        static com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource stamina() {
+            var s = newSource("stamina", "z80zhealthbar.hud.component.compat_stamina", 2);
+            s.modId = "parcool";
+            s.holderClass = "com.alrex.parcool.common.capability.Stamina";
+            s.readMethod = "get";               // 工厂:Stamina.get(player)
+            s.valueMethod = "getStamina";
+            s.maxMethod = "getMaxStamina";
+            s.color = "#66CC66";
+            return s;
+        }
+
+        private static com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource newSource(
+                String id, String nameKey, int channel) {
+            var s = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+            s.id = id;
+            s.displayName = Component.translatable(nameKey).getString();
+            s.enabled = true;
+            s.channel = channel;
+            return s;
+        }
+    }
+
+    /** 创建预置源（已存在则启用并复用）+ 添加对应条组件并进入编辑页 */
+    private void createPresetSource(com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource preset) {
+        var cs = ConfigManager.getConfig().customSources;
+        if (cs == null) return;
+        if (cs.customSources == null) cs.customSources = new java.util.ArrayList<>();
+        com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource target = null;
+        for (var s : cs.customSources) {
+            if (s != null && s.id.equals(preset.id)) { target = s; break; }
+        }
+        if (target == null) {
+            if (cs.customSources.size() >= 32) return;
+            cs.customSources.add(preset);
+            target = preset;
+        } else {
+            target.enabled = true;
+        }
+        String k = layout().addInstance("compat_custom_" + target.id);
+        if (k != null) {
+            selected = k;
+            panelPage = PanelPage.EDIT;
+        }
+        ConfigManager.saveConfig();
+        rebuildWidgets();
     }
 
     /** 数据源 · 数据类型页:5 种读取通道,点选即创建数据源 + 条组件并进入编辑页 */
@@ -1034,6 +1147,25 @@ public final class HudLayoutScreen extends Screen {
     }
 
     /** 数据源实时读数诊断（与管理页同逻辑;成功 → 值/上限,失败 → 具体原因） */
+    /** 模组显示名缓存(installedMods 全枚举排序 200+ 分配,不可每帧做——审计 P5) */
+    private Map<String, String> modNameCache;
+    private long modNameCacheAt;
+
+    private String cachedModName(String modId) {
+        if (modId == null || modId.isBlank()) return "";
+        long now = System.currentTimeMillis();
+        if (modNameCache == null || now - modNameCacheAt > 1000L) {
+            modNameCache = new java.util.HashMap<>();
+            var ps = com.z80z99.z80zhealthbar.platform.PlatformService.get();
+            if (ps != null) {
+                for (var e : ps.installedMods()) modNameCache.put(e.id(), e.displayName());
+            }
+            modNameCacheAt = now;
+        }
+        String n = modNameCache.get(modId);
+        return n == null ? "" : n;
+    }
+
     private String datasourceDiagnose(com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src) {
         if (!src.enabled) return "§8" + Component.translatable("z80zhealthbar.custom_sources.diag.disabled").getString();
         if (!src.paramsComplete()) {
@@ -1050,12 +1182,7 @@ public final class HudLayoutScreen extends Screen {
             return "§c" + Component.translatable("z80zhealthbar.custom_sources.diag.read_failed").getString();
         }
         Float m = adapter.resolveMax(minecraft.player);
-        String modName = "";
-        if (src.modId != null && !src.modId.isBlank() && com.z80z99.z80zhealthbar.platform.PlatformService.get() != null) {
-            for (var e : com.z80z99.z80zhealthbar.platform.PlatformService.get().installedMods()) {
-                if (src.modId.equals(e.id())) { modName = e.displayName(); break; }
-            }
-        }
+        String modName = cachedModName(src.modId);
         return "§a" + String.format(Locale.ROOT, "%.1f", v)
                 + (m == null ? "" : " / " + String.format(Locale.ROOT, "%.1f", m))
                 + (modName.isBlank() ? "" : " §7(" + modName + ")");

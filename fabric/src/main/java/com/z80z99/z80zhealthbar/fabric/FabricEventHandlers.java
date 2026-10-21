@@ -8,6 +8,9 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.Minecraft;
 
 public final class FabricEventHandlers {
+    /** 帧计数:接管确保逻辑按 ~10 帧一次(约 2 tick 粒度)执行 */
+    private static int fabricTickCounter;
+
     public static void register() {
         // 注册快捷键
         for (var key : KeyBindings.ALL) {
@@ -19,8 +22,10 @@ public final class FabricEventHandlers {
             if (mc.player == null) return;
 
             KeyBindings.handleKeyPresses();
-            // 接管开关打开且自定义 HUD 时确保数据组件存在（跨平台逻辑;一次性检查后零开销）
-            com.z80z99.z80zhealthbar.compat.CompatHudTakeover.tickEnsure();
+            // 接管组件确保逻辑改为每 tick(20/s)而非每帧——与 Forge 端语义一致(审计 #15)
+            if (fabricTickCounter++ % 10 == 0) {
+                com.z80z99.z80zhealthbar.compat.CompatHudTakeover.tickEnsure();
+            }
             HudRenderer.onPreRender(mc.gui);
             HudRenderer.render(graphics, tickDelta);
         });

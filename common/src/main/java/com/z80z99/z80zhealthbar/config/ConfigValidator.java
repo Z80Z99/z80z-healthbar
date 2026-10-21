@@ -51,6 +51,7 @@ public final class ConfigValidator {
         if (c.customSources == null) c.customSources = new java.util.ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         java.util.Iterator<CustomSourceConfig.CustomSource> it = c.customSources.iterator();
+        int index = 0;
         while (it.hasNext()) {
             var s = it.next();
             if (s == null) { it.remove(); continue; }
@@ -58,6 +59,8 @@ public final class ConfigValidator {
             s.id = s.id.trim().toLowerCase(java.util.Locale.ROOT);
             s.channel = clamp(s.channel, 0, 4);
             s.itemMode = clamp(s.itemMode, 0, 2);
+            // id 以 _max 结尾会与 {custom_<id>_max} 模板变量碰撞(审计 S5)——截断后缀
+            if (s.id.endsWith("_max") && s.id.length() > 4) s.id = s.id.substring(0, s.id.length() - 4);
             if (!s.id.isEmpty() && !seen.add(s.id)) s.enabled = false; // 重复 id:后续停用
             if (s.color != null && !s.color.isBlank() && ColorHelper.parseColorSafe(s.color) == null) s.color = "";
             if (s.overlayId != null && s.overlayId.isBlank()) s.overlayId = "";
@@ -70,8 +73,9 @@ public final class ConfigValidator {
             if (s.valueMethod == null) s.valueMethod = "";
             if (s.maxMethod == null) s.maxMethod = "";
             if (s.staticMax < 0) s.staticMax = 0;
-            // 数量上限:防止配置体积与每帧遍历失控
-            if (c.customSources.size() > 32) it.remove();
+            // 数量上限(审计 S2:旧写法循环内每轮只删当时的第 33 个,34+ 渐进丢失)
+            if (index >= 32) { it.remove(); continue; }
+            index++;
         }
     }
 
