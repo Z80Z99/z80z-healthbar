@@ -82,6 +82,8 @@ public final class HudLayoutScreen extends Screen {
     private int panelX, panelY, panelH;
     /** 面板宽（仿 Windows 拖右缘/右下角调整;持久化 layout().panelW） */
     private int panelW = PANEL_W;
+    /** 滚动条右侧占位（内容超高时 8px,控件整体左移避免与滚动条重叠） */
+    private int sbReserve;
     /** 面板高覆盖值（拖下缘/右下角设定;-1 = 按内容自适应;持久化 layout().panelH） */
     private int panelHOv = -1;
     private static final int PANEL_MIN_W = 156, PANEL_MAX_W = 440;
@@ -2156,6 +2158,7 @@ public final class HudLayoutScreen extends Screen {
             panelH = TITLE_H;
             panelScroll = 0;
             panelScrollTarget = 0;
+            sbReserve = 0;
             for (PEntry e : panelEntries) {
                 for (PW pw : e.widgets) {
                     pw.widget().visible = false;
@@ -2202,6 +2205,8 @@ public final class HudLayoutScreen extends Screen {
         panelScroll += (panelScrollTarget - panelScroll) * 0.35f;
         if (Math.abs(panelScrollTarget - panelScroll) < 0.5f) panelScroll = panelScrollTarget;
         int scroll = Math.round(panelScroll);
+        // 滚动条占位：内容超高时右侧让出 8px，控件不再压在滚动条上（实测重叠）
+        sbReserve = maxScroll > 0 ? 8 : 0;
 
         // 4) 控件定位 + 视口裁剪（整行露出才可见,避免半行按钮可点）
         for (PEntry e : panelEntries) {
@@ -2209,7 +2214,7 @@ public final class HudLayoutScreen extends Screen {
             int y = panelY + e.relY - scroll;
             boolean inView = y >= panelY + TITLE_H + 2 && y + ROW_H <= panelY + panelH - 1;
             for (PW pw : e.widgets) {
-                pw.widget().setX(panelX + pw.relX());
+                pw.widget().setX(panelX + pw.relX() - sbReserve);
                 int wy = y + (ROW_H - pw.widget().getHeight()) / 2;
                 // 视口外控件移出屏幕（旧版只设 visible=false,isMouseOver 仍可能命中坐标而拦截点击）
                 pw.widget().setY(inView ? wy : -9999);
@@ -2495,7 +2500,7 @@ public final class HudLayoutScreen extends Screen {
             if (e.isHeader()) {
                 if (y >= panelY + TITLE_H + 2 && y + HEADER_H <= panelY + panelH) {
                     // 截断到面板内宽:长节标题曾直接画出右缘（如"槽位（每格独立子组件…）"）
-                    String ht = fitText(Component.translatable(e.headerKey).getString(), panelW - 16);
+                    String ht = fitText(Component.translatable(e.headerKey).getString(), panelW - 16 - sbReserve);
                     g.drawString(font, ht, panelX + 10, y + 1, 0xFF7FD4FF);
                 }
                 continue;
@@ -2525,7 +2530,8 @@ public final class HudLayoutScreen extends Screen {
             // 行标签按可用宽截断（…）:可用 = 行内最左控件左缘（无控件行 = 面板右缘-8）− 边距
             int minRel = -1;
             for (PW pw : e.widgets) if (minRel < 0 || pw.relX() < minRel) minRel = pw.relX();
-            int textRight = minRel >= 0 ? minRel : panelW - 8;
+            if (minRel >= 0) minRel -= sbReserve; // 控件已整体左移,文本可用宽同步收紧
+            int textRight = minRel >= 0 ? minRel : panelW - 8 - sbReserve;
             if (e.swatchArgb != null) {
                 int argb = e.swatchArgb.get();
                 int swX = panelX + textRight - 13;
