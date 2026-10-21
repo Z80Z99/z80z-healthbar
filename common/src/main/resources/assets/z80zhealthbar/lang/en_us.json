@@ -885,5 +885,6 @@
   "z80zhealthbar.editor.datasource.type.3.tooltip": "Player instance method: calls a no-arg method directly on the Player.",
   "z80zhealthbar.editor.datasource.type.4.tooltip": "Held item: reads durability or NBT of the main-hand item; needs no API from the target mod.",
   "z80zhealthbar.msg.auto": "Auto",
-  "z80zhealthbar.editor.color.hex_label": "hex:"
+  "z80zhealthbar.editor.color.hex_label": "hex:",
+  "z80zhealthbar.editor.compat_legacy_note": "This is the legacy multi-row compat group (no longer addable). Prefer the four single-row components: Thirst / Saturation / Exhaustion / Stamina - each can be positioned and tuned independently."
 }

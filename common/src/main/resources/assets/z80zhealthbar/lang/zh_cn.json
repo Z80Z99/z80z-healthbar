@@ -885,5 +885,6 @@
   "z80zhealthbar.editor.datasource.type.3.tooltip": "玩家实例方法:直接调用 Player 上的无参方法。",
   "z80zhealthbar.editor.datasource.type.4.tooltip": "手持物品:读取主手物品的耐久或 NBT,不需要目标模组提供 API。",
   "z80zhealthbar.msg.auto": "自动",
-  "z80zhealthbar.editor.color.hex_label": "hex:"
+  "z80zhealthbar.editor.color.hex_label": "hex:",
+  "z80zhealthbar.editor.compat_legacy_note": "这是旧版「兼容状态」多行组（已停止新增）。推荐改用四个独立单行组件：口渴值 / 饱和度 / 消耗值 / 体力——可分别摆位、独立调参。"
 }

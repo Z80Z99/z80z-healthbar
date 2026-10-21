@@ -760,9 +760,11 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(backRow());
         panelEntries.add(new PEntry("z80zhealthbar.editor.pick_component", null, null));
         // 分类分组（多级菜单:状态条 / 文本 / 图标 / 信息类）
+        // 注:旧版多行"兼容状态"组(compat)不再可添加——四个单行组件(compat_thirst 等)已完全取代,
+        //    且与下方「兼容状态」分类重名易误解;旧配置里的 compat 组件仍照常渲染（向后兼容）。
         String[][] cats = {
                 {"z80zhealthbar.editor.cat_bars", "health", "food", "air", "armor", "mount", "experience",
-                        "compat", "saturation_bar", "hotbar"},
+                        "saturation_bar", "hotbar"},
                 {"z80zhealthbar.editor.cat_texts", "health_text", "food_text", "air_text", "armor_text",
                         "mount_text", "xp_text", "saturation_text", "text"},
                 {"z80zhealthbar.editor.cat_icons", "health_icon", "food_icon", "air_icon", "armor_icon", "mount_icon"},
@@ -1720,6 +1722,10 @@ public final class HudLayoutScreen extends Screen {
             }
             // compat 特判：多行动态行的文本部件参数（开关/模板/对齐/偏移/缩放;
             // 行间距由上方"间距"行控制,渲染端已接入）
+            if (selType.equals(HudLayoutConfig.COMPAT)) {
+                // 旧版多行组:仅旧配置仍有;提示已由单行组件取代（不再可新增）
+                panelEntries.add(PEntry.note("z80zhealthbar.editor.compat_legacy_note"));
+            }
             panelEntries.add(toggle("z80zhealthbar.editor.show_text",
                     () -> c.showText, v -> c.showText = v));
             panelEntries.add(textInput("z80zhealthbar.editor.text_format",
