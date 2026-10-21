@@ -951,7 +951,10 @@ public final class CustomHudRenderer {
         if (statFilter != null) {
             // 前缀精确匹配(审计 #20:endsWith 后缀匹配会让 id 撞名的源重复出条,
             // 如自定义 id=thirst 的键 custom_thirst.thirst 会混进内建 compat_thirst 行)
-            stats.removeIf(s -> !s.key().startsWith(statFilter + "."));
+            // 用 filterByAdapter 生成新列表:collect() 返回 50ms 帧缓存实例(1.0.136 引入),
+            // 就地 removeIf 会清空共享缓存——四个兼容单行组件共用一个窗口时,
+            // 只有第一行能画,其余拿到空表 → 条以缓存周期(50ms)高频闪烁
+            stats = com.z80z99.z80zhealthbar.compat.CompatAdapters.filterByAdapter(stats, statFilter);
         }
         if (stats.isEmpty()) return;
         int w = c.barWidth, h = barH(c);

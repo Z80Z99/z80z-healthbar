@@ -70,7 +70,11 @@ public final class CompatAdapters {
 
     /** 收集当前玩家全部可用状态（目标 MOD 未装/数据不可得/hook 关闭时自动跳过） */
     /** collect() 50ms 帧缓存(按 config 引用代次失效)——renderCompat 对每个 compat 单行组件
-     *  每帧各调一次全量 collect 再丢弃 N-1 行(默认预设 4 次/帧,审计 P1)。 */
+     *  每帧各调一次全量 collect 再丢弃 N-1 行(默认预设 4 次/帧,审计 P1)。
+     *  <p><b>缓存命中必须返回副本</b>:调用方会按 statFilter 过滤结果,返回共享实例时
+     *  就地 removeIf 会把缓存清空——四个兼容单行组件共用一个窗口时只有第一行能画,
+     *  其余拿到空表 → 条以 50ms 缓存周期高频闪烁(1.0.136~1.0.140 实测)。
+     *  拷贝 4 个 record 引用,开销可忽略;真正贵的是反射。 */
     private static List<Stat> collectCache;
     private static long collectCacheAt;
     private static Object collectCacheCfg;
@@ -79,7 +83,7 @@ public final class CompatAdapters {
         Object cfg = com.z80z99.z80zhealthbar.config.ConfigManager.getConfig();
         long now = System.currentTimeMillis();
         if (collectCache != null && cfg == collectCacheCfg && now - collectCacheAt < 50L) {
-            return collectCache;
+            return new ArrayList<>(collectCache);
         }
         List<Stat> out = new ArrayList<>(4);
         for (CompatibilityAdapter adapter : all()) {
@@ -106,10 +110,48 @@ public final class CompatAdapters {
     }
 
     /**
+     * 按适配器 id 前缀筛选状态行（单行 compat 组件只画自己那条），返回**新列表**。
+     *
+     * <p>调用方不得就地对 {@link #collect} 的结果做 removeIf：那是 50ms 帧缓存实例，
+     * 就地过滤会清空共享缓存，导致同窗口内后续组件拿到空表（口渴条 50ms 周期闪烁的根因）。
+     * 提取为纯函数以便单测守住该不变量。
+     */
+    public static List<Stat> filterByAdapter(List<Stat> stats, String adapterId) {
+        List<Stat> out = new ArrayList<>(stats == null ? 0 : stats.size());
+        if (stats == null || adapterId == null || adapterId.isBlank()) return out;
+        String prefix = adapterId + ".";
+        for (Stat s : stats) {
+            if (s != null && s.key() != null && s.key().startsWith(prefix)) out.add(s);
+        }
+        return out;
+    }
+
+    /**
      * 模板变量用：读取单个兼容状态值。未安装/未启用 hook/通道不兼容 → null（调用方渲染 "—"）。
      * 单次 readStat 结果同时用作兼容判定——此前 isCompatible 内部再读一次 = 双份反射(审计 P2)。
+     * <p>值走 50ms 帧缓存:模板变量、单行 compat 组件的第二层数值（如口渴行的润泽度）
+     * 每帧都会调这里,而底层是一次 capability 反射 + 解包。
      */
     public static Float readValue(String adapterId, String statKey) {
+        String key = adapterId + "." + statKey;
+        Object cfg = com.z80z99.z80zhealthbar.config.ConfigManager.getConfig();
+        long now = System.currentTimeMillis();
+        if (cfg != readValueCacheCfg || now - readValueCacheAt >= 50L) {
+            readValueCache.clear();
+            readValueCacheAt = now;
+            readValueCacheCfg = cfg;
+        }
+        if (readValueCache.containsKey(key)) return readValueCache.get(key);
+        Float v = readValueUncached(adapterId, statKey);
+        readValueCache.put(key, v);
+        return v;
+    }
+
+    private static final java.util.Map<String, Float> readValueCache = new java.util.HashMap<>();
+    private static long readValueCacheAt;
+    private static Object readValueCacheCfg;
+
+    private static Float readValueUncached(String adapterId, String statKey) {
         CompatibilityAdapter a = byId(adapterId);
         if (a == null || !a.isAvailable()) return null;
         boolean custom = a instanceof CustomSourceAdapter;
@@ -122,8 +164,23 @@ public final class CompatAdapters {
         return v;
     }
 
-    /** 模板变量用：读取单个兼容状态的上限（未安装/未启用 → null） */
+    /** 模板变量用：读取单个兼容状态的上限（未安装/未启用 → null;同样走 50ms 帧缓存） */
     public static Float readMax(String adapterId, String statKey) {
+        String key = "max:" + adapterId + "." + statKey;
+        Object cfg = com.z80z99.z80zhealthbar.config.ConfigManager.getConfig();
+        long now = System.currentTimeMillis();
+        if (cfg != readValueCacheCfg || now - readValueCacheAt >= 50L) {
+            readValueCache.clear();
+            readValueCacheAt = now;
+            readValueCacheCfg = cfg;
+        }
+        if (readValueCache.containsKey(key)) return readValueCache.get(key);
+        Float v = readMaxUncached(adapterId, statKey);
+        readValueCache.put(key, v);
+        return v;
+    }
+
+    private static Float readMaxUncached(String adapterId, String statKey) {
         CompatibilityAdapter a = byId(adapterId);
         if (a == null || !a.isAvailable()) return null;
         boolean custom = a instanceof CustomSourceAdapter;
