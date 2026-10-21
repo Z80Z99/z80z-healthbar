@@ -29,6 +29,47 @@ public final class HudLayoutSolver {
     /** 组件渲染框（左上角 + 尺寸） */
     public record Box(int x, int y, int width, int height) {}
 
+    // ================= 原版图标行计数（测量与绘制共用,避免两处公式漂移） =================
+
+    /** 单个图标格宽度（原版 icons.png 9×9） */
+    public static final int ICON_W = 9;
+
+    public static int healthHeartCount(float maxHealth) {
+        return Math.max(0, (int) Math.ceil(maxHealth / 2f));
+    }
+
+    /** 吸收心形数量（mode 4 = 关闭,不绘制） */
+    public static int absorptionHeartCount(float absorption, int absorptionMode) {
+        if (absorptionMode == 4 || absorption <= 0) return 0;
+        return Math.max(0, (int) Math.ceil(absorption / 2f));
+    }
+
+    /** 饱食度图标固定 10 个 */
+    public static int foodIconCount() {
+        return 10;
+    }
+
+    /** 护甲图标数：2 点护甲 = 1 个图标,最多 10 个 */
+    public static int armorIconCount(int armor) {
+        return Math.max(0, Math.min(10, (int) Math.ceil(armor / 2f)));
+    }
+
+    /** 氧气气泡数：按当前/上限比例,最多 10 个 */
+    public static int airBubbleCount(int air, int maxAir) {
+        int max = Math.max(1, maxAir);
+        return Math.max(0, Math.min(10, (int) Math.ceil(air / (float) max * 10)));
+    }
+
+    /** 图标行盒体尺寸（至少保留 1 格,避免空状态时选择框缩成 1px 无法点中） */
+    public static int[] iconRowSize(int icons) {
+        return new int[]{Math.max(1, icons) * ICON_W, ICON_W};
+    }
+
+    /** 组件盒体在屏幕内钳制（组件比屏幕大时贴左上,不做压缩变形） */
+    private static int clampPos(int v, int size, int screen) {
+        return Math.max(0, Math.min(v, Math.max(0, screen - size)));
+    }
+
     /**
      * @param layout  布局配置
      * @param sizes   每组件未缩放尺寸（width/height，ICON 模式通常 9×9，BAR 模式为条尺寸）
@@ -101,7 +142,7 @@ public final class HudLayoutSolver {
                             : baseY - h;
                     y = yFromAnchor + c.offsetY;
                 }
-                result.put(key, new Box(x, y, w, h));
+                result.put(key, new Box(clampPos(x, w, screenW), clampPos(y, h, screenH), w, h));
             }
         }
 
@@ -110,22 +151,25 @@ public final class HudLayoutSolver {
             ComponentLayout c = layout.get(key);
             if (c.modeParsed() == HudLayoutConfig.ComponentMode.OFF) continue;
             addDetached(result, sizes, c, key + ".text", c.textAnchorParsed(),
-                    c.textOffsetX, c.textOffsetY, screenW, screenH);
+                    c.textOffsetX, c.textOffsetY, c.textScale, screenW, screenH);
             addDetached(result, sizes, c, key + ".icon", c.iconAnchorParsed(),
-                    c.iconOffsetX, c.iconOffsetY, screenW, screenH);
+                    c.iconOffsetX, c.iconOffsetY, c.iconScale, screenW, screenH);
         }
         return result;
     }
 
-    /** 分离元素定位：单独成组（锚点基线上下对齐 + 自身偏移，不参与组件堆叠） */
+    /** 分离元素定位：单独成组（锚点基线上下对齐 + 自身偏移，不参与组件堆叠）。
+     *  盒体尺寸 = 组件缩放 × 元素自身缩放，与渲染端 pose.scale(scale × textScale/iconScale) 一致。 */
     private static void addDetached(Map<String, Box> out, Map<String, int[]> sizes,
                                     ComponentLayout c, String elKey, HudAnchor anchor,
-                                    int offX, int offY, int screenW, int screenH) {
+                                    int offX, int offY, double elementScale,
+                                    int screenW, int screenH) {
         if (anchor == null) return;
         int[] size = sizes.get(elKey);
         if (size == null) return;
-        int w = Math.max(1, (int) Math.round(size[0] * c.scale));
-        int h = Math.max(1, (int) Math.round(size[1] * c.scale));
+        double k = c.scale * (elementScale <= 0 ? 1.0 : elementScale);
+        int w = Math.max(1, (int) Math.round(size[0] * k));
+        int h = Math.max(1, (int) Math.round(size[1] * k));
         int baseX = anchor.baseX(screenW, MARGIN_X);
         int baseY = anchor.baseY(screenH, MARGIN_Y);
         int x = switch (anchor.horizontalAlign()) {
@@ -134,7 +178,7 @@ public final class HudLayoutSolver {
             default -> baseX - w / 2;
         };
         int y = anchor.isTop() || anchor.isMiddle() ? baseY : baseY - h;
-        out.put(elKey, new Box(x + offX, y + offY, w, h));
+        out.put(elKey, new Box(clampPos(x + offX, w, screenW), clampPos(y + offY, h, screenH), w, h));
     }
 
     /** 组件未缩放尺寸（渲染器与编辑器统一使用，保证测量一致） */

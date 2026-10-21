@@ -114,8 +114,79 @@ class HudLayoutSolverTest {
         var cl = new HudLayoutConfig.ComponentLayout();
         cl.mode = HudLayoutConfig.ComponentMode.ICON.name();
         int[] size = HudLayoutSolver.measure(cl);
+        // 无玩家上下文时 measure() 保留旧 54px 兜底（实际值由 measureAll 按图标数给出）
+        assertEquals(54, size[0]);
         assertEquals(9, size[1]);
-        assertTrue(size[0] > 0);
+    }
+
+    @Test
+    void iconCountsMatchRenderedWidths() {
+        assertEquals(10, HudLayoutSolver.healthHeartCount(20f));
+        assertEquals(11, HudLayoutSolver.healthHeartCount(21f));
+        assertEquals(2, HudLayoutSolver.absorptionHeartCount(4f, 1));
+        assertEquals(0, HudLayoutSolver.absorptionHeartCount(4f, 4), "mode 4 = 不画吸收心形");
+        assertEquals(10, HudLayoutSolver.foodIconCount());
+        assertEquals(10, HudLayoutSolver.airBubbleCount(300, 300));
+        assertEquals(5, HudLayoutSolver.airBubbleCount(150, 300));
+        assertEquals(0, HudLayoutSolver.airBubbleCount(0, 300));
+        assertEquals(4, HudLayoutSolver.armorIconCount(7));
+        assertEquals(10, HudLayoutSolver.armorIconCount(40), "护甲图标上限 10");
+
+        // 生命 10 心 + 吸收 2 心 = 12 格 = 108px（旧版固定 54px,右锚点溢出 36px）
+        assertArrayEquals(new int[]{108, 9},
+                HudLayoutSolver.iconRowSize(10 + HudLayoutSolver.absorptionHeartCount(4f, 1)));
+        assertArrayEquals(new int[]{90, 9}, HudLayoutSolver.iconRowSize(10));
+        assertArrayEquals(new int[]{36, 9}, HudLayoutSolver.iconRowSize(HudLayoutSolver.armorIconCount(7)));
+    }
+
+    @Test
+    void componentsClampedInsideSmallScreen() {
+        HudLayoutConfig layout = new HudLayoutConfig();
+        var health = layout.get(HudLayoutConfig.HEALTH);
+        health.offsetX = 1000;
+        health.offsetY = 1000;
+        var armor = layout.get(HudLayoutConfig.ARMOR);
+        armor.offsetX = -1000;
+        armor.offsetY = -1000;
+        int smallW = 320, smallH = 240;
+        var boxes = HudLayoutSolver.solve(layout, sizes(layout), smallW, smallH);
+        for (var e : boxes.entrySet()) {
+            var b = e.getValue();
+            assertTrue(b.x() >= 0 && b.x() + b.width() <= smallW,
+                    e.getKey() + " clamped horizontally: " + b);
+            assertTrue(b.y() >= 0 && b.y() + b.height() <= smallH,
+                    e.getKey() + " clamped vertically: " + b);
+        }
+    }
+
+    @Test
+    void detachedTextScaleIncludedInBoxSize() {
+        HudLayoutConfig layout = new HudLayoutConfig();
+        var health = layout.get(HudLayoutConfig.HEALTH);
+        health.textAnchor = "TOP_RIGHT";
+        health.textScale = 2.0;
+        Map<String, int[]> sz = sizes(layout);
+        sz.put(HudLayoutConfig.HEALTH + ".text", new int[]{40, 9});
+        var text = HudLayoutSolver.solve(layout, sz, W, H).get(HudLayoutConfig.HEALTH + ".text");
+        assertNotNull(text);
+        // 盒体 = 40 × (组件 scale 1 × textScale 2) = 80,右缘贴锚点边距
+        assertEquals(80, text.width());
+        assertEquals(W - HudLayoutSolver.MARGIN_X - 80, text.x());
+    }
+
+    @Test
+    void detachedIconScaleIncludedInBottomAlignment() {
+        HudLayoutConfig layout = new HudLayoutConfig();
+        var food = layout.get(HudLayoutConfig.FOOD);
+        food.iconAnchor = "BOTTOM_LEFT";
+        food.iconScale = 2.0;
+        Map<String, int[]> sz = sizes(layout);
+        sz.put(HudLayoutConfig.FOOD + ".icon", new int[]{9, 9});
+        var icon = HudLayoutSolver.solve(layout, sz, W, H).get(HudLayoutConfig.FOOD + ".icon");
+        assertNotNull(icon);
+        assertEquals(18, icon.width());
+        assertEquals(18, icon.height());
+        assertEquals(H - HudLayoutSolver.MARGIN_Y - 18, icon.y(), "bottom edge sits on margin baseline");
     }
 
     @Test

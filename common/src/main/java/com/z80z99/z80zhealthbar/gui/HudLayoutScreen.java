@@ -62,6 +62,9 @@ public final class HudLayoutScreen extends Screen {
     private String selected = HudLayoutConfig.HEALTH;
     private int draggingX, draggingY;
     private int dragStartOffX, dragStartOffY;
+    /** 拖拽起点的解析盒体（拖拽按目标位置钳制在屏幕内,避免 offset 累积出屏后回拖死区） */
+    private int dragBoxX, dragBoxY, dragBoxW, dragBoxH;
+    private boolean dragBoxValid;
     private boolean dragging;
 
     /** 长条样式：预览中选中的条 + 拖拽状态（BarLayouts.KEYS 之一） */
@@ -2764,6 +2767,11 @@ public final class HudLayoutScreen extends Screen {
                     draggingY = (int) mouseY;
                     dragStartOffX = dragStartX(selected);
                     dragStartOffY = dragStartY(selected);
+                    dragBoxX = sb.x();
+                    dragBoxY = sb.y();
+                    dragBoxW = sb.width();
+                    dragBoxH = sb.height();
+                    dragBoxValid = true;
                     panelPage = selected.endsWith(".text") ? PanelPage.SUB_TEXT
                             : selected.endsWith(".icon") ? PanelPage.SUB_ICON : PanelPage.EDIT;
                     rebuildWidgets();
@@ -2782,6 +2790,11 @@ public final class HudLayoutScreen extends Screen {
                 draggingY = (int) mouseY;
                 dragStartOffX = dragStartX(selected);
                 dragStartOffY = dragStartY(selected);
+                dragBoxX = box.x();
+                dragBoxY = box.y();
+                dragBoxW = box.width();
+                dragBoxH = box.height();
+                dragBoxValid = true;
                 // 点击组件直达其编辑页;拆分子元素直达对应子组件页
                 panelPage = selected.endsWith(".text") ? PanelPage.SUB_TEXT
                         : selected.endsWith(".icon") ? PanelPage.SUB_ICON
@@ -2867,8 +2880,20 @@ public final class HudLayoutScreen extends Screen {
         }
         if (dragging && editingCustom()) {
             markDirty();
-                applyDrag(selected, dragStartOffX + (int) mouseX - draggingX,
-                    dragStartOffY + (int) mouseY - draggingY);
+            int dx = (int) mouseX - draggingX;
+            int dy = (int) mouseY - draggingY;
+            if (dragBoxValid) {
+                // 目标左上角先钳制在屏幕内,再换算成 offset 增量——求解器会把盒体钳制到屏幕,
+                // 若继续按鼠标累积偏移,拖出边缘后回拖会出现"鼠标动了组件不动"的死区
+                int maxX = Math.max(0, width - dragBoxW);
+                int maxY = Math.max(0, height - dragBoxH);
+                int targetX = Math.max(0, Math.min(dragBoxX + dx, maxX));
+                int targetY = Math.max(0, Math.min(dragBoxY + dy, maxY));
+                applyDrag(selected, dragStartOffX + targetX - dragBoxX,
+                        dragStartOffY + targetY - dragBoxY);
+            } else {
+                applyDrag(selected, dragStartOffX + dx, dragStartOffY + dy);
+            }
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -2887,6 +2912,7 @@ public final class HudLayoutScreen extends Screen {
             rebuildWidgets();
         }
         dragging = false;
+        dragBoxValid = false;
         hotbarDragSlot = -1;
         hbDragMoved = false;
         draggingAsteorBar = null;

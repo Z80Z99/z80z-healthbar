@@ -229,7 +229,8 @@ public final class CustomHudRenderer {
             if (type.equals(HudLayoutConfig.HOTBAR)) {
                 sizes.put(key, HudLayoutSolver.measure(c)); // 单一事实来源
                 continue;
-            }            if (type.endsWith("_text") || type.equals("text")) {
+            }
+            if (type.endsWith("_text") || type.equals("text")) {
                 // 纯文本/自由文本组件：尺寸 = 实际文本宽（帧内缓存复用）
                 String t = type.equals("text") ? formatText(c.textFormat, player) : componentText(key, player);
                 sizes.put(key, new int[]{Math.max(8, t == null ? 8 : mc.font.width(t)), 10});
@@ -243,13 +244,17 @@ public final class CustomHudRenderer {
                     rows = Math.max(1, com.z80z99.z80zhealthbar.compat.CompatAdapters.collect(player).size());
                 }
                 sizes.put(key, compatGroupSize(c, rows));
+            } else if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
+                // ICON 盒体按**实际绘制的图标数**测量（生命含吸收心形/氧气按比例/护甲按值）,
+                // 旧版一律 54px → 右锚点实际内容溢出屏幕、居中视觉偏移、编辑器选择框偏小
+                sizes.put(key, iconRowSize(type, c, player));
             } else {
                 sizes.put(key, HudLayoutSolver.measure(c));
             }
             if (player == null || c.modeParsed() != HudLayoutConfig.ComponentMode.BAR) continue;
             String t = componentText(key, player);
             if (c.showText && c.textAnchorParsed() != null && t != null) {
-                sizes.put(key + ".text", new int[]{mc.font.width(t), 8});
+                sizes.put(key + ".text", new int[]{mc.font.width(t), 9});
             }
             if (c.showIcon && c.iconAnchorParsed() != null && iconUV(key, player) != null) {
                 sizes.put(key + ".icon", new int[]{9, 9});
@@ -258,8 +263,36 @@ public final class CustomHudRenderer {
         return sizes;
     }
 
-    /** 兼容组/饱和度条度量：行高与单行条形度量同源,多行时加上 spacing 行距（与 renderCompat 绘制一致） */
-    private static int[] compatGroupSize(ComponentLayout c, int rows) {
+    /** ICON 模式盒体：按当前实际绘制的图标数测量（与各 renderXxx 的 ICON 分支同源）。
+     *  player==null（编辑器无玩家）沿用旧 54px（6 格）兜底,与 HudLayoutSolver.measure 一致。 */
+    private static int[] iconRowSize(String type, ComponentLayout c, Player player) {
+        var pv = com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.active;
+        if (player == null && !pv) return HudLayoutSolver.iconRowSize(6);
+        int icons;
+        if (type.equals(HudLayoutConfig.HEALTH)) {
+            float maxHealth = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxHealth : player.getMaxHealth();
+            float absorption = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.absorption
+                    : player.getAbsorptionAmount();
+            icons = HudLayoutSolver.healthHeartCount(maxHealth)
+                    + HudLayoutSolver.absorptionHeartCount(absorption, c.absorptionMode);
+        } else if (type.equals(HudLayoutConfig.FOOD)) {
+            icons = HudLayoutSolver.foodIconCount();
+        } else if (type.equals(HudLayoutConfig.AIR)) {
+            int air = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.air : player.getAirSupply();
+            int maxAir = Math.max(1, pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.maxAir
+                    : player.getMaxAirSupply());
+            icons = HudLayoutSolver.airBubbleCount(air, maxAir);
+        } else if (type.equals(HudLayoutConfig.ARMOR)) {
+            int armor = pv ? com.z80z99.z80zhealthbar.overlay.parts.HudPreviewState.armor : player.getArmorValue();
+            icons = HudLayoutSolver.armorIconCount(armor);
+        } else {
+            // 经验条 ICON = 等级数字居中（无原版图标行）,沿用旧 54px 文本宽度
+            icons = 6;
+        }
+        return HudLayoutSolver.iconRowSize(icons);
+    }
+
+    /** 兼容组/饱和度条度量：行高与单行条形度量同源,多行时加上 spacing 行距（与 renderCompat 绘制一致） */    private static int[] compatGroupSize(ComponentLayout c, int rows) {
         int[] bar = HudLayoutSolver.measureBar(c);
         if (rows <= 1) return bar;
         int h = bar[1] - 2; // 单行度量含 2px 余量,取回纯行高
@@ -530,7 +563,7 @@ public final class CustomHudRenderer {
         color = fillOf(c, color); // 组件自定义填充色覆盖（非空时替代状态自动变色）
 
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
-            int hearts = (int) Math.ceil(max / 2f);
+            int hearts = com.z80z99.z80zhealthbar.layout.HudLayoutSolver.healthHeartCount(max);
             int full = (int) Math.floor(health / 2f);
             for (int i = 0; i < hearts; i++) {
                 GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 16, 0, 9, 9);
@@ -541,11 +574,10 @@ public final class CustomHudRenderer {
             if (full < hearts && health - full * 2 > 0f) {
                 GuiHelper.drawTexturedRect(ICONS, g, full * 9, 0, 61, 0, 9, 9);
             }
-            if (absorption > 0 && Math.max(0, Math.min(4, c.absorptionMode)) != 4) {
-                int abs = (int) Math.ceil(absorption / 2f);
-                for (int i = 0; i < abs; i++) {
-                    GuiHelper.drawTexturedRect(ICONS, g, (hearts + i) * 9, 0, 160, 0, 9, 9);
-                }
+            int abs = com.z80z99.z80zhealthbar.layout.HudLayoutSolver
+                    .absorptionHeartCount(absorption, c.absorptionMode);
+            for (int i = 0; i < abs; i++) {
+                GuiHelper.drawTexturedRect(ICONS, g, (hearts + i) * 9, 0, 160, 0, 9, 9);
             }
             return;
         }
@@ -672,10 +704,11 @@ public final class CustomHudRenderer {
                 : p.getFoodData().getExhaustionLevel();
 
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
-            for (int i = 0; i < 10; i++) GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 16, 0 + 27, 9, 9);
+            int slots = com.z80z99.z80zhealthbar.layout.HudLayoutSolver.foodIconCount();
+            for (int i = 0; i < slots; i++) GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 16, 0 + 27, 9, 9);
             int full = food / 2;
-            for (int i = 0; i < full; i++) GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 52, 27, 9, 9);
-            if (food % 2 == 1 && full < 10) GuiHelper.drawTexturedRect(ICONS, g, full * 9, 0, 61, 27, 9, 9);
+            for (int i = 0; i < full && i < slots; i++) GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 52, 27, 9, 9);
+            if (food % 2 == 1 && full < slots) GuiHelper.drawTexturedRect(ICONS, g, full * 9, 0, 61, 27, 9, 9);
             return;
         }
 
@@ -794,7 +827,7 @@ public final class CustomHudRenderer {
                                        com.z80z99.z80zhealthbar.config.configs.ColorConfig colors,
                                        int air, int maxAir) {
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
-            int bubbles = (int) Math.ceil(air / (float) maxAir * 10);
+            int bubbles = com.z80z99.z80zhealthbar.layout.HudLayoutSolver.airBubbleCount(air, maxAir);
             for (int i = 0; i < bubbles; i++) GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 16, 18, 9, 9);
             return;
         }
@@ -856,8 +889,8 @@ public final class CustomHudRenderer {
         if (armor <= 0) return;
 
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.ICON) {
-            int icons = (int) Math.ceil(armor / 2f);
-            for (int i = 0; i < icons && i < 10; i++) {
+            int icons = com.z80z99.z80zhealthbar.layout.HudLayoutSolver.armorIconCount(armor);
+            for (int i = 0; i < icons; i++) {
                 GuiHelper.drawTexturedRect(ICONS, g, i * 9, 0, 34, 9, 9, 9);
             }
             return;
