@@ -101,4 +101,121 @@ public final class ReflectionHelperCompat {
             return value; // 没有 resolve() —— 不是 LazyOptional
         }
     }
+
+    // ===== 以下为通用数据源框架（CustomSourceAdapter）使用的扩展通道 =====
+    // 反射结果按 类名/方法名 缓存（含失败 sentinel）,避免每帧 Class.forName/getMethod 与异常开销。
+
+    private record MethodKey(String owner, String name, String paramType) {}
+    private static final java.util.Map<MethodKey, Method> METHOD_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Set<MethodKey> MISSING_METHODS =
+            java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
+    /** 缓存式静态方法查找（paramType 为参数类全名,/分隔多个参数）;失败缓存,不重复抛异常 */
+    private static Method findMethod(String owner, String name, Class<?>... params) {
+        StringBuilder sig = new StringBuilder(params.length == 0 ? "" : params[0].getName());
+        for (int i = 1; i < params.length; i++) sig.append('/').append(params[i].getName());
+        MethodKey key = new MethodKey(owner, name, sig.toString());
+        Method cached = METHOD_CACHE.get(key);
+        if (cached != null) return cached;
+        if (MISSING_METHODS.contains(key)) return null;
+        try {
+            Method m = Class.forName(owner).getMethod(name, params);
+            METHOD_CACHE.put(key, m);
+            return m;
+        } catch (Throwable t) {
+            MISSING_METHODS.add(key);
+            return null;
+        }
+    }
+
+    /** 通道 3:Player 实例上的无参方法（如 player.experienceLevel 式的 getter） */
+    public static Float playerMethodNumber(String methodName, Player player) {
+        try {
+            Method m = findMethod(player.getClass().getName(), methodName);
+            if (m == null) m = findMethod("net.minecraft.world.entity.player.Player", methodName);
+            if (m == null) return null;
+            Object r = m.invoke(player);
+            return r instanceof Number n ? n.floatValue() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 通道 4a:手持物品原版耐久（value = maxDamage - damage） */
+    public static Float heldItemDurability(Player player) {
+        try {
+            var stack = player.getMainHandItem();
+            if (stack == null || stack.isEmpty()) return null;
+            int max = stack.getMaxDamage();
+            if (max <= 0) return null; // 无耐久物品
+            return (float) (max - stack.getDamageValue());
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 通道 4a 上限:手持物品最大耐久 */
+    public static Float heldItemMaxDurability(Player player) {
+        try {
+            var stack = player.getMainHandItem();
+            if (stack == null || stack.isEmpty()) return null;
+            int max = stack.getMaxDamage();
+            return max > 0 ? (float) max : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 通道 4b:手持物品 NBT 整型（key 可由点分嵌套,如 "GunData/Damage"） */
+    public static Float heldItemNbtInt(String key, Player player) {
+        try {
+            var stack = player.getMainHandItem();
+            if (stack == null || stack.isEmpty() || !stack.hasTag()) return null;
+            var tag = stack.getTag();
+            if (tag == null) return null;
+            String k = key == null ? "" : key.trim();
+            if (k.isEmpty()) return null;
+            if (k.contains("/")) {
+                String[] parts = k.split("/");
+                var cur = tag;
+                for (int i = 0; i < parts.length - 1; i++) {
+                    if (!cur.contains(parts[i], net.minecraft.nbt.Tag.TAG_COMPOUND)) return null;
+                    cur = cur.getCompound(parts[i]);
+                }
+                k = parts[parts.length - 1];
+                if (!cur.contains(k, net.minecraft.nbt.Tag.TAG_ANY_NUMERIC)) return null;
+                return cur.getFloat(k);
+            }
+            if (!tag.contains(k, net.minecraft.nbt.Tag.TAG_ANY_NUMERIC)) return null;
+            return tag.getFloat(k);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 通道 4c:手持物品上的方法（无参 → Number;如 TACZ 的自定义 API） */
+    public static Float heldItemMethodNumber(String methodName, Player player) {
+        try {
+            var stack = player.getMainHandItem();
+            if (stack == null || stack.isEmpty()) return null;
+            Method m = findMethod(stack.getClass().getName(), methodName);
+            if (m == null) {
+                for (Class<?> itf : stack.getClass().getInterfaces()) {
+                    m = findMethod(itf.getName(), methodName);
+                    if (m != null) break;
+                }
+            }
+            if (m == null) return null;
+            Object r = m.invoke(stack);
+            return r instanceof Number n ? n.floatValue() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 清空反射缓存（配置热重载/源变更时调用,避免旧类名缓存残留） */
+    public static void clearCaches() {
+        METHOD_CACHE.clear();
+        MISSING_METHODS.clear();
+    }
 }

@@ -14,8 +14,20 @@ import java.util.List;
  */
 public final class CompatAdapters {
 
-    /** 一条可展示状态：值与最大值（max=null 表示比例未知，只能显示文本） */
-    public record Stat(String key, float value, Float max, int color, String langKey) {}
+    /** 一条可展示状态：值与最大值（max=null 表示比例未知，只能显示文本）。
+     *  displayName 非空时优先于 langKey（自定义数据源无静态词条） */
+    public record Stat(String key, float value, Float max, int color, String langKey, String displayName) {
+        /** 兼容旧构造（内建适配器：走 langKey） */
+        public Stat(String key, float value, Float max, int color, String langKey) {
+            this(key, value, max, color, langKey, null);
+        }
+        /** 展示名（displayName 优先） */
+        public String label() {
+            return displayName != null && !displayName.isBlank()
+                    ? displayName
+                    : net.minecraft.network.chat.Component.translatable(langKey).getString();
+        }
+    }
 
     private static final List<CompatibilityAdapter> ADAPTERS = new ArrayList<>();
 
@@ -27,13 +39,31 @@ public final class CompatAdapters {
 
     private CompatAdapters() {}
 
+    /** 内建适配器 + 配置启用的自定义数据源（每次调用重建轻量包装,开销可忽略） */
     public static List<CompatibilityAdapter> all() {
-        return List.copyOf(ADAPTERS);
+        List<CompatibilityAdapter> out = new ArrayList<>(ADAPTERS);
+        var cs = com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().customSources;
+        if (cs != null && cs.customSources != null) {
+            for (var s : cs.customSources) {
+                if (s != null && s.enabled && s.paramsComplete()) out.add(new CustomSourceAdapter(s));
+            }
+        }
+        return out;
     }
 
     public static CompatibilityAdapter byId(String id) {
         for (CompatibilityAdapter a : ADAPTERS) {
             if (a.id().equals(id)) return a;
+        }
+        // 自定义源:"custom_<id>"
+        if (id != null && id.startsWith("custom_")) {
+            var cs = com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().customSources;
+            if (cs != null && cs.customSources != null) {
+                String raw = id.substring("custom_".length());
+                for (var s : cs.customSources) {
+                    if (s != null && raw.equals(s.id)) return new CustomSourceAdapter(s);
+                }
+            }
         }
         return null;
     }
@@ -41,17 +71,21 @@ public final class CompatAdapters {
     /** 收集当前玩家全部可用状态（目标 MOD 未装/数据不可得/hook 关闭时自动跳过） */
     public static List<Stat> collect(Player player) {
         List<Stat> out = new ArrayList<>(4);
-        for (CompatibilityAdapter adapter : ADAPTERS) {
+        for (CompatibilityAdapter adapter : all()) {
             if (!adapter.isAvailable()) continue;
-            if (!com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().compat.isHookEnabled(adapter.id())) {
+            // 自定义源自带 enabled 判定（不要求 CompatConfig 里有 hook 字段）
+            boolean custom = adapter instanceof CustomSourceAdapter;
+            if (!custom
+                    && !com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().compat.isHookEnabled(adapter.id())) {
                 continue;
             }
             for (String key : adapter.providedStats()) {
                 Float v = adapter.readStat(key);
                 if (v == null) continue;
                 Float max = maxOf(adapter, key, player);
+                String dn = custom ? ((CustomSourceAdapter) adapter).source().name() : null;
                 out.add(new Stat(adapter.id() + "." + key, v, max,
-                        colorOf(adapter.id(), key), "z80zhealthbar.stat." + adapter.id() + "." + key));
+                        colorOf(adapter, key), "z80zhealthbar.stat." + adapter.id() + "." + key, dn));
             }
         }
         return out;
@@ -63,7 +97,11 @@ public final class CompatAdapters {
     public static Float readValue(String adapterId, String statKey) {
         CompatibilityAdapter a = byId(adapterId);
         if (a == null || !a.isAvailable()) return null;
-        if (!com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().compat.isHookEnabled(adapterId)) return null;
+        boolean custom = a instanceof CustomSourceAdapter;
+        if (!custom
+                && !com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().compat.isHookEnabled(adapterId)) {
+            return null;
+        }
         if (!a.isCompatible()) return null;
         return a.readStat(statKey);
     }
@@ -72,12 +110,17 @@ public final class CompatAdapters {
     public static Float readMax(String adapterId, String statKey) {
         CompatibilityAdapter a = byId(adapterId);
         if (a == null || !a.isAvailable()) return null;
-        if (!com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().compat.isHookEnabled(adapterId)) return null;
+        boolean custom = a instanceof CustomSourceAdapter;
+        if (!custom
+                && !com.z80z99.z80zhealthbar.config.ConfigManager.getConfig().compat.isHookEnabled(adapterId)) {
+            return null;
+        }
         Player player = net.minecraft.client.Minecraft.getInstance().player;
         return player == null ? null : maxOf(a, statKey, player);
     }
 
     private static Float maxOf(CompatibilityAdapter adapter, String key, Player player) {
+        if (adapter instanceof CustomSourceAdapter c) return c.resolveMax(player);
         if (adapter instanceof ThirstWasTakenAdapter) return 20f;
         if (adapter instanceof ParCoolAdapter a) return a.readMax(player);
         if (adapter instanceof AppleSkinAdapter) return switch (key) {
@@ -86,6 +129,18 @@ public final class CompatAdapters {
             default -> null;
         };
         return null;
+    }
+
+    private static int colorOf(CompatibilityAdapter adapter, String key) {
+        if (adapter instanceof CustomSourceAdapter c) {
+            String col = c.source().color;
+            if (col != null && !col.isBlank()) {
+                Integer v = com.z80z99.z80zhealthbar.util.ColorHelper.parseColorSafe(col);
+                if (v != null) return v;
+            }
+            return 0xFFAAAAAA;
+        }
+        return colorOf(adapter.id(), key);
     }
 
     private static int colorOf(String modId, String key) {

@@ -252,4 +252,50 @@ class ConfigValidatorTest {
         assertNull(cfg.peek("does_not_exist"));
         assertEquals(before, cfg.components.size());
     }
+
+    /** 自定义数据源:通道/模式钳制、重复 id 停用、非法 id 判定、参数完整性 */
+    @Test
+    void customSourcesAreValidated() {
+        Z80ZHealthBarConfig cfg = new Z80ZHealthBarConfig();
+        var a = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+        a.id = "  Gun_Durability ";
+        a.channel = 99;
+        a.itemMode = 7;
+        a.staticMax = -5f;
+        a.color = "not-a-color";
+        var b = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+        b.id = "gun_durability"; // 规范化后与 a 重复
+        b.channel = 4;
+        cfg.customSources.customSources.add(a);
+        cfg.customSources.customSources.add(b);
+
+        ConfigValidator.validate(cfg);
+
+        assertEquals("gun_durability", a.id, "id 应去空白并转小写");
+        assertEquals(4, a.channel, "channel 钳制 0..4");
+        assertEquals(2, a.itemMode, "itemMode 钳制 0..2");
+        assertEquals(0f, a.staticMax, "staticMax 负数归零");
+        assertEquals("", a.color, "非法颜色清空");
+        assertFalse(b.enabled, "重复 id 的后续源应停用");
+
+        // paramsComplete:通道 4 原版耐久无需方法名;NBT 需要 key
+        var item = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+        item.id = "dur"; item.channel = 4; item.itemMode = 0;
+        assertTrue(item.paramsComplete(), "原版耐久通道无需额外参数");
+        item.itemMode = 1;
+        assertFalse(item.paramsComplete(), "NBT 模式缺 key 应判不完整");
+        item.readMethod = "Damage";
+        assertTrue(item.paramsComplete());
+
+        var cap = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+        cap.id = "x"; cap.channel = 0; cap.holderClass = "a.B"; cap.readMethod = "get";
+        assertFalse(cap.paramsComplete(), "Capability 缺 token/接口应判不完整");
+        cap.holderField = "TOKEN"; cap.ifaceClass = "a.I";
+        assertTrue(cap.paramsComplete());
+
+        // 非法 id（大写/空格/超长）判不完整
+        var bad = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+        bad.id = "Bad Id";
+        assertFalse(bad.paramsComplete());
+    }
 }

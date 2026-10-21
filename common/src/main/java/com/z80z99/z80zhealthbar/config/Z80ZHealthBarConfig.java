@@ -27,6 +27,8 @@ public class Z80ZHealthBarConfig {
     public CompatConfig compat = new CompatConfig();
     public DamagePopupConfig damagePopup = new DamagePopupConfig();
     public DynamicFxConfig dynamicFx = new DynamicFxConfig();
+    /** 用户自定义外部数据源（通用兼容框架） */
+    public CustomSourceConfig customSources = new CustomSourceConfig();
 
     /** 解析实体样式（非法值回退 ASTEORBAR） */
     public EntityHealthStyle entityStyleParsed() {

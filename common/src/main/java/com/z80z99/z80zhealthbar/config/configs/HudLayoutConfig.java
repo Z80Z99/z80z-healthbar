@@ -87,6 +87,11 @@ public class HudLayoutConfig {
         public int absorptionMode = 1;
         /** 润泽度显示方式（仅口渴单行组件 compat_thirst）：语义同 saturationMode;默认 1=右侧追加 */
         public int quenchedMode = 1;
+        /** 通用第二层数据源引用（格式 "adapterId.statKey",如 thirst.quenched / custom_durability.durability;
+         *  空 = 无。非空时优先于组件类型内置的第二层（quenchedMode）。适用于所有 compat 条类组件）。 */
+        public String secondStat = "";
+        /** 通用第二层显示方式（0=覆盖 1=右侧追加 2=顶部细条 3=底部细条 4=关闭;默认 1） */
+        public int secondMode = 1;
         /** hotbar 选中槽样式：0=原版白框 1=呼吸灯背景 2=抬升浮动 3=脉冲边框 4=高亮填充 */
         public int selStyle = 0;
         /** 选中槽样式颜色（空 = 白系默认） */
@@ -245,6 +250,7 @@ public class HudLayoutConfig {
             c.opacity = opacity; c.idleFadeSecs = idleFadeSecs; c.rotation = rotation;
             c.saturationMode = saturationMode;
             c.absorptionMode = absorptionMode; c.quenchedMode = quenchedMode;
+            c.secondStat = secondStat; c.secondMode = secondMode;
             c.selStyle = selStyle; c.selColor = selColor; c.selDir = selDir; c.selBorder = selBorder;
             c.selSpeedMs = selSpeedMs; c.selLiftPx = selLiftPx; c.selFillPct = selFillPct;
             c.selAnim = selAnim; c.selAnimMs = selAnimMs;

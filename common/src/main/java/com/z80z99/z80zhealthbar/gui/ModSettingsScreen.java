@@ -774,6 +774,10 @@ public final class ModSettingsScreen extends Screen {
         }
         rows.add(new TextRow("z80zhealthbar.compat.takeover_note"));
         rows.add(new TextRow("z80zhealthbar.compat.server_note"));
+        // 通用数据源管理（读取任意 MOD 数值 → 条/文本）
+        rows.add(new SectionRow("z80zhealthbar.settings.section.custom_sources"));
+        rows.add(actionRow("z80zhealthbar.custom_sources.open",
+                () -> minecraft.setScreen(new CustomSourcesScreen(this))));
     }
 
     private void buildAdvanced() {

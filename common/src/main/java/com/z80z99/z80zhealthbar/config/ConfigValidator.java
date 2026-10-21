@@ -24,6 +24,8 @@ public final class ConfigValidator {
         if (cfg.compat == null) cfg.compat = new CompatConfig();
         if (cfg.damagePopup == null) cfg.damagePopup = new DamagePopupConfig();
         if (cfg.dynamicFx == null) cfg.dynamicFx = new DynamicFxConfig();
+        if (cfg.customSources == null) cfg.customSources = new CustomSourceConfig();
+        validateCustomSources(cfg.customSources);
 
         validateOverlay(cfg.overlay);
         validateHudLayout(cfg.hudLayout);
@@ -40,6 +42,37 @@ public final class ConfigValidator {
 
     private static void validateDynamicFx(DynamicFxConfig c) {
         if (ColorHelper.parseColorSafe(c.ghostColor) == null) c.ghostColor = "#80FFFFFF";
+    }
+
+    /** 自定义数据源:通道/物品模式钳制;id 去空白+重复时保留首个（后续同 id 源停用）;
+     *  非法颜色重置为空;非法 overlayId 置空。配置不完整不删除（用户可能正在编辑）,
+     *  由适配器 paramsComplete() 判定失效。 */
+    private static void validateCustomSources(CustomSourceConfig c) {
+        if (c.customSources == null) c.customSources = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        java.util.Iterator<CustomSourceConfig.CustomSource> it = c.customSources.iterator();
+        while (it.hasNext()) {
+            var s = it.next();
+            if (s == null) { it.remove(); continue; }
+            if (s.id == null) s.id = "";
+            s.id = s.id.trim().toLowerCase(java.util.Locale.ROOT);
+            s.channel = clamp(s.channel, 0, 4);
+            s.itemMode = clamp(s.itemMode, 0, 2);
+            if (!s.id.isEmpty() && !seen.add(s.id)) s.enabled = false; // 重复 id:后续停用
+            if (s.color != null && !s.color.isBlank() && ColorHelper.parseColorSafe(s.color) == null) s.color = "";
+            if (s.overlayId != null && s.overlayId.isBlank()) s.overlayId = "";
+            if (s.displayName == null) s.displayName = "";
+            if (s.modId == null) s.modId = "";
+            if (s.holderClass == null) s.holderClass = "";
+            if (s.holderField == null) s.holderField = "";
+            if (s.ifaceClass == null) s.ifaceClass = "";
+            if (s.readMethod == null) s.readMethod = "";
+            if (s.valueMethod == null) s.valueMethod = "";
+            if (s.maxMethod == null) s.maxMethod = "";
+            if (s.staticMax < 0) s.staticMax = 0;
+            // 数量上限:防止配置体积与每帧遍历失控
+            if (c.customSources.size() > 32) it.remove();
+        }
     }
 
     private static void validateDamagePopup(DamagePopupConfig c) {
@@ -233,6 +266,8 @@ public final class ConfigValidator {
             cl.saturationMode = clamp(cl.saturationMode, 0, 4);
             cl.absorptionMode = clamp(cl.absorptionMode, 0, 4);
             cl.quenchedMode = clamp(cl.quenchedMode, 0, 4);
+            cl.secondMode = clamp(cl.secondMode, 0, 4);
+            if (cl.secondStat == null) cl.secondStat = "";
             cl.selStyle = clamp(cl.selStyle, 0, 4);
             cl.selDir = clamp(cl.selDir, 0, 1);
             cl.selBorder = clamp(cl.selBorder, 0, 3);

@@ -37,16 +37,36 @@ public final class CompatHudTakeover {
     /** "已取消过"每适配器一次性的调试日志标记 */
     private static final Set<String> CANCEL_LOGGED = new HashSet<>();
 
-    /** overlay id → 适配器 id 映射（Forge 端 byId 使用） */
+    /** overlay id → 适配器 id 映射（Forge 端 byId 使用）。内建两条 + 自定义源 overlayId 查表 */
     public static String adapterForOverlay(String namespace, String path) {
         if ("thirst".equals(namespace) && "thirst_level".equals(path)) return "thirst";
         if ("parcool".equals(namespace) && "hud.stamina.host".equals(path)) return "parcool";
+        String full = namespace + ":" + path;
+        var cs = ConfigManager.getConfig().customSources;
+        if (cs != null && cs.customSources != null) {
+            for (var s : cs.customSources) {
+                if (s != null && s.enabled && s.takeover && s.overlayId != null
+                        && !s.overlayId.isBlank() && full.equals(s.overlayId.trim())) {
+                    return "custom_" + s.id;
+                }
+            }
+        }
         return null;
     }
 
     /** 该适配器的"接管原 HUD"开关是否打开（含兼容 hook 总开关） */
     public static boolean takeoverEnabled(String adapterId) {
         var compat = ConfigManager.getConfig().compat;
+        if (adapterId != null && adapterId.startsWith("custom_")) {
+            var cs = ConfigManager.getConfig().customSources;
+            if (cs != null && cs.customSources != null) {
+                String raw = adapterId.substring("custom_".length());
+                for (var s : cs.customSources) {
+                    if (s != null && raw.equals(s.id)) return s.enabled && s.takeover;
+                }
+            }
+            return false;
+        }
         return switch (adapterId) {
             case "thirst" -> compat.hookThirstWasTaken && compat.takeoverThirst;
             case "parcool" -> compat.hookParcool && compat.takeoverParcool;
@@ -101,6 +121,15 @@ public final class CompatHudTakeover {
     public static void tickEnsure() {
         ensureOne("thirst");
         ensureOne("parcool");
+        // 自定义源:开了接管的也自动补组件（componentKey 默认分支已通用）
+        var cs = ConfigManager.getConfig().customSources;
+        if (cs != null && cs.customSources != null) {
+            for (var s : cs.customSources) {
+                if (s != null && s.enabled && s.takeover && s.paramsComplete()) {
+                    ensureOne("custom_" + s.id);
+                }
+            }
+        }
     }
 
     private static void ensureOne(String adapterId) {

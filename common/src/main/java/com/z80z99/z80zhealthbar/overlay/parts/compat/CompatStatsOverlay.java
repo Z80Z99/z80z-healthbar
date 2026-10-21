@@ -70,13 +70,11 @@ public class CompatStatsOverlay extends SimpleBarOverlay {
                     // {value}=当前值 {max}=上限（纯值,不带 "/上限" 后缀）——此前二者都走
                     // format(v,max),"饱和度: {value}/{max}" 会渲染成 "12.5/20/20.0/20"
                     text = rowFmt
-                            .replace("{name}", net.minecraft.network.chat.Component.translatable(
-                                    stat.langKey()).getString())
+                            .replace("{name}", stat.label())
                             .replace("{value}", valueOnly(stat.value()))
                             .replace("{max}", stat.max() == null ? "—" : maxOnly(stat.max()));
                 } else {
-                    text = net.minecraft.network.chat.Component.translatable(
-                            stat.langKey()).getString() + ": " + format(stat.value(), stat.max());
+                    text = stat.label() + ": " + format(stat.value(), stat.max());
                 }
                 OverlayManager.addStringRender(text,
                         left + barWidth + 5, top + barH / 2 - 4, 0xFFFFFFFF, OverlayManager.ALIGN_LEFT);

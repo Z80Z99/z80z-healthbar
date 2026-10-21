@@ -767,6 +767,25 @@ public final class HudLayoutScreen extends Screen {
                     rebuildWidgets();
                 }));
             }
+            // 自定义数据源组件:动态追加到兼容分类（compat_custom_<id>,渲染端前缀分发已通用）
+            if ("z80zhealthbar.editor.cat_compat".equals(cat[0])) {
+                var cs = ConfigManager.getConfig().customSources;
+                if (cs != null && cs.customSources != null) {
+                    for (var src : cs.customSources) {
+                        if (src == null || !src.enabled || !src.paramsComplete()) continue;
+                        final String type = "compat_custom_" + src.id;
+                        final String dn = src.name();
+                        panelEntries.add(listRow(() -> dn, "z80zhealthbar.editor.add", () -> {
+                            String k = layout().addInstance(type);
+                            if (k != null) {
+                                selected = k;
+                                panelPage = PanelPage.EDIT;
+                            }
+                            rebuildWidgets();
+                        }));
+                    }
+                }
+            }
         }
     }
 

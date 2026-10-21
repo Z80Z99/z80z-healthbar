@@ -379,8 +379,34 @@ public final class CustomHudRenderer {
         boolean wantThirst = template.contains("{thirst");
         boolean wantStamina = template.contains("{stamina");
         boolean wantQuenched = template.contains("{quenched");
+        boolean wantCustom = template.contains("{custom_");
         Float thirstV = null, thirstMaxV = null, quenchedV = null, quenchedMaxV = null;
         Float staminaV = null, staminaMaxV = null;
+        java.util.Map<String, String> customVars = new java.util.LinkedHashMap<>();
+        if (wantCustom) {
+            // 自定义数据源变量:仅读取模板实际引用的 id（与内建变量同零开销原则）
+            var cs = ConfigManager.getConfig().customSources;
+            if (cs != null && cs.customSources != null) {
+                for (var src : cs.customSources) {
+                    if (src == null || !src.enabled || !src.paramsComplete()) continue;
+                    String vKey = "{custom_" + src.id + "}";
+                    String mKey = "{custom_" + src.id + "_max}";
+                    boolean wantV = template.contains(vKey);
+                    boolean wantM = template.contains(mKey);
+                    if (!wantV && !wantM) continue;
+                    if (wantV) {
+                        Float v = com.z80z99.z80zhealthbar.compat.CompatAdapters
+                                .readValue("custom_" + src.id, src.id);
+                        customVars.put(vKey, v == null ? "—" : fmt(v));
+                    }
+                    if (wantM) {
+                        Float m = com.z80z99.z80zhealthbar.compat.CompatAdapters
+                                .readMax("custom_" + src.id, src.id);
+                        customVars.put(mKey, m == null ? "—" : fmt(m));
+                    }
+                }
+            }
+        }
         if (wantQuenched) {
             quenchedV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readValue("thirst", "quenched");
             if (quenchedV != null) {
@@ -405,7 +431,7 @@ public final class CustomHudRenderer {
                 if (staminaV != null) staminaMaxV = com.z80z99.z80zhealthbar.compat.CompatAdapters.readMax("parcool", "stamina");
             }
         }
-        return template
+        String out = template
                 .replace("{health}", fmt(hp))
                 .replace("{max_health}", fmt(maxHp))
                 .replace("{absorption}", fmt(abs))
@@ -437,6 +463,8 @@ public final class CustomHudRenderer {
                 .replace("{quenched_max}", quenchedMaxV == null ? "—" : fmt(quenchedMaxV))
                 .replace("{stamina}", staminaV == null ? "—" : fmt(staminaV))
                 .replace("{stamina_max}", staminaMaxV == null ? "—" : fmt(staminaMaxV));
+        for (var e : customVars.entrySet()) out = out.replace(e.getKey(), e.getValue());
+        return out;
     }
 
     /** 组件对应图标 UV（null = 无图标/当前不可用） */
@@ -900,34 +928,55 @@ public final class CustomHudRenderer {
                 drawCard(g, 0, y, w, h);
                 if (stat.max() != null && stat.max() > 0) {
                     float mainRatio = (float) Math.max(0d, Math.min(1d, stat.value() / stat.max()));
-                    // 口渴行的第二层 = 润泽度（0..20,对应原版饱和度;显示方式与饱食度饱和度同 5 档）
-                    float quenched = 0f;
-                    if (stat.key().equals("thirst.thirst")) {
+                    // 第二层数值:优先通用配置 secondStat（可引用内建/自定义任意数据源）,
+                    // 未配置时保留旧特例（口渴行 = 润泽度）
+                    float second = 0f;
+                    float secondMax = 0f;
+                    int secondMode;
+                    int secondColor;
+                    if (c.secondStat != null && !c.secondStat.isBlank()) {
+                        int dot = c.secondStat.indexOf('.');
+                        if (dot > 0) {
+                            String aId = c.secondStat.substring(0, dot);
+                            String sKey = c.secondStat.substring(dot + 1);
+                            Float sv = com.z80z99.z80zhealthbar.compat.CompatAdapters.readValue(aId, sKey);
+                            Float sm = com.z80z99.z80zhealthbar.compat.CompatAdapters.readMax(aId, sKey);
+                            second = sv == null ? 0f : sv;
+                            secondMax = sm == null || sm <= 0 ? Math.max(1f, second) : sm;
+                        }
+                        secondMode = Math.max(0, Math.min(4, c.secondMode));
+                        secondColor = fill2Of(c, ColorHelper.parseColor(
+                                ConfigManager.getConfig().colors.saturation));
+                    } else if (stat.key().equals("thirst.thirst")) {
                         Float q = com.z80z99.z80zhealthbar.compat.CompatAdapters
                                 .readValue("thirst", "quenched");
-                        quenched = q == null ? 0f : q;
+                        second = q == null ? 0f : q;
+                        secondMax = 20f;
+                        secondMode = Math.max(0, Math.min(4, c.quenchedMode));
+                        secondColor = fill2Of(c, ColorHelper.parseColor(
+                                ConfigManager.getConfig().colors.saturation));
+                    } else {
+                        secondMode = 4; // 无第二层
+                        secondColor = 0;
                     }
-                    int qMode = Math.max(0, Math.min(4, c.quenchedMode));
                     int innerW = HudBarPainter.innerWidth(w);
                     int mainColor = fillOf(c, stat.color());
-                    int[] qGeom = quenched > 0.01f
-                            ? secondLayerGeom(innerW, stat.value(), quenched,
-                                    Math.max(stat.max(), stat.value() + quenched),
-                                    mainRatio, Math.min(1f, quenched / stat.max()), qMode, true)
+                    int[] qGeom = second > 0.01f
+                            ? secondLayerGeom(innerW, stat.value(), second,
+                                    Math.max(stat.max(), stat.value() + second),
+                                    mainRatio, Math.min(1f, second / secondMax), secondMode, true)
                             : null;
-                    if (qGeom != null && qMode == 1) {
-                        // 右侧追加：容量扩展，主段缩短、润泽金段接在尾部（同血条吸收段）
+                    if (qGeom != null && secondMode == 1) {
+                        // 右侧追加：容量扩展，第二层段接在尾部（同血条吸收段）
                         HudBarPainter.drawFillWidth(g, 0, y, w, h, qGeom[0], mainColor);
                     } else {
                         HudBarPainter.drawRatioFill(g, 0, y, w, h, mainRatio, mainColor);
                     }
                     if (qGeom != null) {
-                        int qColor = fill2Of(c, ColorHelper.parseColor(
-                                ConfigManager.getConfig().colors.saturation));
-                        if (qMode == 2 || qMode == 3) {
-                            drawSecondStrip(g, 0, y, w, h, qGeom[1], qGeom[2], qColor, qMode);
+                        if (secondMode == 2 || secondMode == 3) {
+                            drawSecondStrip(g, 0, y, w, h, qGeom[1], qGeom[2], secondColor, secondMode);
                         } else {
-                            HudBarPainter.drawSegment(g, 0, y, w, h, qGeom[1], qGeom[2], qColor);
+                            HudBarPainter.drawSegment(g, 0, y, w, h, qGeom[1], qGeom[2], secondColor);
                         }
                     }
                 }
@@ -939,12 +988,11 @@ public final class CustomHudRenderer {
                 if (c.textFormat != null && !c.textFormat.isBlank()) {
                     // 模板（与长条管线同语义）:{name} 状态名 {value} 当前值 {max} 上限
                     text = c.textFormat
-                            .replace("{name}", net.minecraft.network.chat.Component.translatable(
-                                    stat.langKey()).getString())
+                            .replace("{name}", stat.label())
                             .replace("{value}", vs)
                             .replace("{max}", stat.max() == null ? "—" : String.valueOf(Math.round(stat.max())));
                 } else {
-                    text = net.minecraft.network.chat.Component.translatable(stat.langKey()).getString()
+                    text = stat.label()
                             + ": " + vs + (stat.max() == null ? "" : "/" + Math.round(stat.max()));
                 }
                 drawTextScaled(g, Minecraft.getInstance().font, text, w, h, y, c);
