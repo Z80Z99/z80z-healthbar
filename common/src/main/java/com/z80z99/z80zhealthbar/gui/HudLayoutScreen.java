@@ -201,7 +201,7 @@ public final class HudLayoutScreen extends Screen {
     private record PW(AbstractWidget widget, int relX) {}
 
     /** 面板页：LIST = 清单+全局操作;EDIT = 对象参数页;ADD = 类型选择;GROUP = 分组成员;SUB_TEXT/SUB_ICON = 子组件页 */
-    private enum PanelPage { LIST, EDIT, ADD, GROUP, SUB_TEXT, SUB_ICON, HOTBAR_SLOT }
+    private enum PanelPage { LIST, EDIT, ADD, GROUP, SUB_TEXT, SUB_ICON, HOTBAR_SLOT, DATASOURCE_LIST, DATASOURCE_TYPE }
 
     private PanelPage panelPage = PanelPage.LIST;
     /** GROUP 页当前查看的分组名 */
@@ -395,6 +395,14 @@ public final class HudLayoutScreen extends Screen {
             return e;
         }
 
+        /** 动态 note 行（每帧取 labelDyn 文本,如数据源实时读数诊断） */
+        static PEntry dynNote(Supplier<String> text) {
+            PEntry e = new PEntry(null, null, null);
+            e.note = true;
+            e.labelDyn = text;
+            return e;
+        }
+
         boolean isHeader() { return headerKey != null; }
 
         /** note 行（无值行）换行后的行数（layoutPanel 计算,渲染与占高共用） */
@@ -504,6 +512,8 @@ public final class HudLayoutScreen extends Screen {
             case SUB_TEXT -> buildSubText();
             case SUB_ICON -> buildSubIcon();
             case HOTBAR_SLOT -> buildHotbarSlotPage();
+            case DATASOURCE_LIST -> buildDatasourceList();
+            case DATASOURCE_TYPE -> buildDatasourceType();
             case EDIT -> {
                 if (asteor && selectedAsteorBar == null) { panelPage = PanelPage.LIST; buildAsteorList(); }
                 else if (asteor) buildAsteorEdit();
@@ -767,26 +777,200 @@ public final class HudLayoutScreen extends Screen {
                     rebuildWidgets();
                 }));
             }
-            // 自定义数据源组件:动态追加到兼容分类（compat_custom_<id>,渲染端前缀分发已通用）
+            // 自定义数据源:「数据源…」入口行（专页承接:选择已有源 / 新建 → 数据类型）
             if ("z80zhealthbar.editor.cat_compat".equals(cat[0])) {
-                var cs = ConfigManager.getConfig().customSources;
-                if (cs != null && cs.customSources != null) {
-                    for (var src : cs.customSources) {
-                        if (src == null || !src.enabled || !src.paramsComplete()) continue;
-                        final String type = "compat_custom_" + src.id;
-                        final String dn = src.name();
-                        panelEntries.add(listRow(() -> dn, "z80zhealthbar.editor.add", () -> {
-                            String k = layout().addInstance(type);
-                            if (k != null) {
-                                selected = k;
-                                panelPage = PanelPage.EDIT;
-                            }
+                panelEntries.add(listRow(
+                        () -> Component.translatable("z80zhealthbar.editor.cat_datasource").getString(),
+                        "z80zhealthbar.editor.add", () -> {
+                            panelPage = PanelPage.DATASOURCE_LIST;
                             rebuildWidgets();
                         }));
+            }
+        }
+    }
+
+    /** 数据源 · 选择页:已建数据源列表（点击 = 添加对应条组件）+ 新建入口 */
+    private void buildDatasourceList() {
+        panelEntries.add(backRow());
+        panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.title", null, null));
+        var cs = ConfigManager.getConfig().customSources;
+        var list = cs == null ? null : cs.customSources;
+        if (list != null && !list.isEmpty()) {
+            for (var src : list) {
+                if (src == null) continue;
+                final String type = "compat_custom_" + src.id;
+                final String dn = (src.enabled ? "" : "§8") + src.name()
+                        + " §7[" + datasourceChannelName(src.channel) + "]";
+                panelEntries.add(listRow(() -> dn, "z80zhealthbar.editor.add", () -> {
+                    String k = layout().addInstance(type);
+                    if (k != null) {
+                        selected = k;
+                        panelPage = PanelPage.EDIT;
                     }
+                    rebuildWidgets();
+                }));
+            }
+        } else {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.empty"));
+        }
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.datasource.new").getString(),
+                "z80zhealthbar.editor.add", () -> {
+                    panelPage = PanelPage.DATASOURCE_TYPE;
+                    rebuildWidgets();
+                }));
+    }
+
+    /** 数据源 · 数据类型页:5 种读取通道,点选即创建数据源 + 条组件并进入编辑页 */
+    private void buildDatasourceType() {
+        panelEntries.add(backRow());
+        panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.type_title", null, null));
+        for (int ch = 0; ch <= 4; ch++) {
+            final int channel = ch;
+            String dn = Component.translatable("z80zhealthbar.editor.datasource.type." + ch).getString();
+            panelEntries.add(listRow(() -> dn, "z80zhealthbar.editor.add", () -> {
+                var cs = ConfigManager.getConfig().customSources;
+                if (cs == null) return;
+                if (cs.customSources == null) cs.customSources = new java.util.ArrayList<>();
+                if (cs.customSources.size() >= 32) return; // 上限保护(validator 同步)
+                var s = new com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource();
+                int n = 1;
+                while (true) {
+                    String candidate = "source_" + n;
+                    boolean exists = false;
+                    for (var o : cs.customSources) {
+                        if (o != null && o.id.equals(candidate)) { exists = true; break; }
+                    }
+                    if (!exists) { s.id = candidate; break; }
+                    n++;
+                }
+                s.displayName = "";
+                s.channel = channel;
+                cs.customSources.add(s);
+                String k = layout().addInstance("compat_custom_" + s.id);
+                if (k != null) {
+                    selected = k;
+                    panelPage = PanelPage.EDIT;
+                }
+                ConfigManager.saveConfig();
+                rebuildWidgets();
+            }));
+        }
+    }
+
+    private static String datasourceChannelName(int ch) {
+        return switch (ch) {
+            case 0 -> "Capability";
+            case 2 -> "Factory";
+            case 3 -> "Player";
+            case 4 -> "Item";
+            default -> "Static";
+        };
+    }
+
+    /** 组件类型 compat_custom_<id> → 绑定的数据源配置（找不到返回 null） */
+    private static com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource datasourceOf(String selType) {
+        String raw = selType.substring("compat_custom_".length());
+        var cs = ConfigManager.getConfig().customSources;
+        if (cs == null || cs.customSources == null) return null;
+        for (var s : cs.customSources) {
+            if (s != null && s.id.equals(raw)) return s;
+        }
+        return null;
+    }
+
+    /** 数据源参数行（compat_custom_* 编辑页内;全部复用现有行工厂,改即存） */
+    private void buildDatasourceParams(com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src) {
+        panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.params_section", null, null));
+        panelEntries.add(textInput("z80zhealthbar.custom_sources.field.name",
+                () -> src.displayName == null ? "" : src.displayName, v -> src.displayName = v));
+        panelEntries.add(textInput("z80zhealthbar.custom_sources.field.mod",
+                () -> src.modId == null ? "" : src.modId, v -> src.modId = v.trim()));
+        panelEntries.add(cycler("z80zhealthbar.custom_sources.field.channel",
+                () -> Component.translatable("z80zhealthbar.editor.datasource.type." + src.channel).getString(),
+                () -> {
+                    src.channel = (src.channel + 1) % 5;
+                    markDirty();
+                    rebuildWidgets();
+                }));
+        // 按通道动态参数行
+        switch (src.channel) {
+            case 0 -> {
+                panelEntries.add(textInput("z80zhealthbar.custom_sources.field.holder",
+                        () -> src.holderClass, v -> src.holderClass = v.trim()));
+                panelEntries.add(textInput("z80zhealthbar.custom_sources.field.token_field",
+                        () -> src.holderField, v -> src.holderField = v.trim()));
+                panelEntries.add(textInput("z80zhealthbar.custom_sources.field.iface",
+                        () -> src.ifaceClass, v -> src.ifaceClass = v.trim()));
+                panelEntries.add(textInput("z80zhealthbar.custom_sources.field.read",
+                        () -> src.readMethod, v -> src.readMethod = v.trim()));
+            }
+            case 1 -> {
+                panelEntries.add(textInput("z80zhealthbar.custom_sources.field.holder",
+                        () -> src.holderClass, v -> src.holderClass = v.trim()));
+                panelEntries.add(textInput("z80zhealthbar.custom_sources.field.read",
+                        () -> src.readMethod, v -> src.readMethod = v.trim()));
+            }
+            case 2 -> {
+                panelEntries.add(textInput("z80zhealthbar.custom_sources.field.holder",
+                        () -> src.holderClass, v -> src.holderClass = v.trim()));
+                panelEntries.add(textInput("z80zhealthbar.custom_sources.field.factory",
+                        () -> src.readMethod, v -> src.readMethod = v.trim()));
+                panelEntries.add(textInput("z80zhealthbar.custom_sources.field.value_method",
+                        () -> src.valueMethod, v -> src.valueMethod = v.trim()));
+            }
+            case 3 -> panelEntries.add(textInput("z80zhealthbar.custom_sources.field.player_method",
+                    () -> src.readMethod, v -> src.readMethod = v.trim()));
+            default -> {
+                panelEntries.add(cycler("z80zhealthbar.custom_sources.field.item_mode",
+                        () -> Component.translatable("z80zhealthbar.editor.datasource.item_mode." + src.itemMode).getString(),
+                        () -> {
+                            src.itemMode = (src.itemMode + 1) % 3;
+                            markDirty();
+                            rebuildWidgets();
+                        }));
+                if (src.itemMode != com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.ITEM_VANILLA_DURABILITY) {
+                    panelEntries.add(textInput(src.itemMode == com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.ITEM_NBT_INT
+                                    ? "z80zhealthbar.custom_sources.field.nbt_key"
+                                    : "z80zhealthbar.custom_sources.field.item_method",
+                            () -> src.readMethod, v -> src.readMethod = v.trim()));
                 }
             }
         }
+        panelEntries.add(textInput("z80zhealthbar.custom_sources.field.max_method",
+                () -> src.maxMethod == null ? "" : src.maxMethod, v -> src.maxMethod = v.trim()));
+        panelEntries.add(stepper1("z80zhealthbar.custom_sources.static_max_short",
+                () -> src.staticMax, v -> src.staticMax = (float) v, 0, 1000, 5));
+        panelEntries.add(colorRow("z80zhealthbar.custom_sources.color_short",
+                () -> src.color == null ? "" : src.color, v -> src.color = v));
+        panelEntries.add(toggle("z80zhealthbar.custom_sources.takeover_short",
+                () -> src.takeover, v -> src.takeover = v));
+        panelEntries.add(textInput("z80zhealthbar.custom_sources.field.overlay_id",
+                () -> src.overlayId == null ? "" : src.overlayId, v -> src.overlayId = v.trim()));
+        // 实时读数诊断（每帧刷新;配置拼写错误的主要发现途径）
+        panelEntries.add(PEntry.dynNote(() -> Component.translatable("z80zhealthbar.custom_sources.test").getString()
+                + ": " + datasourceDiagnose(src)));
+    }
+
+    /** 数据源实时读数诊断（与管理页同逻辑;成功 → 值/上限,失败 → 具体原因） */
+    private String datasourceDiagnose(com.z80z99.z80zhealthbar.config.configs.CustomSourceConfig.CustomSource src) {
+        if (!src.enabled) return "§8" + Component.translatable("z80zhealthbar.custom_sources.diag.disabled").getString();
+        if (!src.paramsComplete()) {
+            return "§e" + Component.translatable("z80zhealthbar.custom_sources.diag.incomplete").getString();
+        }
+        if (minecraft == null || minecraft.player == null) return "§8—";
+        var adapter = new com.z80z99.z80zhealthbar.compat.CustomSourceAdapter(src);
+        if (!adapter.isAvailable()) {
+            return "§c" + Component.translatable("z80zhealthbar.custom_sources.diag.mod_missing",
+                    src.modId).getString();
+        }
+        Float v = adapter.readStat(src.id);
+        if (v == null) {
+            return "§c" + Component.translatable("z80zhealthbar.custom_sources.diag.read_failed").getString();
+        }
+        Float m = adapter.resolveMax(minecraft.player);
+        return "§a" + String.format(Locale.ROOT, "%.1f", v)
+                + (m == null ? "" : " / " + String.format(Locale.ROOT, "%.1f", m));
     }
 
     /** 拆分即组合：拆分子件（文本/图标锚点脱离"跟随"）时,父组件自动并入以其类型命名的组合;
@@ -1439,6 +1623,15 @@ public final class HudLayoutScreen extends Screen {
         }
         // selType 已声明（上方插入块内）
         if (selType.equals(HudLayoutConfig.COMPAT) || selType.startsWith("compat_")) {
+            // 自定义数据源条:数据源参数区（读写绑定的 CustomSource,边填边看实时读数）
+            if (selType.startsWith("compat_custom_")) {
+                var src = datasourceOf(selType);
+                if (src == null) {
+                    panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.missing"));
+                } else {
+                    buildDatasourceParams(src);
+                }
+            }
             // compat 特判：多行动态行的文本部件参数（开关/模板/对齐/偏移/缩放;
             // 行间距由上方"间距"行控制,渲染端已接入）
             panelEntries.add(toggle("z80zhealthbar.editor.show_text",
@@ -1749,7 +1942,9 @@ public final class HudLayoutScreen extends Screen {
                 e.relY = cursor + 2;
                 cursor += HEADER_H;
             } else if (e.note) {
-                e.noteLines = Math.max(1, font.split(Component.translatable(e.labelKey), panelW - 12).size());
+                var src = e.labelDyn != null ? Component.literal(e.labelDyn.get())
+                        : Component.translatable(e.labelKey);
+                e.noteLines = Math.max(1, font.split(src, panelW - 12).size());
                 e.relY = cursor;
                 cursor += e.noteLines * 10 + 6;
             } else {
@@ -2029,9 +2224,11 @@ public final class HudLayoutScreen extends Screen {
                 continue;
             }
             if (e.note) {
-                // note 行：按面板内宽换行绘制（layoutPanel 已按行数计高）
+                // note 行：按面板内宽换行绘制（layoutPanel 已按行数计高）;labelDyn 非空 = 动态文本(诊断行)
                 if (y < panelY + TITLE_H + 2 || y + e.noteLines * 10 > panelY + panelH - 1) continue;
-                var lines = font.split(Component.translatable(e.labelKey), panelW - 12);
+                var src = e.labelDyn != null ? Component.literal(e.labelDyn.get())
+                        : Component.translatable(e.labelKey);
+                var lines = font.split(src, panelW - 12);
                 for (int i = 0; i < lines.size(); i++) {
                     g.drawString(font, lines.get(i), panelX + 6, y + i * 10, 0xFFB8C4D0);
                 }

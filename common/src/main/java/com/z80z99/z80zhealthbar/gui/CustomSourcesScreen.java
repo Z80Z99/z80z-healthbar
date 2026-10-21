@@ -102,56 +102,9 @@ public final class CustomSourcesScreen extends Screen {
                             })
                     .bounds(panelX + 12, panelY + H - 52, 120, 18).build());
         }
-        // 官方预置
-        addRenderableWidget(Button.builder(Component.translatable("z80zhealthbar.custom_sources.preset_tacz"),
-                        b -> addPreset(Presets.TACZ_DURABILITY()))
-                .bounds(panelX + 140, panelY + H - 52, 110, 18).build());
-        addRenderableWidget(Button.builder(Component.translatable("z80zhealthbar.custom_sources.preset_thirst"),
-                        b -> addPreset(Presets.TWT_THIRST()))
-                .bounds(panelX + 254, panelY + H - 52, 94, 18).build());
+        // （预置入口已移除——创建流程改在 HUD 编辑器:添加组件 → 数据源 → 数据类型）
     }
 
-    private void addPreset(CustomSource preset) {
-        for (var s : sources) {
-            if (s.id.equals(preset.id)) {
-                s.enabled = true;
-                return;
-            }
-        }
-        sources.add(preset);
-        ConfigManager.saveConfig();
-        rebuild();
-    }
-
-    /** 官方源参数预置（与内建适配器参数一致,便于对照验证） */
-    private static final class Presets {
-        static CustomSource TACZ_DURABILITY() {
-            var s = new CustomSource();
-            s.id = "gun_durability";
-            s.displayName = "枪械耐久";
-            s.modId = "gundb";
-            s.channel = 4;
-            s.itemMode = CustomSourceConfig.ITEM_VANILLA_DURABILITY;
-            s.color = "#FFD070";
-            return s;
-        }
-
-        static CustomSource TWT_THIRST() {
-            var s = new CustomSource();
-            s.id = "thirst_level";
-            s.displayName = "口渴值";
-            s.modId = "thirst";
-            s.channel = 0;
-            s.holderClass = "dev.ghen.thirst.foundation.common.capability.ModCapabilities";
-            s.holderField = "PLAYER_THIRST";
-            s.ifaceClass = "dev.ghen.thirst.foundation.common.capability.IThirst";
-            s.readMethod = "getThirst";
-            s.maxMethod = "";
-            s.staticMax = 20f;
-            s.color = "#4488FF";
-            return s;
-        }
-    }
 
     // ================= 编辑表单 =================
 
