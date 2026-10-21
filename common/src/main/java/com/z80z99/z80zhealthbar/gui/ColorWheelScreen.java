@@ -194,7 +194,8 @@ public class ColorWheelScreen extends Screen {
         drawChecker(g, svX + 40, prevY, 32, 32);
         g.fill(svX + 40, prevY, svX + 72, prevY + 32, currentArgb());
         g.renderOutline(svX + 40, prevY, 32, 32, 0x80FFFFFF);
-        g.drawString(font, "hex:", svX + 84, hexY + 5, 0xFFD5DEE9);
+        g.drawString(font, Component.translatable("z80zhealthbar.editor.color.hex_label").getString(),
+                svX + 84, hexY + 5, 0xFFD5DEE9);
 
         super.render(g, mouseX, mouseY, partialTick);
     }

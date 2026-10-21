@@ -623,7 +623,7 @@ public final class ModSettingsScreen extends Screen {
                 rows.add(sliderRow("z80zhealthbar.option.barStyle.barAlpha", 0, 255, c.barStyle.barAlpha,
                         v -> c.barStyle.barAlpha = v, String::valueOf));
                 rows.add(sliderRow("z80zhealthbar.option.barStyle.barHalfWidth", 0, 80, c.barStyle.barHalfWidth,
-                        v -> c.barStyle.barHalfWidth = v, v -> v == 0 ? "自动" : String.valueOf(v)));
+                        v -> c.barStyle.barHalfWidth = v, v -> v == 0 ? Component.translatable("z80zhealthbar.msg.auto").getString() : String.valueOf(v)));
                 rows.add(sliderRow("z80zhealthbar.option.barStyle.barHalfHeight", 1, 12, c.barStyle.barHalfHeight,
                         v -> c.barStyle.barHalfHeight = v, String::valueOf));
                 rows.add(sliderRow("z80zhealthbar.option.barStyle.barPixelOffsetX", -100, 100, c.barStyle.barPixelOffsetX,

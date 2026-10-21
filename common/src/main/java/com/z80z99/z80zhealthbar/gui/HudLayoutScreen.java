@@ -543,15 +543,28 @@ public final class HudLayoutScreen extends Screen {
         if (cc != null && cc.displayName != null && !cc.displayName.isBlank()) {
             return cc.displayName;
         }
-        String disp = Component.translatable("z80zhealthbar.hud.component."
-                + HudLayoutConfig.baseKeyOf(key)).getString();
+        String base = HudLayoutConfig.baseKeyOf(key);
+        // 自定义数据源组件:类型是动态的 compat_custom_<id>,无静态词条 → 用数据源显示名
+        if (base.startsWith("compat_custom_")) {
+            var src = datasourceOf(base);
+            String dn = src != null ? src.name()
+                    : Component.translatable("z80zhealthbar.editor.datasource.deleted").getString();
+            int hash = key.indexOf('#');
+            return hash > 0 ? dn + " #" + key.substring(hash + 1) : dn;
+        }
+        String disp = Component.translatable("z80zhealthbar.hud.component." + base).getString();
         int hash = key.indexOf('#');
         return hash > 0 ? disp + " #" + key.substring(hash + 1) : disp;
     }
 
-    /** 列表行：动态实例名 + 动作按钮（文字可定制,如 调整/添加） */
+    /** 列表行：动态实例名 + 动作按钮（文字可定制,如 调整/添加）。
+     *  tooltipKey 非空 = 行显示 (?) 说明（颜色行等需要解释的行用） */
     private PEntry listRow(Supplier<String> name, String btnKey, Runnable enter) {
-        PEntry e = new PEntry(null, null, null);
+        return listRow(name, btnKey, enter, null);
+    }
+
+    private PEntry listRow(Supplier<String> name, String btnKey, Runnable enter, String tooltipKey) {
+        PEntry e = new PEntry(null, tooltipKey, null);
         e.labelDyn = name;
         FlatButton b = new FlatButton(CYCLE_W, BTN_H,
                 () -> Component.translatable(btnKey), enter);
@@ -568,7 +581,7 @@ public final class HudLayoutScreen extends Screen {
                         Component.translatable(labelKey).getString(), get.get(), v -> {
                             set.accept(v);
                             markDirty();
-                        })));
+                        })), labelKey);
         e.swatchArgb = () -> parseColorSafe(get.get());
         return e;
     }
@@ -1108,7 +1121,7 @@ public final class HudLayoutScreen extends Screen {
         }
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
         panelEntries.add(cycler("z80zhealthbar.editor.ungroup",
-                () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                () -> Component.translatable("z80zhealthbar.editor.act.ungroup").getString(),
                 () -> {
                     for (ComponentLayout cc : ConfigManager.getConfig().hudLayout.components.values()) {
                         if (cc != null && currentGroup.equals(cc.group)) cc.group = "";
@@ -1225,7 +1238,7 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
         if (isAtomicSelected()) {
             panelEntries.add(cycler("z80zhealthbar.editor.duplicate_component",
-                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> Component.translatable("z80zhealthbar.editor.act.duplicate").getString(),
                     () -> {
                         String nk = layout().duplicateInstance(baseKey(selected));
                         if (nk != null) {
@@ -1234,7 +1247,7 @@ public final class HudLayoutScreen extends Screen {
                         }
                     }));
             panelEntries.add(cycler("z80zhealthbar.editor.delete_component",
-                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> Component.translatable("z80zhealthbar.editor.act.delete").getString(),
                     () -> {
                         layout().removeInstance(baseKey(selected));
                         selected = HudLayoutConfig.HEALTH;
@@ -1243,7 +1256,7 @@ public final class HudLayoutScreen extends Screen {
                     }));
         } else {
             panelEntries.add(cycler("z80zhealthbar.editor.detach_off",
-                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> Component.translatable("z80zhealthbar.editor.act.detach").getString(),
                     () -> {
                         c.textAnchor = "";
                         c.textOffsetX = 0;
@@ -1300,7 +1313,7 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
         if (isAtomicSelected()) {
             panelEntries.add(cycler("z80zhealthbar.editor.duplicate_component",
-                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> Component.translatable("z80zhealthbar.editor.act.duplicate").getString(),
                     () -> {
                         String nk = layout().duplicateInstance(baseKey(selected));
                         if (nk != null) {
@@ -1309,7 +1322,7 @@ public final class HudLayoutScreen extends Screen {
                         }
                     }));
             panelEntries.add(cycler("z80zhealthbar.editor.delete_component",
-                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> Component.translatable("z80zhealthbar.editor.act.delete").getString(),
                     () -> {
                         layout().removeInstance(baseKey(selected));
                         selected = HudLayoutConfig.HEALTH;
@@ -1318,7 +1331,7 @@ public final class HudLayoutScreen extends Screen {
                     }));
         } else {
             panelEntries.add(cycler("z80zhealthbar.editor.detach_off",
-                    () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                    () -> Component.translatable("z80zhealthbar.editor.act.detach").getString(),
                     () -> {
                         c.iconAnchor = "";
                         c.iconOffsetX = 0;
@@ -1807,7 +1820,7 @@ public final class HudLayoutScreen extends Screen {
     private void addComponentActions(String key) {
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
         panelEntries.add(cycler("z80zhealthbar.editor.duplicate_component",
-                () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                () -> Component.translatable("z80zhealthbar.editor.act.duplicate").getString(),
                 () -> {
                     String nk = layout().duplicateInstance(key);
                     if (nk != null) {
@@ -1816,7 +1829,7 @@ public final class HudLayoutScreen extends Screen {
                     }
                 }));
         panelEntries.add(cycler("z80zhealthbar.editor.delete_component",
-                () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                () -> Component.translatable("z80zhealthbar.editor.act.delete").getString(),
                 () -> {
                     layout().removeInstance(key);
                     selected = HudLayoutConfig.HEALTH;
@@ -1824,11 +1837,11 @@ public final class HudLayoutScreen extends Screen {
                     rebuildWidgets();
                 }));
         panelEntries.add(cycler("z80zhealthbar.editor.reset_component",
-                () -> Component.translatable("z80zhealthbar.editor.done").getString(),
+                () -> Component.translatable("z80zhealthbar.editor.act.reset").getString(),
                 () -> layout().resetComponent(key)));
     }
 
-    /** 分组开关行：未分组 → 并入既有组/新建"组1";已分组 → 移出 */
+    /** 分组开关行：未分组 → 并入既有组/新建Component.translatable("z80zhealthbar.editor.group.default_name").getString();已分组 → 移出 */
     private PEntry groupToggleRow(ComponentLayout c) {
         return cycler("z80zhealthbar.editor.toggle_group",
                 () -> (c.group == null || c.group.isBlank())
@@ -1840,7 +1853,7 @@ public final class HudLayoutScreen extends Screen {
                         String existing = ConfigManager.getConfig().hudLayout.components.values().stream()
                                 .map(cc -> cc == null ? "" : cc.group)
                                 .filter(g -> g != null && !g.isBlank()).findFirst().orElse("");
-                        c.group = existing.isBlank() ? "组1" : existing;
+                        c.group = existing.isBlank() ? Component.translatable("z80zhealthbar.editor.group.default_name").getString() : existing;
                     } else {
                         c.group = "";
                     }

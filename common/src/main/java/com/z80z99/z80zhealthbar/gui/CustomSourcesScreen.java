@@ -286,21 +286,13 @@ public final class CustomSourcesScreen extends Screen {
     }
 
     private static String channelName(int ch) {
-        return switch (ch) {
-            case 0 -> "Capability";
-            case 2 -> "Factory";
-            case 3 -> "Player";
-            case 4 -> "Item";
-            default -> "Static";
-        };
+        return net.minecraft.network.chat.Component.translatable(
+                "z80zhealthbar.editor.datasource.type." + Math.max(0, Math.min(4, ch))).getString();
     }
 
     private static String itemModeName(int m) {
-        return switch (m) {
-            case 1 -> "NBT";
-            case 2 -> "Method";
-            default -> "Durability";
-        };
+        return net.minecraft.network.chat.Component.translatable(
+                "z80zhealthbar.editor.datasource.item_mode." + Math.max(0, Math.min(2, m))).getString();
     }
 
     // ================= 渲染 =================
