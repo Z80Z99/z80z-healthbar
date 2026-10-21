@@ -887,5 +887,6 @@
   "z80zhealthbar.msg.auto": "Auto",
   "z80zhealthbar.editor.color.hex_label": "hex:",
   "z80zhealthbar.editor.compat_legacy_note": "This is the legacy multi-row compat group (no longer addable). Prefer the four single-row components: Thirst / Saturation / Exhaustion / Stamina - each can be positioned and tuned independently.",
-  "z80zhealthbar.editor.datasource.preset_section": "Built-in equivalents (one click; requires the mod installed)"
+  "z80zhealthbar.editor.datasource.preset_section": "Built-in equivalents (one click; requires the mod installed)",
+  "z80zhealthbar.custom_sources.delete_confirm": "Sure?"
 }

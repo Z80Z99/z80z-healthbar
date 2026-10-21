@@ -204,6 +204,8 @@ public final class HudLayoutScreen extends Screen {
     private enum PanelPage { LIST, EDIT, ADD, GROUP, SUB_TEXT, SUB_ICON, HOTBAR_SLOT, DATASOURCE_LIST, DATASOURCE_TYPE, DATASOURCE_MODPICK }
 
     private PanelPage panelPage = PanelPage.LIST;
+    /** 上次构建面板时的页面（用于检测换页并重置滚动） */
+    private PanelPage lastBuiltPage = PanelPage.LIST;
     /** GROUP 页当前查看的分组名 */
     private String currentGroup = "";
 
@@ -451,12 +453,14 @@ public final class HudLayoutScreen extends Screen {
             lastSeenJson = savedSnapshot; // 撤销监听基准 = 进入时状态
         }
         buildPanelEntries();
-        // 面板默认右上（曾拖动过则用记录值）
-        // 面板尺寸（仿 Windows 拖缘调整,持久化;非法值回退默认）
-        panelW = layout().panelW >= PANEL_MIN_W && layout().panelW <= PANEL_MAX_W ? layout().panelW : PANEL_W;
+        // 面板宽度:持久化值仅在不超过屏幕可用宽时采用;否则按屏幕比例给默认值（响应式）
+        int desiredW = layout().panelW >= PANEL_MIN_W && layout().panelW <= PANEL_MAX_W
+                ? layout().panelW : PANEL_W;
+        panelW = GuiLayout.fitW(desiredW, width, 6);
         panelHOv = layout().panelH > 0 ? layout().panelH : -1;
         panelX = layout().panelX < 0 ? width - panelW - 6 : layout().panelX;
-        panelY = layout().panelY < 0 ? 84 : layout().panelY;
+        // 首次打开用比例位置（小屏时 84px 会占掉太多垂直空间）
+        panelY = layout().panelY < 0 ? Math.min(84, Math.max(24, height / 4)) : layout().panelY;
         layoutPanel();
         clampPanel();
         layoutPanel();
@@ -480,6 +484,12 @@ public final class HudLayoutScreen extends Screen {
     /** 组织面板行（多级菜单）：LIST/ADD/GROUP/SUB_TEXT/SUB_ICON/EDIT 按层级路由 */
     private void buildPanelEntries() {
         panelEntries.clear();
+        // 换页时滚动归零:此前进入新页保留上一页滚动位置,顶部节标题会凭空消失
+        if (panelPage != lastBuiltPage) {
+            lastBuiltPage = panelPage;
+            panelScroll = 0;
+            panelScrollTarget = 0;
+        }
         // 未保存确认页（全屏级）：保存 / 放弃
         if (pendingUnsaved) {
             panelEntries.add(PEntry.note("z80zhealthbar.editor.unsaved_note"));
@@ -758,7 +768,7 @@ public final class HudLayoutScreen extends Screen {
     /** 添加组件 · 类型选择页：全部可添加类型逐行列出,点击即创建实例并进入其编辑页 */
     private void buildAddPage() {
         panelEntries.add(backRow());
-        panelEntries.add(new PEntry("z80zhealthbar.editor.pick_component", null, null));
+        panelEntries.add(PEntry.note("z80zhealthbar.editor.pick_component"));
         // 分类分组（多级菜单:状态条 / 文本 / 图标 / 信息类）
         // 注:旧版多行"兼容状态"组(compat)不再可添加——四个单行组件(compat_thirst 等)已完全取代,
         //    且与下方「兼容状态」分类重名易误解;旧配置里的 compat 组件仍照常渲染（向后兼容）。
@@ -1734,10 +1744,14 @@ public final class HudLayoutScreen extends Screen {
 
         if (c.modeParsed() == HudLayoutConfig.ComponentMode.OFF) {
             panelEntries.add(PEntry.note("z80zhealthbar.editor.off_mode_note"));
+            addComponentActions(selected); // 关闭态也要能删除/复制,否则只能先切回 BAR
+            panelEntries.add(backRow());
             return;
         }
         if (c.modeParsed() != HudLayoutConfig.ComponentMode.BAR) {
             panelEntries.add(PEntry.note("z80zhealthbar.editor.icon_mode_note"));
+            addComponentActions(selected);
+            panelEntries.add(backRow());
             return;
         }
 
@@ -1858,10 +1872,7 @@ public final class HudLayoutScreen extends Screen {
             panelEntries.add(textInput("z80zhealthbar.editor.text_format",
                     () -> c.textFormat == null ? "" : c.textFormat, v -> c.textFormat = v));
             panelEntries.add(PEntry.note("z80zhealthbar.editor.compat_fmt_note"));
-            panelEntries.add(colorRow("z80zhealthbar.editor.color.fill", () -> c.colorFill, v -> c.colorFill = v));
-        panelEntries.add(colorRow("z80zhealthbar.editor.color.fill2", () -> c.colorFill2, v -> c.colorFill2 = v));
-            panelEntries.add(colorRow("z80zhealthbar.editor.color.text", () -> c.colorText, v -> c.colorText = v));
-            panelEntries.add(colorRow("z80zhealthbar.editor.color.card", () -> c.colorCard, v -> c.colorCard = v));
+            // 颜色行已在上方「颜色」节统一提供（旧实现此处重复添加一次,同页出现 8 行颜色）
             if (c.showText) {
                 panelEntries.add(cycler("z80zhealthbar.editor.text_align",
                         () -> Component.translatable("z80zhealthbar.editor.align."
@@ -2173,15 +2184,17 @@ public final class HudLayoutScreen extends Screen {
         }
         panelContentH = cursor + 2;
 
-        // 2) 可视高度：面板不超过底栏上缘；内容不足时面板收缩贴合。
+        // 2) 可视高度：面板不超过底部提示上缘（旧版 height-28 与提示恒重叠 4px）。
         //    手动高度（拖下缘/右下角设定）优先——内容超高走滚动,内容不足留白（仿窗口语义）
-        int screenMaxBody = Math.max(TITLE_H, height - 28 - panelY - TITLE_H - 4);
+        int screenMaxBody = Math.max(TITLE_H, height - 40 - panelY - TITLE_H - 2);
         int bodyH = Math.min(panelContentH - TITLE_H - 2, screenMaxBody);
         bodyH = Math.max(bodyH, TITLE_H);
         if (panelHOv > 0) {
             bodyH = Math.max(TITLE_H, Math.min(panelHOv - TITLE_H - 2, screenMaxBody));
         }
         panelH = TITLE_H + 2 + bodyH;
+        // 空间过窄（小屏+高 GUI 缩放）:提示用户调小 GUI 缩放，而不是挤成一条缝
+        boolean tooTight = panelH - TITLE_H - 2 < 60 && panelContentH > panelH;
 
         // 3) 滚动钳制 + 平滑逼近（与设置页滚动同一手感）
         int maxScroll = Math.max(0, panelContentH - panelH);
@@ -2197,15 +2210,18 @@ public final class HudLayoutScreen extends Screen {
             boolean inView = y >= panelY + TITLE_H + 2 && y + ROW_H <= panelY + panelH - 1;
             for (PW pw : e.widgets) {
                 pw.widget().setX(panelX + pw.relX());
-                pw.widget().setY(y + (ROW_H - pw.widget().getHeight()) / 2);
+                int wy = y + (ROW_H - pw.widget().getHeight()) / 2;
+                // 视口外控件移出屏幕（旧版只设 visible=false,isMouseOver 仍可能命中坐标而拦截点击）
+                pw.widget().setY(inView ? wy : -9999);
                 pw.widget().visible = inView;
             }
         }
     }
 
     private void clampPanel() {
-        panelX = Math.max(2, Math.min(panelX, Math.max(2, width - panelW - 2)));
-        panelY = Math.max(2, Math.min(panelY, Math.max(2, height - 28 - panelH)));
+        panelX = GuiLayout.clampX(panelX, panelW, width, 2);
+        // 下限 20 = 顶部标题下方（旧版 2 会让面板压住屏幕标题）;上界为底部提示留 24px
+        panelY = Math.max(20, Math.min(panelY, Math.max(20, height - 24 - panelH)));
     }
 
     // ================= 渲染 =================
@@ -2317,7 +2333,7 @@ public final class HudLayoutScreen extends Screen {
         }
 
         // 4) 悬浮面板底板（深色 + 青色强调 + 投影）
-        renderPanelChrome(graphics);
+        renderPanelChrome(graphics, mouseX, mouseY);
 
         // 5) 控件（含面板行 / 底栏 / 重置按钮）
         super.render(graphics, mouseX, mouseY, partialTick);
@@ -2326,8 +2342,13 @@ public final class HudLayoutScreen extends Screen {
         renderPanelTexts(graphics, mouseX, mouseY);
 
         graphics.drawCenteredString(font, getTitle(), width / 2, 8, 0xFFFFFF);
+        // 底部提示:避开面板矩形（面板压在提示区时改画在面板上方,小屏不再与面板底边重叠）
+        int hintY = height - 18;
+        if (panelY + panelH > hintY - 2) {
+            hintY = Math.max(TITLE_H + 2, panelY - 12);
+        }
         graphics.drawCenteredString(font, Component.translatable("z80zhealthbar.editor.hint"),
-                width / 2, height - 34, 0xFFCFCFCF);
+                width / 2, hintY, 0xFFCFCFCF);
         // 设置说明浮框**最后绘制**:此前先于底部提示/行控件,文字互相遮挡混叠（实测反馈）
         if (helpKey != null) renderHelpBox(graphics);
     }
@@ -2350,27 +2371,46 @@ public final class HudLayoutScreen extends Screen {
     }
 
     /** 面板底板：投影 + 深色底 + 标题栏 + 青色描边 + 节分隔线 */
-    private void renderPanelChrome(GuiGraphics g) {
+    /** 当前页面在标题栏里的面包屑（如 "属性面板 › 组件 › 快捷栏"） */
+    private String panelBreadcrumb() {
+        String root = Component.translatable("z80zhealthbar.editor.panel.title").getString();
+        String page = switch (panelPage) {
+            case LIST -> "";
+            case EDIT -> selected == null ? "" : displayNameOf(selected);
+            case ADD -> Component.translatable("z80zhealthbar.editor.pick_component").getString();
+            case GROUP -> currentGroup;
+            case SUB_TEXT -> Component.translatable("z80zhealthbar.editor.sub_text").getString();
+            case SUB_ICON -> Component.translatable("z80zhealthbar.editor.sub_icon").getString();
+            case HOTBAR_SLOT -> Component.translatable("z80zhealthbar.editor.hotbar.slot.fmt",
+                    hotbarEditSlot + 1).getString();
+            case DATASOURCE_LIST -> Component.translatable("z80zhealthbar.editor.datasource.title").getString();
+            case DATASOURCE_TYPE -> Component.translatable("z80zhealthbar.editor.datasource.type_title").getString();
+            case DATASOURCE_MODPICK -> Component.translatable("z80zhealthbar.editor.datasource.modpick_title").getString();
+        };
+        return page.isEmpty() ? root : root + " \u203A " + page;
+    }
+
+    /** 面板绘制：双层底 + 标题栏（页身份竖条+面包屑）+ 节标题色块 + 行悬停 + 滚动条 */
+    private void renderPanelChrome(GuiGraphics g, int mouseX, int mouseY) {
         boolean collapsed = layout().panelCollapsed;
+        // 投影
         g.fill(panelX + 3, panelY + 3, panelX + panelW + 3, panelY + panelH + 3, 0x50000000);
-        g.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xE60E1218);
-        g.fill(panelX, panelY, panelX + panelW, panelY + TITLE_H, 0xFF1B2836);
-        g.fill(panelX, panelY + TITLE_H - 1, panelX + panelW, panelY + TITLE_H, 0x907FD4FF);
+        // 主体（比旧版略亮,拉出层次）
+        g.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xEE12161D);
+        // 内高光（顶部 1px）+ 外框
+        g.fill(panelX + 1, panelY + 1, panelX + panelW - 1, panelY + 2, 0x18FFFFFF);
         g.renderOutline(panelX, panelY, panelW, panelH, 0x507FD4FF);
 
-        // 右下角缩放握把（仿 Windows 斜纹角标,提示可拖拽调大小）
-        if (!collapsed) {
-            for (int i = 1; i <= 3; i++) {
-                g.fill(panelX + panelW - 2 - i * 4, panelY + panelH - 3,
-                        panelX + panelW + 1 - i * 4, panelY + panelH - 2, 0x607FD4FF);
-                g.fill(panelX + panelW - 3, panelY + panelH - 2 - i * 4,
-                        panelX + panelW - 2, panelY + panelH + 1 - i * 4, 0x607FD4FF);
-            }
-        }
-
-        g.drawString(font, "\u2261 " + Component.translatable("z80zhealthbar.editor.panel.title").getString(),
-                panelX + 5, panelY + 3, 0xFFCFE6FF);
-        // 折叠按钮（标题栏右缘）："—"/"+"——折叠时只留标题条（实测反馈）
+        // 标题栏：左侧 3px 页身份竖条 + 面包屑
+        g.fill(panelX, panelY, panelX + panelW, panelY + TITLE_H, 0xFF1B2836);
+        g.fill(panelX, panelY, panelX + 3, panelY + TITLE_H, 0xFF7FD4FF);
+        g.fill(panelX, panelY + TITLE_H - 1, panelX + panelW, panelY + TITLE_H, 0x907FD4FF);
+        String crumb = panelBreadcrumb();
+        int foldW = 10;
+        int dragW = collapsed ? 0 : font.width(
+                Component.translatable("z80zhealthbar.editor.panel.drag").getString()) + 6;
+        crumb = fitText(crumb, panelW - 10 - foldW - dragW);
+        g.drawString(font, "\u2261 " + crumb, panelX + 7, panelY + 3, 0xFFCFE6FF);
         String fold = collapsed ? "+" : "\u2212";
         g.drawString(font, fold, panelX + panelW - 10, panelY + 3, 0xFFCFE6FF);
         if (!collapsed) {
@@ -2380,25 +2420,40 @@ public final class HudLayoutScreen extends Screen {
         if (collapsed) return; // 折叠：无内容区
 
         int scroll = Math.round(panelScroll);
+        // 行悬停高亮（标签区,不含右侧控件;与设置页视觉统一）
+        int bodyTop = panelY + TITLE_H + 2, bodyBottom = panelY + panelH - 1;
+        for (PEntry e : panelEntries) {
+            if (e.isHeader()) continue;
+            int y = panelY + e.relY - scroll;
+            int h = e.note ? e.noteLines * 10 + 6 : ROW_H;
+            if (y < bodyTop || y + h > bodyBottom) continue;
+            if (mouseX >= panelX && mouseX <= panelX + panelW - 8
+                    && mouseY >= y && mouseY < y + h) {
+                g.fill(panelX + 1, y, panelX + panelW - 7, y + h, 0x18FFFFFF);
+                g.fill(panelX, y, panelX + 2, y + h, 0x907FD4FF);
+            }
+        }
+        // 节标题：前置 6px 色块 + 极淡下划线（提升扫读）;超出面板宽则截断
         for (PEntry e : panelEntries) {
             if (!e.isHeader()) continue;
             int y = panelY + e.relY - scroll;
-            if (y < panelY + TITLE_H + 2 || y + HEADER_H > panelY + panelH) continue; // 视口外
-            g.fill(panelX + 4, y + HEADER_H - 3, panelX + panelW - 4,
+            if (y < bodyTop || y + HEADER_H > bodyBottom) continue;
+            g.fill(panelX + 4, y + 3, panelX + 7, y + HEADER_H - 3, 0xFF7FD4FF);
+            g.fill(panelX + 10, y + HEADER_H - 3, panelX + panelW - 4,
                     y + HEADER_H - 2, 0x20FFFFFF);
         }
 
-        // 内容超高时画滚动条（右缘 4px 轨道 + 青色滑块——原 2px 太细,实测反馈加粗）
+        // 滚动条：6px 轨道 + 滑块（原 4px 偏细;命中带同步加宽,见 panelScrollbarHit）
         int maxScroll = Math.max(0, panelContentH - panelH);
         if (maxScroll > 0) {
-            int trackX = panelX + panelW - 6;
+            int trackX = panelX + panelW - 7;
             int trackY0 = panelY + TITLE_H + 2, trackY1 = panelY + panelH - 3;
             int bodyView = Math.max(1, trackY1 - trackY0);
-            int thumbH = Math.max(10, bodyView * panelH / panelContentH);
+            int thumbH = Math.max(12, bodyView * panelH / panelContentH);
             thumbH = Math.min(thumbH, bodyView);
             int thumbY = trackY0 + (bodyView - thumbH) * (int) panelScroll / maxScroll;
-            g.fill(trackX, trackY0, trackX + 4, trackY1, 0x30FFFFFF);
-            g.fill(trackX, thumbY, trackX + 4, thumbY + thumbH, 0x907FD4FF);
+            g.fill(trackX, trackY0, trackX + 5, trackY1, 0x28FFFFFF);
+            g.fill(trackX, thumbY, trackX + 5, thumbY + thumbH, 0xA07FD4FF);
         }
     }
 
@@ -2415,7 +2470,8 @@ public final class HudLayoutScreen extends Screen {
     private boolean panelScrollbarHit(double mx, double my) {
         int maxScroll = Math.max(0, panelContentH - panelH);
         if (maxScroll <= 0) return false;
-        return mx >= panelX + panelW - 8 && mx <= panelX + panelW
+        // 命中带 10px（视觉 5-6px）:细滚动条也要好拖
+        return mx >= panelX + panelW - 10 && mx <= panelX + panelW
                 && my >= panelY + TITLE_H && my <= panelY + panelH;
     }
 
@@ -2438,7 +2494,9 @@ public final class HudLayoutScreen extends Screen {
             int y = panelY + e.relY - scroll;
             if (e.isHeader()) {
                 if (y >= panelY + TITLE_H + 2 && y + HEADER_H <= panelY + panelH) {
-                    g.drawString(font, Component.translatable(e.headerKey), panelX + 6, y + 1, 0xFF7FD4FF);
+                    // 截断到面板内宽:长节标题曾直接画出右缘（如"槽位（每格独立子组件…）"）
+                    String ht = fitText(Component.translatable(e.headerKey).getString(), panelW - 16);
+                    g.drawString(font, ht, panelX + 10, y + 1, 0xFF7FD4FF);
                 }
                 continue;
             }
@@ -2459,7 +2517,9 @@ public final class HudLayoutScreen extends Screen {
             // (?) 说明标记：有译文的参数行才画;点击切换显示说明浮框。
             // 位置统一**固定前置列**（panelX+6,标签统一右移 12px 起点）——此前"后置优先、
             // 空间不足才前置"导致长标签行与短标签行的问号一左一右参差（实测反馈"统一设置项问号位置"）
-            String tk = e.labelDyn == null ? tooltipKeyFor(e.labelKey) : null;
+            // tooltip 判定:labelKey 非空即可（旧实现要求 labelDyn==null,导致 colorRow/listRow
+            // 传入的 tooltipKey 永不生效——44 个已写好的说明看不到 (?)）
+            String tk = e.labelKey == null ? null : tooltipKeyFor(e.labelKey);
             int labelX = panelX + 18;
             int qx = tk != null ? panelX + 6 : -1;
             // 行标签按可用宽截断（…）:可用 = 行内最左控件左缘（无控件行 = 面板右缘-8）− 边距
@@ -2524,15 +2584,16 @@ public final class HudLayoutScreen extends Screen {
     }
 
     /** 面板缩放命中:右缘/下缘/右下角 4px 感应带（返回 1=右缘 2=下缘 3=角,0=未命中） */
+    /** 面板缩放命中（响应式版）:
+     *  右下角 14x14 = 双向;下缘全宽 = 只调高。**右缘不再参与**——旧版右缘感应带
+     *  覆盖了滚动条命中区(panelW-8..panelW),导致滚动条右侧点不到。 */
     private int panelResizeHit(double mx, double my) {
-        boolean right = mx >= panelX + panelW - 4 && mx <= panelX + panelW + 2
-                && my >= panelY && my <= panelY + panelH;
+        boolean inCorner = mx >= panelX + panelW - 14 && mx <= panelX + panelW + 2
+                && my >= panelY + panelH - 14 && my <= panelY + panelH + 2;
+        if (inCorner) return 3;
         boolean bottom = my >= panelY + panelH - 4 && my <= panelY + panelH + 2
                 && mx >= panelX && mx <= panelX + panelW;
-        if (right && bottom) return 3;
-        if (right) return 1;
-        if (bottom) return 2;
-        return 0;
+        return bottom ? 2 : 0;
     }
 
     @Override
@@ -2743,11 +2804,12 @@ public final class HudLayoutScreen extends Screen {
         }
         if (panelResizing > 0) {
             // 仿 Windows 调整窗口大小:右缘调宽、下缘调高、角两者;即时持久化,松手重排行内容
-            if (panelResizing == 1 || panelResizing == 3) {
-                panelW = Math.max(PANEL_MIN_W, Math.min(PANEL_MAX_W, (int) mouseX - panelX));
+            if (panelResizing == 3) {
+                // 右下角双向:受屏幕可用宽/高约束,不再固定 156..440 上限（大屏可更宽）
+                panelW = Math.max(PANEL_MIN_W, Math.min(Math.max(PANEL_MIN_W, width - 12), (int) mouseX - panelX));
             }
             if (panelResizing == 2 || panelResizing == 3) {
-                panelHOv = Math.max(TITLE_H + 30, Math.min(height - 8 - panelY, (int) mouseY - panelY));
+                panelHOv = Math.max(TITLE_H + 30, Math.min(height - 40 - panelY, (int) mouseY - panelY));
             }
             layout().panelW = panelW;
             layout().panelH = panelHOv;

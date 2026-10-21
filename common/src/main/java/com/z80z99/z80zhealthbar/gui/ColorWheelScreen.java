@@ -25,6 +25,8 @@ import java.util.function.Consumer;
 public class ColorWheelScreen extends Screen {
 
     private static final int SV_W = 200, SV_H = 120, BAR_W = 14, GAP = 14;
+    /** 响应式实际尺寸(小屏时缩小 SV 方块,保证面板完整入屏) */
+    private int svW = SV_W, svH = SV_H;
     private static final int AB_H = 12;   // alpha 横条高
     private static final int CHECK = 6;   // 棋盘格单元格
     private static final int BTN_W = 64, BTN_GAP = 6, BTN_H = 18;
@@ -102,15 +104,23 @@ public class ColorWheelScreen extends Screen {
 
     @Override
     protected void init() {
-        int contentW = SV_W + GAP + BAR_W;
-        int cx = (width - contentW) / 2;
+        // 响应式:面板总高 ≈ 26+svH+8+AB_H+8+32+8+BTN_H+16,总宽 = svW+gap+BAR_W+28
+        // 小屏时等比缩小 SV 方块（最小 120x72）,保证面板完整入屏、按钮不被裁（曾固定 256x248）
+        int availW = Math.max(160, width - 20);
+        int availH = Math.max(150, height - 20);
+        svW = Math.max(120, Math.min(SV_W, availW - GAP - BAR_W - 28));
+        int fixedH = 26 + 8 + AB_H + 8 + 32 + 8 + BTN_H + 16;
+        svH = Math.max(72, Math.min(SV_H, availH - fixedH));
+        int contentW = svW + GAP + BAR_W;
+        int cx = Math.max(14, (width - contentW) / 2);
         svX = cx;
-        hueX = svX + SV_W + GAP;
-        y0 = Math.max(26, (height - 240) / 2);
+        hueX = svX + svW + GAP;
+        int totalH = fixedH + svH;
+        y0 = Math.max(10, (height - totalH) / 2 + 8);
         svY = y0 + 26;                       // 标题(2x,占~20px)下方
-        abY = svY + SV_H + 8;                // alpha 横条:SV 正下方
+        abY = svY + svH + 8;                 // alpha 横条:SV 正下方
         abX = svX + 52;                      // 左侧留出"不透明度"标签
-        abW = SV_W - 52;
+        abW = svW - 52;
         prevY = abY + AB_H + 8;              // 原色/新色预览行
         hexX = svX + 112;
         hexY = prevY + 7;                    // 输入框与 32 高的预览块垂直居中
@@ -158,19 +168,19 @@ public class ColorWheelScreen extends Screen {
         pose.popPose();
 
         // SV 方块：底层 横向 白→纯色 渐变,上层 纵向 透明→黑
-        g.fillGradient(svX, svY, svX + SV_W, svY + SV_H, 0xFFFFFFFF, 0xFF000000 | hueRgb(hue));
-        g.fillGradient(svX, svY, svX + SV_W, svY + SV_H, 0x00000000, 0xFF000000);
-        g.renderOutline(svX - 1, svY - 1, SV_W + 2, SV_H + 2, 0x60FFFFFF);
+        g.fillGradient(svX, svY, svX + svW, svY + svH, 0xFFFFFFFF, 0xFF000000 | hueRgb(hue));
+        g.fillGradient(svX, svY, svX + svW, svY + svH, 0x00000000, 0xFF000000);
+        g.renderOutline(svX - 1, svY - 1, svW + 2, svH + 2, 0x60FFFFFF);
         drawSvCursor(g);
 
         // 色相竖条（6 段渐变）+ 游标
         float[] stops = {0f, 1f / 6, 2f / 6, 3f / 6, 4f / 6, 5f / 6, 1f};
-        int segH = SV_H / 6;
+        int segH = svH / 6;
         for (int i = 0; i < 6; i++) {
-            g.fillGradient(hueX, svY + i * segH, hueX + BAR_W, svY + (i + 1) * segH + (i == 5 ? SV_H % 6 : 0),
+            g.fillGradient(hueX, svY + i * segH, hueX + BAR_W, svY + (i + 1) * segH + (i == 5 ? svH % 6 : 0),
                     0xFF000000 | hueRgb(stops[i]), 0xFF000000 | hueRgb(stops[i + 1]));
         }
-        g.renderOutline(hueX - 1, svY - 1, BAR_W + 2, SV_H + 2, 0x60FFFFFF);
+        g.renderOutline(hueX - 1, svY - 1, BAR_W + 2, svH + 2, 0x60FFFFFF);
         drawHueCursor(g);
 
         // alpha 横条:棋盘格示透明 + 当前色由透明(左)渐至不透明(右)
@@ -202,10 +212,10 @@ public class ColorWheelScreen extends Screen {
 
     /** SV 十字游标：黑描边白十字,臂在方块边界内裁切（不再溢出被裁） */
     private void drawSvCursor(GuiGraphics g) {
-        int px = svX + Math.round(sat * (SV_W - 1));
-        int py = svY + Math.round((1f - val) * (SV_H - 1));
-        int ax0 = Math.max(svX, px - 5), ax1 = Math.min(svX + SV_W, px + 6);
-        int ay0 = Math.max(svY, py - 5), ay1 = Math.min(svY + SV_H, py + 6);
+        int px = svX + Math.round(sat * (svW - 1));
+        int py = svY + Math.round((1f - val) * (svH - 1));
+        int ax0 = Math.max(svX, px - 5), ax1 = Math.min(svX + svW, px + 6);
+        int ay0 = Math.max(svY, py - 5), ay1 = Math.min(svY + svH, py + 6);
         g.fill(ax0, py - 1, ax1, py + 2, 0xFF000000);
         g.fill(ax0, py, ax1, py + 1, 0xFFFFFFFF);
         g.fill(px - 1, ay0, px + 2, ay1, 0xFF000000);
@@ -214,7 +224,7 @@ public class ColorWheelScreen extends Screen {
 
     /** 色相游标:条两侧横向 tick,黑底白芯 */
     private void drawHueCursor(GuiGraphics g) {
-        int hy = svY + Math.round(hue * (SV_H - 1));
+        int hy = svY + Math.round(hue * (svH - 1));
         g.fill(hueX - 4, hy - 2, hueX, hy + 3, 0xFF000000);
         g.fill(hueX + BAR_W, hy - 2, hueX + BAR_W + 4, hy + 3, 0xFF000000);
         g.fill(hueX - 3, hy - 1, hueX, hy + 2, 0xFFFFFFFF);
@@ -264,8 +274,8 @@ public class ColorWheelScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
-        dragSv = inRect(mx, my, svX, svY, SV_W, SV_H);
-        dragHue = inRect(mx, my, hueX, svY, BAR_W, SV_H);
+        dragSv = inRect(mx, my, svX, svY, svW, svH);
+        dragHue = inRect(mx, my, hueX, svY, BAR_W, svH);
         dragAlpha = inRect(mx, my, abX, abY, abW, AB_H);
         if (dragSv) pickSv(mx, my);
         if (dragHue) pickHue(my);
@@ -294,12 +304,12 @@ public class ColorWheelScreen extends Screen {
     }
 
     private void pickSv(double mx, double my) {
-        sat = (float) clamp01((mx - svX) / (SV_W - 1.0));
-        val = 1f - (float) clamp01((my - svY) / (SV_H - 1.0));
+        sat = (float) clamp01((mx - svX) / (svW - 1.0));
+        val = 1f - (float) clamp01((my - svY) / (svH - 1.0));
     }
 
     private void pickHue(double my) {
-        hue = (float) clamp01((my - svY) / (SV_H - 1.0));
+        hue = (float) clamp01((my - svY) / (svH - 1.0));
     }
 
     private void pickAlpha(double mx) {

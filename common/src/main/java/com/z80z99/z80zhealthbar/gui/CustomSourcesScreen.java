@@ -24,6 +24,8 @@ public final class CustomSourcesScreen extends Screen {
     private static final int W = 360;
     private static final int H = 236;
     private static final int ROW_H = 20;
+    /** 响应式实际尺寸（init 里按屏幕计算;w/h 是参考默认值） */
+    private int w = W, h = H;
 
     private final Screen parent;
 
@@ -79,15 +81,17 @@ public final class CustomSourcesScreen extends Screen {
 
     @Override
     protected void init() {
-        panelX = (width - W) / 2;
-        panelY = (height - H) / 2;
+        w = GuiLayout.fitW(W, width, 10);
+        h = GuiLayout.fitH(H, height, 10);
+        panelX = GuiLayout.centerX(w, width, 10);
+        panelY = GuiLayout.centerY(h, height, 10);
         rebuild();
     }
 
     private void rebuild() {
         clearWidgets();
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> back())
-                .bounds(panelX + W - 70, panelY + H - 26, 60, 18).build());
+                .bounds(panelX + w - 70, panelY + h - 26, 60, 18).build());
 
         if (selected < 0) {
             buildList();
@@ -103,24 +107,56 @@ public final class CustomSourcesScreen extends Screen {
 
     // ================= 列表 =================
 
+    /** 列表滚动偏移（行）；第 8 个以后的数据源旧版完全不可达 */
+    private int listScroll;
+    /** 待确认删除的下标（-1 = 无;点删除先变确认态,再点才真删） */
+    private int pendingDelete = -1;
+
     private void buildList() {
-        int y = panelY + 30;
-        for (int i = 0; i < sources().size(); i++) {
+        int listTop = panelY + 30;
+        int listBottom = panelY + h - 60;
+        int visibleRows = Math.max(1, (listBottom - listTop) / ROW_H);
+        int total = sources().size();
+        listScroll = Math.max(0, Math.min(listScroll, Math.max(0, total - visibleRows)));
+        for (int i = listScroll; i < Math.min(total, listScroll + visibleRows); i++) {
             final int idx = i;
             var s = sources().get(i);
-            int rowY = y + i * ROW_H;
-            if (rowY > panelY + H - 84) break;
-            addRenderableWidget(Button.builder(Component.literal((s.enabled ? "§a● " : "§8○ ")
+            int rowY = listTop + (i - listScroll) * ROW_H;
+            // 参数不完整 → 黄色警示（配置写错的源一眼可辨）
+            String warn = s.paramsComplete() ? "" : "§e\u25B2 ";
+            addRenderableWidget(Button.builder(Component.literal(warn + (s.enabled ? "§a● " : "§8○ ")
                             + s.name() + " §7[" + channelName(s.channel) + "]"),
                     b -> { selected = idx; creating = false; rebuild(); })
-                    .bounds(panelX + 12, rowY, W - 24 - 118, 18).build());
-            addRenderableWidget(Button.builder(Component.translatable("z80zhealthbar.custom_sources.delete"),
-                            b -> { sources().remove(idx); markSave(); rebuild(); })
-                    .bounds(panelX + W - 12 - 106, rowY, 50, 18).build());
+                    .bounds(panelX + 12, rowY, w - 24 - 118, 18).build());
+            boolean confirming = pendingDelete == idx;
+            addRenderableWidget(Button.builder(Component.translatable(confirming
+                            ? "z80zhealthbar.custom_sources.delete_confirm"
+                            : "z80zhealthbar.custom_sources.delete"),
+                            b -> {
+                                if (pendingDelete == idx) {
+                                    sources().remove(idx);
+                                    pendingDelete = -1;
+                                    markSave();
+                                } else {
+                                    pendingDelete = idx;
+                                }
+                                rebuild();
+                            })
+                    .bounds(panelX + w - 12 - 106, rowY, 50, 18).build());
             addRenderableWidget(Button.builder(Component.translatable(
                             s.enabled ? "z80zhealthbar.custom_sources.disable" : "z80zhealthbar.custom_sources.enable"),
                             b -> { s.enabled = !s.enabled; markSave(); rebuild(); })
-                    .bounds(panelX + W - 12 - 52, rowY, 52, 18).build());
+                    .bounds(panelX + w - 12 - 52, rowY, 52, 18).build());
+        }
+        if (total > visibleRows) {
+            // 滚动条几何（绘制在 render,滚轮/拖动见 mouseScrolled）
+            int trackX = panelX + w - 6;
+            int trackH = listBottom - listTop;
+            int thumbH = Math.max(10, trackH * visibleRows / total);
+            int thumbY = listTop + (trackH - thumbH) * listScroll / Math.max(1, total - visibleRows);
+            listScrollTrack = new int[]{trackX, listTop, listBottom, thumbY, thumbH, total, visibleRows};
+        } else {
+            listScrollTrack = null;
         }
         if (sources().size() < 32) {
             addRenderableWidget(Button.builder(Component.translatable("z80zhealthbar.custom_sources.new"),
@@ -134,9 +170,28 @@ public final class CustomSourcesScreen extends Screen {
                                 creating = true;
                                 rebuild();
                             })
-                    .bounds(panelX + 12, panelY + H - 52, 120, 18).build());
+                    .bounds(panelX + 12, panelY + h - 52, 120, 18).build());
         }
         // （预置入口已移除——创建流程改在 HUD 编辑器:添加组件 → 数据源 → 数据类型）
+    }
+
+    /** 列表滚动条几何（null = 无需滚动）:{trackX, top, bottom, thumbY, thumbH, total, visibleRows} */
+    private int[] listScrollTrack;
+
+    private static int trackY(int thumbY, int thumbH, int top, int bottom) {
+        return Math.max(top, Math.min(thumbY, bottom - thumbH));
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (selected < 0 && listScrollTrack != null
+                && mouseX >= panelX && mouseX <= panelX + w
+                && mouseY >= panelY + 30 && mouseY <= panelY + h - 60) {
+            listScroll -= (int) Math.signum(delta);
+            rebuild();
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, delta);
     }
 
 
@@ -244,7 +299,7 @@ public final class CustomSourcesScreen extends Screen {
         // 返回列表
         addRenderableWidget(Button.builder(Component.translatable("z80zhealthbar.custom_sources.back"),
                         b -> { markSave(); selected = -1; rebuild(); })
-                .bounds(panelX + W - 70, panelY + H - 26, 60, 18).build());
+                .bounds(panelX + w - 70, panelY + h - 26, 60, 18).build());
     }
 
     /** 内嵌模组选择：搜索框 + 可滚动列表（每行 显示名 + id,点击填入 modId） */
@@ -330,18 +385,25 @@ public final class CustomSourcesScreen extends Screen {
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         if (saveDirty && System.currentTimeMillis() >= saveDueAt) flushSave();
         renderBackground(g);
-        g.fill(panelX, panelY, panelX + W, panelY + H, 0xF010151C);
-        g.renderOutline(panelX, panelY, W, H, 0x907FD4FF);
-        g.drawCenteredString(font, getTitle(), width / 2, panelY + 8, 0xFFCFE6FF);
+        g.fill(panelX, panelY, panelX + w, panelY + h, 0xF010151C);
+        g.renderOutline(panelX, panelY, w, h, 0x907FD4FF);
+        g.drawCenteredString(font, getTitle(), panelX + w / 2, panelY + 8, 0xFFCFE6FF);
+        // 列表滚动条
+        if (selected < 0 && listScrollTrack != null) {
+            int tx = listScrollTrack[0], top = listScrollTrack[1], bot = listScrollTrack[2];
+            int thumbY = listScrollTrack[3], thumbH = listScrollTrack[4];
+            g.fill(tx, top, tx + 4, bot, 0x28FFFFFF);
+            g.fill(tx, thumbY, tx + 4, thumbY + thumbH, 0xA07FD4FF);
+        }
         super.render(g, mouseX, mouseY, partialTick);
 
         if (selected < 0) {
             if (sources().isEmpty()) {
                 g.drawWordWrap(font, Component.translatable("z80zhealthbar.custom_sources.empty"),
-                        panelX + 14, panelY + 40, W - 28, 0xFFA8B8C8);
+                        panelX + 14, panelY + 40, w - 28, 0xFFA8B8C8);
             }
             g.drawWordWrap(font, Component.translatable("z80zhealthbar.custom_sources.list_note"),
-                    panelX + 235, panelY + H - 76, W - 240, 0xFF8898A8);
+                    panelX + 235, panelY + h - 76, w - 240, 0xFF8898A8);
         } else {
             renderEditorLabels(g);
             if (modPicking && modCache != null) {
@@ -355,7 +417,7 @@ public final class CustomSourcesScreen extends Screen {
                 }
                 if (!any) {
                     g.drawString(font, Component.translatable("z80zhealthbar.custom_sources.pick.empty"),
-                            panelX + 12, panelY + H - 132, 0xFFE0B060);
+                            panelX + 12, panelY + h - 132, 0xFFE0B060);
                 }
             }
         }
@@ -405,7 +467,7 @@ public final class CustomSourcesScreen extends Screen {
         }
         // 实时读数诊断（配置拼写错误的主要发现途径）
         String diag = diagnose(s);
-        int diagY = panelY + H - 68;
+        int diagY = panelY + h - 68;
         g.drawString(font, Component.translatable("z80zhealthbar.custom_sources.test").getString()
                 + ": " + diag, panelX + 12, diagY, 0xFFB8C8D8);
         g.drawString(font, "§7" + Component.translatable(

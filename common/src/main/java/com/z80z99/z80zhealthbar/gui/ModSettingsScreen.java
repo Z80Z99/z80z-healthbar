@@ -374,11 +374,11 @@ public final class ModSettingsScreen extends Screen {
             previewFullscreenBtn = null;
             previewPauseBtn = null;
         if (previewActive) {
-            previewW = Math.min(260, width * 2 / 5);
+            previewW = Math.min(260, Math.max(140, width * 2 / 5));
             int gap = 4; // 两栏面板外缘之间的呼吸缝
             // 设置栏与预览栏相邻成组、整组水平居中——此前设置栏在预览左侧的剩余宽度内
             // 居中，窗口越宽两栏之间的空档越大（用户反馈"预览应贴着设置栏"）
-            contentW = Math.min(300, width - previewW - PANEL_PAD * 4 - gap - 12);
+            contentW = Math.max(180, Math.min(300, width - previewW - PANEL_PAD * 4 - gap - 12));
             int pairW = contentW + PANEL_PAD * 4 + gap + previewW;
             int startX = Math.max(6, (width - pairW) / 2);
             contentX = startX + PANEL_PAD;
@@ -417,7 +417,7 @@ public final class ModSettingsScreen extends Screen {
             contentW = Math.min(420, width - 24 - PANEL_PAD * 2);
             contentX = (width - contentW) / 2;
         }
-        viewH = height - HEADER_H - FOOTER_H;
+        viewH = Math.max(20, height - HEADER_H - FOOTER_H);
         scroll = Math.min(scroll, maxScroll());
         scrollTarget = Math.min(scrollTarget, maxScroll());
     }

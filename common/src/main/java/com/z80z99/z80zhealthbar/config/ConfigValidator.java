@@ -218,6 +218,9 @@ public final class ConfigValidator {
     private static void validateHudLayout(HudLayoutConfig c) {
         c.panelX = clamp(c.panelX, -1, 10000);
         c.panelY = clamp(c.panelY, -1, 10000);
+        // 面板宽高也需钳制:手改 JSON 可产生任意尺寸导致面板溢出屏幕无法操作
+        c.panelW = c.panelW < 0 ? -1 : clamp(c.panelW, 156, 440);
+        c.panelH = c.panelH < 0 ? -1 : clamp(c.panelH, 30, 2000);
         if (c.components == null || c.components.isEmpty()) {
             c.components = HudLayoutConfig.defaultComponents();
             return;
