@@ -88,6 +88,16 @@ public final class HudRenderer {
         if (!cfg.enableOverlay) return false;
         HudStyle style = hudStyleParsed();
         if (style == HudStyle.VANILLA) return false;
+        // 创造/旁观模式隐藏状态条时我方不绘制 → 也不取消原版
+        // （原版此时同样不画这五项;保持"谁都不画"的一致语义,避免加载器差异下出现空窗）
+        if (HudVisibility.shouldHideStatusBars()) {
+            switch (id) {
+                case PLAYER_HEALTH, FOOD_LEVEL, AIR_LEVEL, ARMOR_LEVEL, EXPERIENCE_BAR -> {
+                    return false;
+                }
+                default -> { }
+            }
+        }
 
         if (style == HudStyle.CUSTOM) {
             // hotbar 组件接管检查较复杂（9 实例任意存在即接管,见 HotbarSlots.hasAny）:

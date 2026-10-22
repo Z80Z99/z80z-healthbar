@@ -11,6 +11,8 @@ public class ExperienceBarOverlay extends SimpleBarOverlay {
 
     @Override
     public void renderOverlay(RenderGui renderGui, GuiGraphics graphics, float pt, int screenW, int screenH) {
+        // 创造/旁观模式隐藏状态条（对齐原版 canHurtPlayer/hasExperience;可经设置页开关关闭）
+        if (com.z80z99.z80zhealthbar.overlay.HudVisibility.shouldHideStatusBars()) return;
         var cfg = ConfigManager.getConfig().overlay;
         var colors = ConfigManager.getConfig().colors;
         Minecraft mc = Minecraft.getInstance();

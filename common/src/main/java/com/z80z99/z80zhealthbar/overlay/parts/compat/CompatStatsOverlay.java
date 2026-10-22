@@ -20,6 +20,8 @@ public class CompatStatsOverlay extends SimpleBarOverlay {
 
     @Override
     public void renderOverlay(RenderGui renderGui, GuiGraphics graphics, float pt, int screenW, int screenH) {
+        // 创造/旁观模式隐藏状态条（对齐原版 canHurtPlayer/hasExperience;可经设置页开关关闭）
+        if (com.z80z99.z80zhealthbar.overlay.HudVisibility.shouldHideStatusBars()) return;
         var mc = Minecraft.getInstance();
         var player = mc.player;
         if (player == null) return;

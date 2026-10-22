@@ -56,6 +56,8 @@ public final class CustomHudRenderer {
 
         Map<String, int[]> sizes = measureAll(layout, player);
         Map<String, HudLayoutSolver.Box> boxes = HudLayoutSolver.solve(layout, sizes, screenW, screenH);
+        // 每帧一致（配置/模式不变时结果不变）,循环外算一次
+        boolean hideStatusBars = HudVisibility.shouldHideStatusBars();
 
         for (Map.Entry<String, HudLayoutSolver.Box> entry : boxes.entrySet()) {
             String key = entry.getKey();
@@ -64,6 +66,9 @@ public final class CustomHudRenderer {
             boolean isIcon = key.endsWith(".icon");
             String base = (isText || isIcon) ? key.substring(0, key.lastIndexOf('.')) : key;
             ComponentLayout c = layout.get(base);
+            // 创造/旁观模式隐藏状态条（对齐原版 canHurtPlayer/hasExperience 的集合;
+            // 坐骑生命、快捷栏、信息类组件保留;编辑器预览走 HudPreviewState 不隐藏）
+            if (hideStatusBars && HudVisibility.isStatusType(HudLayoutConfig.typeOf(base, c))) continue;
             CUR.set(c); // 颜色覆盖上下文（drawCard/drawTextIn/各填充点经 fillOf/textOf/cardOf 读取）
 
             // 组件级透明度（opacity）× 动态 HUD（idleFadeSecs：数值无变化淡出/变化淡入）

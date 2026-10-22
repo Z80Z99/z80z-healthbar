@@ -700,6 +700,10 @@ public final class HudLayoutScreen extends Screen {
             else groups.computeIfAbsent(g, k -> new java.util.ArrayList<>()).add(key);
         }
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.instances", null, null));
+        // 创造/旁观隐藏提醒：编辑器预览不隐藏（否则无法编辑）,让用户在列表页知道游戏内会被隐藏
+        if (ConfigManager.getConfig().overlay.hideStatusBarsInCreative) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.creative_hidden_note"));
+        }
         // 分组行（组名 + 成员数 → 组页）
         for (Map.Entry<String, java.util.List<String>> g : groups.entrySet()) {
             String gn = g.getKey();

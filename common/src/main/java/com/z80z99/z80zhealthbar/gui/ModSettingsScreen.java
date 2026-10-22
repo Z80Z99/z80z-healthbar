@@ -449,6 +449,10 @@ public final class ModSettingsScreen extends Screen {
         rows.add(new SectionRow("z80zhealthbar.settings.section.general"));
         rows.add(toggleRow("z80zhealthbar.hud.enable", c.overlay.enableOverlay,
                 v -> c.overlay.enableOverlay = v));
+        // 创造/旁观隐藏状态条（对齐原版 canHurtPlayer/hasExperience 的集合）
+        rows.add(toggleRow("z80zhealthbar.hud.hideCreative",
+                c.overlay.hideStatusBarsInCreative,
+                v -> c.overlay.hideStatusBarsInCreative = v));
         rows.add(toggleRow("z80zhealthbar.entity.enable", c.barStyle.enableHealthBar,
                 v -> c.barStyle.enableHealthBar = v));
         // 样式选择分属各专页：实体样式在"实体样式"页（页面内容跟随所选样式），

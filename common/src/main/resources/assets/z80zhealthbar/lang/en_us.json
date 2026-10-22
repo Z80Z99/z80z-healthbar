@@ -928,5 +928,8 @@
   "z80zhealthbar.editor.datasource.probe_running_short": "Probing",
   "z80zhealthbar.editor.datasource.probe_stopped_short": "Probe stopped",
   "z80zhealthbar.editor.datasource.probe_changed": "candidates changed",
-  "z80zhealthbar.editor.datasource.probe_other": "Another probe session is still running (%s)"
+  "z80zhealthbar.editor.datasource.probe_other": "Another probe session is still running (%s)",
+  "z80zhealthbar.hud.hideCreative": "Hide status bars in Creative/Spectator",
+  "z80zhealthbar.hud.hideCreative.tooltip": "Matches vanilla: hides health/hunger/air/armor/experience and compatibility bars (thirst etc.) in Creative and Spectator. Mount health, hotbar and info widgets stay.",
+  "z80zhealthbar.editor.creative_hidden_note": "Note: “Hide status bars in Creative/Spectator” is on, so these bars are hidden in-game while in Creative (the editor preview always shows them so you can edit)."
 }

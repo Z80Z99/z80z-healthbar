@@ -5,6 +5,13 @@ import java.util.Map;
 
 public class OverlayConfig {
     public boolean enableOverlay = true;
+    /**
+     * 创造/旁观模式隐藏状态条（默认开，行为对齐原版）。
+     * <p>原版只用 {@code canHurtPlayer()}/{@code hasExperience()}（生存/冒险才 true）控制
+     * 生命/饥饿/氧气/护甲与经验条，坐骑生命和快捷栏不受其控制——这里保持一致：
+     * 隐藏生命、饥饿、氧气、护甲、经验以及兼容状态条（口渴等），保留坐骑生命/快捷栏/信息类组件。
+     */
+    public boolean hideStatusBarsInCreative = true;
     /** 玩家 HUD 样式（HudStyle 名称字符串，防御性解析） */
     public String hudStyle = "ASTEORBAR";
     public int overlayLayoutStyle = 2;

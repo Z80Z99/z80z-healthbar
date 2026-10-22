@@ -928,5 +928,8 @@
   "z80zhealthbar.editor.datasource.probe_running_short": "后台探测中",
   "z80zhealthbar.editor.datasource.probe_stopped_short": "探测已停止",
   "z80zhealthbar.editor.datasource.probe_changed": "个候选发生变化",
-  "z80zhealthbar.editor.datasource.probe_other": "另一个探测会话仍在后台运行（%s）"
+  "z80zhealthbar.editor.datasource.probe_other": "另一个探测会话仍在后台运行（%s）",
+  "z80zhealthbar.hud.hideCreative": "创造/旁观隐藏状态条",
+  "z80zhealthbar.hud.hideCreative.tooltip": "与原版一致:创造和旁观模式下不显示生命/饥饿/氧气/护甲/经验与兼容状态条（口渴等）。坐骑生命、快捷栏、坐标等信息组件保留。",
+  "z80zhealthbar.editor.creative_hidden_note": "提示：已开启「创造/旁观隐藏状态条」，这些状态条在游戏内创造模式下不会显示（编辑器预览始终显示，便于编辑）。"
 }
