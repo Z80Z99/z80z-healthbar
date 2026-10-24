@@ -85,6 +85,12 @@ public final class HudLayoutSolver {
         return Math.max(0.4, Math.min(2.5, k));
     }
 
+    /** 方向键微移的 offset 步长：屏幕步长 ÷k,保底 1——k>2 时 round(1/k)=0 会让按键完全失效（审计 #1） */
+    public static int nudgeStep(int screenStepPx, double k) {
+        if (k <= 0.0001) return screenStepPx;
+        return Math.max(1, (int) Math.round(screenStepPx / k));
+    }
+
     /**
      * @param layout  布局配置
      * @param sizes   每组件未缩放尺寸（width/height，ICON 模式通常 9×9，BAR 模式为条尺寸）

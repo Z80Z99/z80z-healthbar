@@ -540,6 +540,7 @@ public final class HudLayoutScreen extends Screen {
             lastBuiltPage = panelPage;
             panelScroll = 0;
             panelScrollTarget = 0;
+            panelFilter = ""; // 过滤串不跨页存活（与滚动同语义）
         }
         // 未保存确认页（全屏级）：保存 / 放弃
         if (pendingUnsaved) {
@@ -730,9 +731,18 @@ public final class HudLayoutScreen extends Screen {
         if (ConfigManager.getConfig().overlay.hideStatusBarsInCreative) {
             panelEntries.add(PEntry.note("z80zhealthbar.editor.creative_hidden_note"));
         }
-        // 分组行（组名 + 成员数 → 组页）
+        // 过滤行（组件名/组名/组员名包含匹配;输入即过滤）
+        if (groups.size() + ungrouped.size() > 6) {
+            panelEntries.add(filterRow("z80zhealthbar.editor.filter", v -> panelFilter = v));
+        }
+        boolean listEmpty = true;
+        // 分组行（组名 + 成员数 → 组页;组名或任一成员名命中过滤才显示）
         for (Map.Entry<String, java.util.List<String>> g : groups.entrySet()) {
             String gn = g.getKey();
+            boolean groupHit = matchesFilter(gn, panelFilter)
+                    || g.getValue().stream().anyMatch(k -> matchesFilter(displayNameOf(k), panelFilter));
+            if (!groupHit) continue;
+            listEmpty = false;
             panelEntries.add(listRow(() -> gn + " (" + groups.get(gn).size() + ")",
                     "z80zhealthbar.editor.adjust", () -> {
                         currentGroup = gn;
@@ -744,6 +754,8 @@ public final class HudLayoutScreen extends Screen {
         for (String key : ungrouped) {
             ComponentLayout mc = comps.get(key);
             String name = displayNameOf(key);
+            if (!matchesFilter(name, panelFilter)) continue;
+            listEmpty = false;
             panelEntries.add(listRow(() -> name, "z80zhealthbar.editor.adjust", () -> {
                 selected = key;
                 panelPage = PanelPage.EDIT;
@@ -775,6 +787,10 @@ public final class HudLayoutScreen extends Screen {
                     rebuildWidgets();
                 }));
             }
+        }
+        // 过滤无匹配提示
+        if (!panelFilter.isBlank() && listEmpty) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.filter.no_match"));
         }
         panelEntries.add(new PEntry("z80zhealthbar.editor.section.actions", null, null));
         // 添加组件（进入类型选择页,全部可添加类型逐行点选）
@@ -923,8 +939,12 @@ public final class HudLayoutScreen extends Screen {
         var cs = ConfigManager.getConfig().customSources;
         var list = cs == null ? null : cs.customSources;
         if (list != null && !list.isEmpty()) {
+            panelEntries.add(filterRow("z80zhealthbar.editor.filter", v -> panelFilter = v));
+            boolean any = false;
             for (var src : list) {
                 if (src == null) continue;
+                if (!matchesFilter(src.name(), panelFilter)) continue;
+                any = true;
                 final String type = "compat_custom_" + src.id;
                 final String dn = (src.enabled ? "" : "§8") + src.name()
                         + " §7[" + datasourceChannelName(src.channel) + "]";
@@ -936,6 +956,9 @@ public final class HudLayoutScreen extends Screen {
                     }
                     rebuildWidgets();
                 }));
+            }
+            if (!panelFilter.isBlank() && !any) {
+                panelEntries.add(PEntry.note("z80zhealthbar.editor.filter.no_match"));
             }
         } else {
             panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.empty"));
@@ -1097,13 +1120,9 @@ public final class HudLayoutScreen extends Screen {
     }
 
     private static String datasourceChannelName(int ch) {
-        return switch (ch) {
-            case 0 -> "Capability";
-            case 2 -> "Factory";
-            case 3 -> "Player";
-            case 4 -> "Item";
-            default -> "Static";
-        };
+        // 复用 editor.datasource.type.* 词条——此前硬编码英文 "Capability/Static/…" 在中文界面裸奔（审计 #4）
+        return net.minecraft.network.chat.Component.translatable(
+                "z80zhealthbar.editor.datasource.type." + Math.max(0, Math.min(4, ch))).getString();
     }
 
     /** 目标模组选择页的过滤串 + 打开时缓存的已装模组列表（避免每帧枚举加载器） */
@@ -1131,6 +1150,38 @@ public final class HudLayoutScreen extends Screen {
     private com.z80z99.z80zhealthbar.datasource.ModLangIndex scanLang;
     /** 动态 tooltip 自增 id */
     private int dynTooltipSeq;
+    /** 面板过滤串（LIST/样式库/数据源列表共用;换页重置） */
+    private String panelFilter = "";
+    /** 最近一次构建的过滤输入框（重建后重聚焦保证连续输入） */
+    private EditBox lastFilterBox;
+
+    /** 过滤行：输入即重建列表（实时过滤——旧搜索框只写字段不重建,列表要等下次重建才更新）。
+     *  重建会销毁重建输入框,responder 末尾重聚焦新框,打字不中断。 */
+    private PEntry filterRow(String labelKey, Consumer<String> apply) {
+        PEntry e = new PEntry(null, labelKey, null);
+        EditBox box = new EditBox(font, 0, 0, 120, BTN_H, Component.translatable(labelKey));
+        box.setMaxLength(60);
+        box.setValue(panelFilter);
+        box.setResponder(v -> {
+            apply.accept(v);
+            rebuildWidgets();
+            if (lastFilterBox != null) {
+                setFocused(lastFilterBox);
+                lastFilterBox.setFocused(true);
+            }
+        });
+        lastFilterBox = box;
+        addRenderableWidget(box);
+        e.widgets.add(new PW(box, panelW - 4 - 120));
+        return e;
+    }
+
+    /** 过滤匹配（大小写不敏感包含） */
+    private static boolean matchesFilter(String name, String filter) {
+        if (filter == null || filter.isBlank()) return true;
+        return name != null && name.toLowerCase(Locale.ROOT)
+                .contains(filter.trim().toLowerCase(Locale.ROOT));
+    }
 
     /** 数据源 · 目标模组选择页:过滤行 + 已装模组列表（点击即写入 src.modId） */
     private void buildDatasourceModPick() {
@@ -1155,7 +1206,7 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(new PEntry("z80zhealthbar.editor.datasource.modpick_title", null, null));
         panelEntries.add(textInput("z80zhealthbar.editor.datasource.modpick_search",
                 () -> modPickFilter, v -> modPickFilter = v));
-        String f = modPickFilter == null ? "" : modPickFilter.trim().toLowerCase(Locale.ROOT);
+        String f = panelFilter == null ? "" : panelFilter.trim().toLowerCase(Locale.ROOT);
         int shown = 0;
         for (var m : modPickCache) {
             String id = m.id() == null ? "" : m.id();
@@ -1256,13 +1307,13 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(textInput("z80zhealthbar.editor.datasource.scan_search",
                 () -> scanFilter, v -> scanFilter = v));
         var filtered = com.z80z99.z80zhealthbar.datasource.ModClassScanner
-                .filter(scanClassCache, scanFilter);
+                .filter(scanClassCache, panelFilter);
         if (filtered.isEmpty()) {
             panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.scan_no_match"));
             return;
         }
         var sorted = com.z80z99.z80zhealthbar.datasource.ModClassScanner
-                .sortForDisplay(filtered, scanFilter);
+                .sortForDisplay(filtered, panelFilter);
         int shown = 0;
         String lastPkg = null;
         for (String cls : sorted) {
@@ -1924,11 +1975,14 @@ public final class HudLayoutScreen extends Screen {
             return "§c" + Component.translatable("z80zhealthbar.custom_sources.diag.mod_missing",
                     src.modId).getString();
         }
-        Float v = adapter.readStat(src.id);
+        // 读数走上限缓存（50ms 帧缓存）——此前每帧一次 capability 反射+LazyOptional 解包（审计 #7）
+        Float v = com.z80z99.z80zhealthbar.compat.CompatAdapters
+                .readValue("custom_" + src.id, src.id);
         if (v == null) {
             return "§c" + Component.translatable("z80zhealthbar.custom_sources.diag.read_failed").getString();
         }
-        Float m = adapter.resolveMax(minecraft.player);
+        Float m = com.z80z99.z80zhealthbar.compat.CompatAdapters
+                .readMax("custom_" + src.id, src.id);
         String modName = cachedModName(src.modId);
         return "§a" + String.format(Locale.ROOT, "%.1f", v)
                 + (m == null ? "" : " / " + String.format(Locale.ROOT, "%.1f", m))
@@ -2818,7 +2872,13 @@ public final class HudLayoutScreen extends Screen {
                 }));
         var ly = layout();
         panelEntries.add(toggle("z80zhealthbar.editor.style_auto",
-                () -> ly.autoStyleSwitch, v -> ly.autoStyleSwitch = v));
+                () -> ly.autoStyleSwitch, v -> {
+                    ly.autoStyleSwitch = v;
+                    if (v) {
+                        // 开启即按当前状态重放（此前需 F11 两次才生效,审计 #5）
+                        com.z80z99.z80zhealthbar.overlay.StyleAutoSwitcher.invalidate();
+                    }
+                }));
         // 当前窗口状态 + 生效样式（动态;自动切换开时显示）
         panelEntries.add(PEntry.dynNote(() -> {
             var st = com.z80z99.z80zhealthbar.overlay.StyleAutoSwitcher.currentState();
@@ -2839,7 +2899,10 @@ public final class HudLayoutScreen extends Screen {
                 () -> Component.translatable("z80zhealthbar.editor.style_save_new").getString(),
                 "z80zhealthbar.editor.add", () -> {
                     if (ly.userStyles == null) ly.userStyles = new java.util.ArrayList<>();
-                    if (ly.userStyles.size() >= 20) return; // 上限保护(validator 同步)
+                    if (ly.userStyles.size() >= 20) { // 上限保护(validator 同步)——此前静默无反馈
+                        toast("z80zhealthbar.editor.style.cap_full");
+                        return;
+                    }
                     java.util.Set<String> taken = new java.util.HashSet<>();
                     for (var st : ly.userStyles) if (st != null) taken.add(st.name);
                     var style = new HudLayoutConfig.UserStyle();
@@ -2852,12 +2915,42 @@ public final class HudLayoutScreen extends Screen {
                     panelPage = PanelPage.STYLE_DETAIL;
                     rebuildWidgets();
                 }));
+        // 从剪贴板导入样式（分享;空库也可导入——放在空判断之前）
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.style.import_json").getString(),
+                "z80zhealthbar.editor.add", () -> {
+                    if (ly.userStyles == null) ly.userStyles = new java.util.ArrayList<>();
+                    if (ly.userStyles.size() >= 20) {
+                        toast("z80zhealthbar.editor.style.cap_full");
+                        return;
+                    }
+                    var parsed = com.z80z99.z80zhealthbar.config.StyleCodec
+                            .parse(minecraft == null || minecraft.keyboardHandler == null
+                                    ? null : minecraft.keyboardHandler.getClipboard());
+                    java.util.Set<String> taken = new java.util.HashSet<>();
+                    for (var st : ly.userStyles) if (st != null) taken.add(st.name);
+                    if (parsed == null || !com.z80z99.z80zhealthbar.config.StyleCodec
+                            .sanitize(parsed, taken,
+                                    n -> Component.translatable("z80zhealthbar.editor.style.auto_name", n).getString())) {
+                        toast("z80zhealthbar.editor.style.import_json.failed");
+                        return;
+                    }
+                    ly.userStyles.add(parsed);
+                    styleDetailName = parsed.name;
+                    markDirty();
+                    panelPage = PanelPage.STYLE_DETAIL;
+                    rebuildWidgets();
+                }));
         if (ly.userStyles == null || ly.userStyles.isEmpty()) {
             panelEntries.add(PEntry.note("z80zhealthbar.editor.style_empty"));
             return;
         }
+        panelEntries.add(filterRow("z80zhealthbar.editor.filter", v -> panelFilter = v));
+        boolean anyStyle = false;
         for (var st : ly.userStyles) {
             if (st == null) continue;
+            if (!matchesFilter(st.name, panelFilter)) continue;
+            anyStyle = true;
             final String name = st.name;
             panelEntries.add(listRow(() -> name + " (" + st.components.size() + ")"
                             + boundBadges(ly, name),
@@ -2866,6 +2959,9 @@ public final class HudLayoutScreen extends Screen {
                         panelPage = PanelPage.STYLE_DETAIL;
                         rebuildWidgets();
                     }));
+        }
+        if (!panelFilter.isBlank() && !anyStyle) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.filter.no_match"));
         }
     }
 
@@ -2912,13 +3008,23 @@ public final class HudLayoutScreen extends Screen {
                     styleDetailName = nv;
                     markDirty();
                 }));
-        // 应用到当前布局（深拷载入;Ctrl+Z 可撤——编辑器 undo 监听配置 JSON）
+        // 复制样式 JSON（分享;与导入端 StyleCodec 配对）
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.style.copy_json").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    if (minecraft != null && minecraft.keyboardHandler != null) {
+                        minecraft.keyboardHandler.setClipboard(
+                                com.z80z99.z80zhealthbar.config.StyleCodec.export(style));
+                        toast("z80zhealthbar.editor.style.copy_json.done");
+                    }
+                }));
+        // 应用到当前布局（深拷载入;Ctrl+Z 可撤——编辑器 undo 监听配置 JSON;应用后留在样式库便于连续操作）
         panelEntries.add(listRow(
                 () -> Component.translatable("z80zhealthbar.editor.style_apply").getString(),
                 "z80zhealthbar.editor.adjust", () -> {
                     com.z80z99.z80zhealthbar.overlay.StyleAutoSwitcher.loadStyleToLive(ly, style);
                     markDirty();
-                    panelPage = PanelPage.LIST;
+                    panelPage = PanelPage.STYLE_LIB;
                     rebuildWidgets();
                 }));
         // 三档绑定（多状态可绑同一样式;关 = 仅当指向本样式时清空）
@@ -3998,7 +4104,7 @@ public final class HudLayoutScreen extends Screen {
         }
         if (!editingCustom()) return super.keyPressed(keyCode, scanCode, modifiers);
         // 步长按屏幕像素定义（÷k 换算回 offset 空间:k<1 时 offset+1 会被取整吞掉,按键"没反应"）
-        int step = toOffsetDelta(Screen.hasShiftDown() ? 10 : 1);
+        int step = HudLayoutSolver.nudgeStep(Screen.hasShiftDown() ? 10 : 1, solveK());
         // 标脏只在真正微调时——此前置于 switch 之前,任何按键（含 Esc/Tab/字母）都标脏,
         // 导致"没改任何东西按 Esc 也弹未保存确认页"
         // 整组微移:选中主组件有分组且未开独立移动时,跟随成员一起走（每次按键实时取各成员当前 offset）

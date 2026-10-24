@@ -27,6 +27,18 @@ public final class StyleAutoSwitcher {
 
     private static WindowState last;
 
+    static {
+        // 文件热重载后重放当前状态样式（cur==last 不触发的问题,审计 #5）;
+        // restoreJson（编辑器放弃/保存）不触发——不应覆盖刚还原/保存的布局
+        com.z80z99.z80zhealthbar.config.ConfigManager
+                .setOnConfigReloaded(StyleAutoSwitcher::invalidate);
+    }
+
+    /** 丢弃已见状态：下一 tick 按当前状态重放（prev=null 只载入不写回,语义安全） */
+    public static void invalidate() {
+        last = null;
+    }
+
     private StyleAutoSwitcher() {}
 
     /** 窗口状态归约（纯函数）：全屏优先于最大化 */

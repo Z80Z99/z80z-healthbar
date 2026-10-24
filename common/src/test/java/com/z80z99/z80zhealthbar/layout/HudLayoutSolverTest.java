@@ -191,6 +191,17 @@ class HudLayoutSolverTest {
     }
 
     @Test
+    void nudgeStepNeverCollapsesToZero() {
+        // k>2 时 round(1/k)=0 会让方向键完全失效（审计 #1）——保底 1
+        assertEquals(1, HudLayoutSolver.nudgeStep(1, 2.5));
+        assertEquals(1, HudLayoutSolver.nudgeStep(1, 100.0));
+        assertEquals(1, HudLayoutSolver.nudgeStep(1, 1.0));
+        assertEquals(2, HudLayoutSolver.nudgeStep(1, 0.5), "k<1 放大回 offset 空间");
+        assertEquals(20, HudLayoutSolver.nudgeStep(10, 0.5));
+        assertEquals(10, HudLayoutSolver.nudgeStep(10, 0.0001), "k≈0 直通");
+    }
+
+    @Test
     void scaleAffectsBoxSize() {
         HudLayoutConfig layout = new HudLayoutConfig();
         var cl = layout.get(HudLayoutConfig.HEALTH);

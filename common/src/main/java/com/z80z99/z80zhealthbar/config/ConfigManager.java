@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.zip.CRC32;
 
@@ -34,30 +35,48 @@ public final class ConfigManager {
     public static void loadConfig() {
         Path configPath = getConfigFilePath();
         boolean needsSave = false;
+        // 局部变量上完成解析/校验后才发布——旧顺序先赋值 volatile 再 validate,
+        // 渲染线程短暂可能读到未钳制值/未解析的选择器（审计 #2）
+        Z80ZHealthBarConfig loaded;
         if (Files.exists(configPath)) {
             try {
                 String json = Files.readString(configPath);
-                config = GSON.fromJson(json, Z80ZHealthBarConfig.class);
-                if (config == null) {
-                    config = new Z80ZHealthBarConfig();
+                loaded = GSON.fromJson(json, Z80ZHealthBarConfig.class);
+                if (loaded == null) {
+                    loaded = new Z80ZHealthBarConfig();
                 }
-                needsSave = migrate(config);
+                needsSave = migrate(loaded);
                 Z80ZHealthBar.LOGGER.info("Config loaded from {}", configPath);
             } catch (IOException | JsonSyntaxException e) {
                 Z80ZHealthBar.LOGGER.error("Failed to load config, using defaults", e);
-                config = new Z80ZHealthBarConfig();
+                loaded = new Z80ZHealthBarConfig();
                 needsSave = true;
             }
         } else {
-            config = new Z80ZHealthBarConfig();
+            loaded = new Z80ZHealthBarConfig();
             needsSave = true;
             Z80ZHealthBar.LOGGER.info("Default config created at {}", configPath);
         }
         // 校验会就地夹取非法数值（负缩放/超大距离等），不抛异常
-        ConfigValidator.validate(config);
+        ConfigValidator.validate(loaded);
         // 黑名单/选择器解析依赖 MC 注册表，须在加载后、渲染前完成一次
-        config.visibility.parseAll();
+        loaded.visibility.parseAll();
+        config = loaded;
         if (needsSave) saveConfig();
+        // 通知重载监听（如样式自动切换的重放）;restoreJson 不触发——编辑器放弃/保存不应重放
+        if (onConfigReloaded != null) {
+            try {
+                onConfigReloaded.run();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** 文件重载完成回调（ConfigWatcher→loadConfig 后触发;StyleAutoSwitcher 注册） */
+    private static volatile Runnable onConfigReloaded;
+
+    public static void setOnConfigReloaded(Runnable r) {
+        onConfigReloaded = r;
     }
 
     /**
@@ -182,8 +201,17 @@ public final class ConfigManager {
             Files.createDirectories(configPath.getParent());
             String json = GSON.toJson(getConfig());
             lastSavedCrc = crc32(json);
-            Files.writeString(configPath, json, StandardOpenOption.CREATE,
+            // 原子写：先写临时文件再替换——直接 TRUNCATE+写非原子,监视线程若恰好读到
+            // 半文件会触发"解析失败→整配置回默认"（审计 #3）
+            Path tmp = configPath.resolveSibling(configPath.getFileName() + ".tmp");
+            Files.writeString(tmp, json, StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING);
+            try {
+                Files.move(tmp, configPath, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(tmp, configPath, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
             Z80ZHealthBar.LOGGER.error("Failed to save config", e);
         }

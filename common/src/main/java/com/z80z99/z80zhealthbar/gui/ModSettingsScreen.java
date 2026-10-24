@@ -327,6 +327,11 @@ public final class ModSettingsScreen extends Screen {
     private int contentX;
     private int contentW;
     private int viewH;
+    // ---- 跨页参数搜索（1.0.148）----
+    private String searchQuery = "";
+    private net.minecraft.client.gui.components.EditBox searchBox;
+    /** 搜索框占用的内容区高度（含呼吸空隙） */
+    private static final int SEARCH_H = 22;
     /** 命中测试用的"可见控件"快照（render 时刷新） */
     private final List<AbstractWidget> hitWidgets = new ArrayList<>();
     /** 页切换动画的行透明度（1=完全不透明） */
@@ -356,9 +361,12 @@ public final class ModSettingsScreen extends Screen {
     }
 
     private void rebuild() {
+        // 搜索框跨重建保留焦点（重建销毁重建控件,打字不中断）
+        boolean refocusSearch = searchBox != null && searchBox.isFocused();
         clearWidgets();
         hitWidgets.clear();
         rows.clear();
+        rowsRenderHooks.clear(); // 每帧钩子随行重建——不清理会跨 rebuild 无限累积（复审发现）
         switch (page) {
             case MAIN -> buildMain();
             case STYLE -> buildStyle();
@@ -367,9 +375,34 @@ public final class ModSettingsScreen extends Screen {
             case COMPAT -> buildCompat();
             case ADVANCED -> buildAdvanced();
         }
+        // 跨页搜索：依次构建全部页的行,按标签译文包含过滤（节标题/说明行丢弃）
+        if (!searchQuery.isBlank()) {
+            List<Row> hits = new ArrayList<>();
+            for (Page p : Page.values()) {
+                int mark = rows.size();
+                switch (p) {
+                    case MAIN -> buildMain();
+                    case STYLE -> buildStyle();
+                    case POPUP -> buildPopup();
+                    case VISIBILITY -> buildVisibility();
+                    case COMPAT -> buildCompat();
+                    case ADVANCED -> buildAdvanced();
+                }
+                for (Row r : rows.subList(mark, rows.size())) {
+                    if (rowMatches(r)) hits.add(r);
+                }
+                rows.subList(mark, rows.size()).clear();
+            }
+            rows.add(new SectionRow("z80zhealthbar.settings.search_result"));
+            if (hits.isEmpty()) {
+                rows.add(new TextRow("z80zhealthbar.settings.search_empty"));
+            } else {
+                rows.addAll(hits);
+            }
+        }
         contentH = rows.stream().mapToInt(Row::height).sum();
-        // 每一页都带右半实时预览面板（窗口宽度足够时）
-        previewActive = width >= 460;
+        // 每一页都带右半实时预览面板（窗口宽度足够时）;搜索结果占整宽,隐藏预览
+        previewActive = width >= 460 && searchQuery.isBlank();
             previewToggle = null;
             previewFullscreenBtn = null;
             previewPauseBtn = null;
@@ -417,15 +450,49 @@ public final class ModSettingsScreen extends Screen {
             contentW = Math.min(420, width - 24 - PANEL_PAD * 2);
             contentX = (width - contentW) / 2;
         }
-        viewH = Math.max(20, height - HEADER_H - FOOTER_H);
+        viewH = Math.max(20, height - HEADER_H - FOOTER_H - SEARCH_H);
         scroll = Math.min(scroll, maxScroll());
         scrollTarget = Math.min(scrollTarget, maxScroll());
+        // 搜索框（常驻内容区顶部;输入即跨页过滤）
+        searchBox = new net.minecraft.client.gui.components.EditBox(font, contentX,
+                HEADER_H - 2, contentW, 14,
+                Component.translatable("z80zhealthbar.settings.search"));
+        searchBox.setMaxLength(60);
+        searchBox.setValue(searchQuery);
+        searchBox.setResponder(v -> {
+            searchQuery = v;
+            scroll = 0;
+            scrollTarget = 0;
+            rebuild();
+        });
+        // 本界面不调 super.render,控件须手动渲染——不走 addRenderableWidget（只存字段）
+        if (refocusSearch) {
+            setFocused(searchBox);
+            searchBox.setFocused(true);
+        }
+    }
+
+    /** 行是否命中搜索（译文包含,大小写不敏感;仅可检索行——控件行/动作行/只读值行） */
+    private boolean rowMatches(Row r) {
+        String label = null;
+        if (r instanceof ControlRow c) label = Component.translatable(stripLabelSuffix(c.labelKey)).getString();
+        else if (r instanceof KeyValueRow k) label = Component.translatable(stripLabelSuffix(k.labelKey)).getString();
+        else if (r instanceof ActionRow a) label = a.button.getMessage().getString();
+        if (label == null) return false;
+        return label.toLowerCase(Locale.ROOT)
+                .contains(searchQuery.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private static String stripLabelSuffix(String key) {
+        return key != null && key.endsWith(".label")
+                ? key.substring(0, key.length() - ".label".length()) : key;
     }
 
     private void switchPage(Page p) {
         page = p;
         scroll = 0;
         scrollTarget = 0;
+        searchQuery = ""; // 切页清空搜索
         pageAnimStart = System.currentTimeMillis();
         rebuild();
     }
@@ -796,11 +863,13 @@ public final class ModSettingsScreen extends Screen {
             } catch (Exception ignored) {
             }
         }));
-        rows.add(actionRow("z80zhealthbar.advanced.import", () -> {
+        // 剪贴板导入：确认 + 自动备份（此前单击即整份覆盖且不可撤销）
+        rows.add(confirmActionRow("z80zhealthbar.advanced.import", () -> {
             try {
                 var loaded = new com.google.gson.Gson().fromJson(
                         minecraft.keyboardHandler.getClipboard(), Z80ZHealthBarConfig.class);
                 if (loaded != null) {
+                    backupConfig();
                     ConfigManager.setConfig(loaded);
                     ConfigManager.saveConfig();
                     rebuild();
@@ -810,18 +879,63 @@ public final class ModSettingsScreen extends Screen {
                 toast("z80zhealthbar.advanced.import_failed");
             }
         }));
-        rows.add(actionRow("z80zhealthbar.advanced.reset_all", () -> {
+        // 文件导入/导出：固定文件名（config 目录下）,跨机器搬运比剪贴板可靠
+        rows.add(actionRow("z80zhealthbar.advanced.export_file", () -> {
+            try {
+                java.nio.file.Path out = ConfigManager.getConfigFilePath()
+                        .resolveSibling("z80zhealthbar-export.json");
+                ConfigManager.saveConfig();
+                java.nio.file.Files.writeString(out,
+                        java.nio.file.Files.readString(ConfigManager.getConfigFilePath()),
+                        java.nio.charset.StandardCharsets.UTF_8);
+                toast("z80zhealthbar.advanced.export_file.done");
+            } catch (Exception e) {
+                toast("z80zhealthbar.advanced.import_failed");
+            }
+        }));
+        rows.add(confirmActionRow("z80zhealthbar.advanced.import_file", () -> {
+            try {
+                java.nio.file.Path in = ConfigManager.getConfigFilePath()
+                        .resolveSibling("z80zhealthbar-import.json");
+                if (!java.nio.file.Files.exists(in)) {
+                    toast("z80zhealthbar.advanced.import_file.missing");
+                    return;
+                }
+                var loaded = new com.google.gson.Gson().fromJson(
+                        java.nio.file.Files.readString(in), Z80ZHealthBarConfig.class);
+                if (loaded != null) {
+                    backupConfig();
+                    ConfigManager.setConfig(loaded);
+                    ConfigManager.saveConfig();
+                    rebuild();
+                    toast("z80zhealthbar.advanced.imported");
+                }
+            } catch (Exception e) {
+                toast("z80zhealthbar.advanced.import_failed");
+            }
+        }));
+        // 重置全部：确认 + 备份
+        rows.add(confirmActionRow("z80zhealthbar.advanced.reset_all", () -> {
+            backupConfig();
             ConfigManager.resetToDefaults();
             rebuild();
             toast("z80zhealthbar.advanced.reset_done");
         }));
-        rows.add(actionRow("z80zhealthbar.advanced.reset_layout", () -> {
+        // 重置布局：确认（只重置组件布局,样式库/绑定/比例缩放保留——文案已标注）
+        rows.add(confirmActionRow("z80zhealthbar.advanced.reset_layout", () -> {
             c.hudLayout.resetToDefaults();
             toast("z80zhealthbar.advanced.reset_done");
         }));
         rows.add(actionRow("z80zhealthbar.advanced.open_file", () -> {
-            minecraft.keyboardHandler.setClipboard(ConfigManager.getConfigFilePath().toString());
-            toast("z80zhealthbar.advanced.path_copied");
+            // 直接打开配置文件夹（复制路径仅作失败兜底）
+            try {
+                net.minecraft.Util.getPlatform().openFile(
+                        ConfigManager.getConfigFilePath().getParent().toFile());
+                toast("z80zhealthbar.advanced.opened_folder");
+            } catch (Throwable t) {
+                minecraft.keyboardHandler.setClipboard(ConfigManager.getConfigFilePath().toString());
+                toast("z80zhealthbar.advanced.path_copied");
+            }
         }));
 
     }
@@ -882,6 +996,42 @@ public final class ModSettingsScreen extends Screen {
                         Component.translatable(key), b -> action.run())
                 .bounds(0, 0, WIDGET_W * 2, 18)
                 .build(), key + ".tooltip");
+    }
+
+    /** 危险动作行：二段确认（3 秒窗口内二次点击才执行——与编辑器 confirmRow 同语义;
+     *  此前导入/重置单击即生效且不可撤销） */
+    private long confirmUntilMs;
+    private ActionRow confirmActionRow(String key, Runnable action) {
+        var btn = net.minecraft.client.gui.components.Button.builder(
+                        Component.translatable(key), b -> {
+                            if (System.currentTimeMillis() < confirmUntilMs) {
+                                confirmUntilMs = 0;
+                                action.run();
+                            } else {
+                                confirmUntilMs = System.currentTimeMillis() + 3000;
+                            }
+                        })
+                .bounds(0, 0, WIDGET_W * 2, 18)
+                .build();
+        // ActionRow 为 final,armed 文案经渲染钩子刷新（与 colorActionRow 同模式）
+        rowsRenderHooks.add(() -> btn.setMessage(Component.translatable(
+                System.currentTimeMillis() < confirmUntilMs
+                        ? "z80zhealthbar.editor.confirm_reset" : key)));
+        return new ActionRow(btn, key + ".tooltip");
+    }
+
+    /** 导入/重置前的自动备份：当前配置写 z80zhealthbar.backup.json（覆盖）,失败仅日志 */
+    private void backupConfig() {
+        try {
+            java.nio.file.Path backup = ConfigManager.getConfigFilePath()
+                    .resolveSibling("z80zhealthbar.backup.json");
+            java.nio.file.Files.writeString(backup,
+                    new com.google.gson.GsonBuilder().setPrettyPrinting()
+                            .create().toJson(cfg()), java.nio.charset.StandardCharsets.UTF_8);
+            toast("z80zhealthbar.advanced.backup_done");
+        } catch (Exception e) {
+            com.z80z99.z80zhealthbar.Z80ZHealthBar.LOGGER.warn("[Config] backup failed: {}", e.toString());
+        }
     }
 
     /** 颜色设置行：按钮文案 = 标签 + 当前值,点击打开颜色轮盘;写回即持久化（实体条全局色） */
@@ -993,6 +1143,8 @@ public final class ModSettingsScreen extends Screen {
 
         // 标签页（手动）
         renderTabs(g, mouseX, mouseY);
+        // 搜索框（常驻内容区顶部,手动渲染）
+        if (searchBox != null) searchBox.render(g, mouseX, mouseY, partialTick);
 
         hitWidgets.clear();
         Row hoveredRow = null;
@@ -1009,7 +1161,7 @@ public final class ModSettingsScreen extends Screen {
 
         // 行内容（scissor 裁剪 + 悬停高亮）
         g.enableScissor(contentX - PANEL_PAD, panelTop, contentX + contentW + PANEL_PAD, panelBottom);
-        int y = HEADER_H - (int) scroll + slide;
+        int y = HEADER_H + SEARCH_H - (int) scroll + slide;
         for (Row row : rows) {
             int h = row.height();
             if (y + h >= panelTop && y <= panelBottom) {
@@ -1571,6 +1723,12 @@ public final class ModSettingsScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
+        // 搜索框优先（点击获得焦点;点其它区域由 EditBox 自身取消聚焦）
+        if (searchBox != null && searchBox.mouseClicked(mx, my, btn)) {
+            setFocused(searchBox);
+            searchBox.setFocused(true);
+            return true;
+        }
         // 标签页
         int n = Page.values().length;
         int tabW = Math.min(96, (width - 16) / n);
@@ -1684,6 +1842,18 @@ public final class ModSettingsScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // 搜索非空时 Esc = 清空搜索（而非关闭界面/切页）
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && !searchQuery.isBlank()) {
+            searchQuery = "";
+            scroll = 0;
+            scrollTarget = 0;
+            rebuild();
+            return true;
+        }
+        // 搜索框聚焦时 Tab 归输入框（不抢切页）
+        if (keyCode == GLFW.GLFW_KEY_TAB && searchBox != null && searchBox.isFocused()) {
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
         if (keyCode == GLFW.GLFW_KEY_TAB) {
             switchPage(Page.values()[(page.ordinal() + 1) % Page.values().length]);
             return true;
