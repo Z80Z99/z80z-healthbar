@@ -8,8 +8,8 @@
 
 产物：
 
-- `forge/build/libs/z80z-healthbar-forge-<版本>-1.20.1.jar`
-- `fabric/build/libs/z80z-healthbar-fabric-<版本>-1.20.1.jar`
+- `forge/build/libs/z80z-healthbar-forge-<版本>.jar`
+- `fabric/build/libs/z80z-healthbar-fabric-<版本>.jar`
 - 对应的 `-sources.jar`
 
 测试：`./gradlew :common:test`
