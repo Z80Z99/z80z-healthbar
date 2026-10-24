@@ -2627,7 +2627,7 @@ public final class HudLayoutScreen extends Screen {
             // 动作（复制/删除/重置/分组）：此前 compat 分支提前 return,添加的 compat_* 组件
             // 在编辑器内无法删除/复制（实测"加上去就撤不掉",只能手改 JSON）
             addComponentActions(selected);
-            panelEntries.add(groupToggleRow(c));
+            addGroupRows(c);
             panelEntries.add(backRow());
             return;
         }
@@ -2682,7 +2682,7 @@ public final class HudLayoutScreen extends Screen {
         }
         // ---- 动作（复制/删除/重置/分组;全局动作在列表页） ----
         addComponentActions(baseKey(selected));
-        panelEntries.add(groupToggleRow(c));
+        addGroupRows(c);
         panelEntries.add(backRow());
     }
 
@@ -2709,6 +2709,15 @@ public final class HudLayoutScreen extends Screen {
         panelEntries.add(cycler("z80zhealthbar.editor.reset_component",
                 () -> Component.translatable("z80zhealthbar.editor.act.reset").getString(),
                 () -> layout().resetComponent(key)));
+    }
+
+    /** 分组行 + 组内独立移动开关（后者仅在已分组时显示） */
+    private void addGroupRows(ComponentLayout c) {
+        panelEntries.add(groupToggleRow(c));
+        if (c.group != null && !c.group.isBlank()) {
+            panelEntries.add(toggle("z80zhealthbar.editor.group.move_independent",
+                    () -> c.moveIndependent, v -> c.moveIndependent = v));
+        }
     }
 
     /** 分组行：打开组选择页（既有组列表 + 新建组 + 移出）——旧版"并入第一个既有组/建默认组"
@@ -2786,14 +2795,15 @@ public final class HudLayoutScreen extends Screen {
                 }));
     }
 
-    /** 整组拖拽快照：拖主组件且其有分组时,记录同组全部成员的起始 offset（松手清空） */
+    /** 整组拖拽快照：拖主组件、有分组且未开"组内独立移动"时,记录会跟随移动的成员起始
+     *  offset（组内独立移动者不进快照;松手清空） */
     private void snapshotGroupDrag(String key) {
         groupDragStart = null;
         if (key == null || key.endsWith(".text") || key.endsWith(".icon")) return;
         var c = layout().peek(key);
         String g = c == null || c.group == null ? "" : c.group;
-        if (g.isBlank()) return;
-        var members = HudLayoutConfig.groupMemberKeys(layout(), g);
+        if (g.isBlank() || c.moveIndependent) return;
+        var members = HudLayoutConfig.groupMoveKeys(layout(), g);
         if (members.isEmpty()) return;
         groupDragStart = new LinkedHashMap<>();
         for (String m : members) {
@@ -2828,10 +2838,13 @@ public final class HudLayoutScreen extends Screen {
         return c == null || c.group == null ? "" : c.group;
     }
 
-    /** 位移目标键集合：有分组 = 全组成员,否则仅自身 */
+    /** 位移目标键集合：有分组且未开独立移动 = 跟随移动的成员（组内独立者除外,自身必含）,
+     *  否则仅自身 */
     private java.util.List<String> moveTargets(String key, String group) {
-        return group.isBlank() ? java.util.List.of(key)
-                : HudLayoutConfig.groupMemberKeys(layout(), group);
+        if (group.isBlank()) return java.util.List.of(key);
+        var c = layout().peek(key);
+        if (c != null && c.moveIndependent) return java.util.List.of(key);
+        return HudLayoutConfig.groupMoveKeys(layout(), group);
     }
 
     /** 选中主组件的分组名（无/子元素返回空串）——方向键/成员高亮共用 */
@@ -3098,10 +3111,18 @@ public final class HudLayoutScreen extends Screen {
             for (Map.Entry<String, HudLayoutSolver.Box> e : boxes.entrySet()) {
                 HudLayoutSolver.Box box = e.getValue();
                 boolean isSel = e.getKey().equals(selected);
-                // 同组其它成员用暗绿框——整组拖拽/微移时能看见谁会跟着动
+                // 同组"会跟随移动"的成员用暗绿框（组内独立移动者排除——它不会被带动）;
+                // 选中的独立成员自身也不高亮同伴（它单独移动）
                 String selGroup = selectedGroupName();
-                boolean sameGroup = isSel || (!selGroup.isBlank()
-                        && selGroup.equals(groupNameOf(e.getKey())));
+                var selComp = selGroup.isBlank() ? null : layout().peek(selected);
+                String moveGroup = selGroup.isBlank() || (selComp != null && selComp.moveIndependent)
+                        ? "" : selGroup;
+                boolean sameGroup = isSel;
+                if (!moveGroup.isBlank()) {
+                    var mk = layout().peek(e.getKey());
+                    sameGroup = isSel || (moveGroup.equals(groupNameOf(e.getKey()))
+                            && mk != null && !mk.moveIndependent);
+                }
                 int color = isSel ? 0x8040FF40 : sameGroup ? 0x5040FF40 : 0x50FFFFFF;
                 graphics.renderOutline(box.x() - 1, box.y() - 1, box.width() + 2, box.height() + 2, color);
                 // hotbar:槽格指示（仅选中该组件时画）——中性暗框,当前编辑槽青色高亮;
@@ -3826,11 +3847,9 @@ public final class HudLayoutScreen extends Screen {
         int step = toOffsetDelta(Screen.hasShiftDown() ? 10 : 1);
         // 标脏只在真正微调时——此前置于 switch 之前,任何按键（含 Esc/Tab/字母）都标脏,
         // 导致"没改任何东西按 Esc 也弹未保存确认页"
-        // 整组微移:选中主组件有分组时,同组成员一起走（每次按键实时取各成员当前 offset）
+        // 整组微移:选中主组件有分组且未开独立移动时,跟随成员一起走（每次按键实时取各成员当前 offset）
         String groupOf = selectedGroupName();
-        java.util.List<String> moveKeys = groupOf.isBlank()
-                ? java.util.List.of(selected)
-                : HudLayoutConfig.groupMemberKeys(layout(), groupOf);
+        java.util.List<String> moveKeys = moveTargets(selected, groupOf);
         switch (keyCode) {
             case org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT -> {
                 markDirty();

@@ -68,6 +68,32 @@ class GroupingTest {
     }
 
     @Test
+    void groupMoveKeysExcludeIndependentMembers() {
+        var layout = layoutWithGroups(); // health/food ∈ A, armor ∈ B
+        layout.components.get("food").moveIndependent = true;
+        assertEquals(List.of("health"), HudLayoutConfig.groupMoveKeys(layout, "A"),
+                "independent member is excluded from group movement");
+        assertEquals(List.of("armor"), HudLayoutConfig.groupMoveKeys(layout, "B"));
+        // 全部独立 → 空表（拖拽退化为单组件移动）
+        layout.components.get("health").moveIndependent = true;
+        assertTrue(HudLayoutConfig.groupMoveKeys(layout, "A").isEmpty());
+        // 未分组/空组名
+        assertTrue(HudLayoutConfig.groupMoveKeys(layout, "").isEmpty());
+    }
+
+    @Test
+    void copyPreservesMoveIndependentFlag() {
+        var src = layoutWithGroups();
+        src.components.get("food").moveIndependent = true;
+        var copy = src.copy();
+        assertTrue(copy.components.get("food").moveIndependent);
+        assertFalse(copy.components.get("health").moveIndependent);
+        // 深拷贝隔离
+        copy.components.get("food").moveIndependent = false;
+        assertTrue(src.components.get("food").moveIndependent);
+    }
+
+    @Test
     void mapMergeCountingForGroupPicker() {
         // 组选择页的组名→成员数统计口径（与 buildCustomList 折叠行一致）
         Map<String, Integer> groups = new LinkedHashMap<>();

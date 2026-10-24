@@ -939,5 +939,7 @@
   "z80zhealthbar.editor.group_pick_existing": "既有分组",
   "z80zhealthbar.editor.group_new": "＋ 新建分组",
   "z80zhealthbar.editor.group.pick": "选择分组…",
-  "z80zhealthbar.editor.group.auto_name": "组 %s"
+  "z80zhealthbar.editor.group.auto_name": "组 %s",
+  "z80zhealthbar.editor.group.move_independent": "组内独立移动",
+  "z80zhealthbar.editor.group.move_independent.tooltip": "开启后此组件仍留在分组（列表收纳、组页可见），但整组拖拽/方向键/位置步进不再带动它——只有直接选中它时才移动。"
 }

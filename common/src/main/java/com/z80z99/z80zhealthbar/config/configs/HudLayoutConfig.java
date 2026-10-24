@@ -73,6 +73,9 @@ public class HudLayoutConfig {
         public int iconOffsetY = 0;
         /** 逻辑分组名（空 = 未分组）。同组组件在编辑器列表中收纳为一行,便于分开调整。 */
         public String group = "";
+        /** 组内独立移动：开启后该组件仍留在分组（列表收纳/组页可见）,但整组拖拽/方向键/
+         *  位置步进不再带动它——只有直接选中它时才移动。 */
+        public boolean moveIndependent = false;
         /** 外部图标贴图文件名（config/z80zhealthbar/icons/ 下的 png;空 = 原版 icons.png 图标） */
         public String iconTexture = "";
         /** 组件透明度（0..100,默认 100;渲染整体乘算） */
@@ -247,6 +250,7 @@ public class HudLayoutConfig {
             c.iconAnchor = iconAnchor; c.iconScale = iconScale;
             c.iconOffsetX = iconOffsetX; c.iconOffsetY = iconOffsetY;
             c.group = group; c.iconTexture = iconTexture;
+            c.moveIndependent = moveIndependent;
             c.opacity = opacity; c.idleFadeSecs = idleFadeSecs; c.rotation = rotation;
             c.saturationMode = saturationMode;
             c.absorptionMode = absorptionMode; c.quenchedMode = quenchedMode;
@@ -287,6 +291,16 @@ public class HudLayoutConfig {
             if (e.getKey().endsWith(".text") || e.getKey().endsWith(".icon")) continue;
             ComponentLayout c = e.getValue();
             if (c != null && groupName.equals(c.group)) out.add(e.getKey());
+        }
+        return out;
+    }
+
+    /** 会跟着整组一起移动的成员（组内独立移动开关者除外）——拖拽快照/方向键/步进器/高亮共用 */
+    public static List<String> groupMoveKeys(HudLayoutConfig layout, String groupName) {
+        List<String> out = new ArrayList<>();
+        for (String k : groupMemberKeys(layout, groupName)) {
+            var c = layout.components.get(k);
+            if (c == null || !c.moveIndependent) out.add(k);
         }
         return out;
     }

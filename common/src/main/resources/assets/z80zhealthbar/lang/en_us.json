@@ -939,5 +939,7 @@
   "z80zhealthbar.editor.group_pick_existing": "Existing groups",
   "z80zhealthbar.editor.group_new": "＋ New group",
   "z80zhealthbar.editor.group.pick": "Pick a group…",
-  "z80zhealthbar.editor.group.auto_name": "Group %s"
+  "z80zhealthbar.editor.group.auto_name": "Group %s",
+  "z80zhealthbar.editor.group.move_independent": "Move independently in group",
+  "z80zhealthbar.editor.group.move_independent.tooltip": "Keep this component in the group (list folding, group page) but exclude it from group-wide drags, arrow nudges and position steppers — it only moves when selected directly."
 }
