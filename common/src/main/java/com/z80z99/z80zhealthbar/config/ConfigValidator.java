@@ -252,6 +252,10 @@ public final class ConfigValidator {
         // 面板宽高也需钳制:手改 JSON 可产生任意尺寸导致面板溢出屏幕无法操作
         c.panelW = c.panelW < 0 ? -1 : clamp(c.panelW, 156, 440);
         c.panelH = c.panelH < 0 ? -1 : clamp(c.panelH, 30, 2000);
+        // 比例缩放:模式 0/1;参考分辨率非法值归位默认（Gson 旧配置缺字段时为 0）
+        c.scaleMode = clamp(c.scaleMode, 0, 1);
+        c.referenceWidth = c.referenceWidth <= 0 ? 960 : clamp(c.referenceWidth, 320, 3840);
+        c.referenceHeight = c.referenceHeight <= 0 ? 540 : clamp(c.referenceHeight, 240, 2160);
         if (c.components == null || c.components.isEmpty()) {
             c.components = HudLayoutConfig.defaultComponents();
             return;

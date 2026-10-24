@@ -288,6 +288,15 @@ public class HudLayoutConfig {
     /** 编辑器属性面板折叠（只留标题条;实测反馈"缩小面板只留个标题"） */
     public boolean panelCollapsed = false;
 
+    /** 布局缩放模式：0=固定像素（默认,现状——offset/尺寸按 GUI 像素绝对解释）;
+     *  1=比例缩放——以 referenceWidth/Height 为设计基准,实际屏幕按 k=min(w/rw,h/rh)
+     *  统一缩放位置与尺寸,同布局在不同逻辑分辨率（改 GUI 缩放/换屏幕/拉伸窗口）下构图一致 */
+    public int scaleMode = 0;
+    /** 参考逻辑分辨率宽（scaleMode=1 时的设计基准;默认 960x540 = 1080p@GUI2） */
+    public int referenceWidth = 960;
+    /** 参考逻辑分辨率高 */
+    public int referenceHeight = 540;
+
     /** 预设布局标识（编辑器内选择并一键应用） */
     public static final List<String> PRESETS = List.of("MODERN", "CLASSIC", "MINIMAL", "SIDE");
 
@@ -525,6 +534,12 @@ public class HudLayoutConfig {
         c.components = new LinkedHashMap<>();
         c.panelX = panelX;
         c.panelY = panelY;
+        c.panelW = panelW;
+        c.panelH = panelH;
+        c.panelCollapsed = panelCollapsed;
+        c.scaleMode = scaleMode;
+        c.referenceWidth = referenceWidth;
+        c.referenceHeight = referenceHeight;
         for (Map.Entry<String, ComponentLayout> e : components.entrySet()) {
             c.components.put(e.getKey(), e.getValue() == null ? new ComponentLayout() : e.getValue().copy());
         }

@@ -82,6 +82,114 @@ class HudLayoutSolverTest {
         assertEquals(base.y() - 9, moved.y());
     }
 
+    // ================= 比例缩放（参考分辨率模式,1.0.144） =================
+
+    @Test
+    void scaleModeOffKeepsAbsolutePixels() {
+        // 默认 scaleMode=0:k 恒 1——即使设置了参考值也不影响布局（回归保护）
+        HudLayoutConfig layout = new HudLayoutConfig();
+        layout.referenceWidth = 480;
+        layout.referenceHeight = 270;
+        assertEquals(1.0, HudLayoutSolver.scaleK(layout, W, H));
+        var base = HudLayoutSolver.solve(layout, sizes(layout), W, H).get(HudLayoutConfig.HEALTH);
+        layout.get(HudLayoutConfig.HEALTH).offsetX = 33;
+        var moved = HudLayoutSolver.solve(layout, sizes(layout), W, H).get(HudLayoutConfig.HEALTH);
+        assertEquals(base.x() + 33, moved.x(), "mode 0: offset is absolute");
+    }
+
+    @Test
+    void proportionalModeScalesOffsetsAndSizes() {
+        // 参考 960x540、屏幕 480x270 → k=0.5:offset 100→50,宽 120→60
+        HudLayoutConfig layout = new HudLayoutConfig();
+        layout.scaleMode = 1;
+        layout.referenceWidth = 960;
+        layout.referenceHeight = 540;
+        assertEquals(0.5, HudLayoutSolver.scaleK(layout, 480, 270));
+        var cl = layout.get(HudLayoutConfig.HEALTH);
+        cl.barWidth = 120;
+        cl.offsetX = 100;
+        var box = HudLayoutSolver.solve(layout, sizes(layout), 480, 270).get(HudLayoutConfig.HEALTH);
+        assertEquals(60, box.width(), "bar width halves at k=0.5");
+        // 底部居中锚点:x = W/2 - w/2 + offset*k = 240-30+50 = 260
+        assertEquals(480 / 2 - 30 + 50, box.x());
+    }
+
+    @Test
+    void proportionalKUsesSmallerAxis() {
+        // 屏幕 960x270:宽轴比 1.0、高轴比 0.5 → 取 0.5(不做非等比拉伸)
+        HudLayoutConfig layout = new HudLayoutConfig();
+        layout.scaleMode = 1;
+        layout.referenceWidth = 960;
+        layout.referenceHeight = 540;
+        assertEquals(0.5, HudLayoutSolver.scaleK(layout, 960, 270));
+        // 放大方向同理:屏幕 1920x1080 → k=2.0
+        assertEquals(2.0, HudLayoutSolver.scaleK(layout, 1920, 1080));
+    }
+
+    @Test
+    void proportionalKClampedToBounds() {
+        HudLayoutConfig layout = new HudLayoutConfig();
+        layout.scaleMode = 1;
+        layout.referenceWidth = 320;   // 极小参考 → kx=6
+        layout.referenceHeight = 240;
+        assertEquals(2.5, HudLayoutSolver.scaleK(layout, 1920, 1080), "capped at 2.5");
+        layout.referenceWidth = 3840;  // 极大参考 + 小屏 → k=0.33 → 保底 0.4
+        layout.referenceHeight = 2160;
+        assertEquals(0.4, HudLayoutSolver.scaleK(layout, 1280, 720), "floored at 0.4");
+        // 非法参考值（0/负数）回退默认 960x540
+        layout.referenceWidth = 0;
+        layout.referenceHeight = -5;
+        assertEquals(2.0, HudLayoutSolver.scaleK(layout, 1920, 1080));
+    }
+
+    @Test
+    void proportionalStackSpacingScales() {
+        // 两 stack 组件 spacing=10,k=0.5:第二件 y = 第一件 y + h*k + spacing*k
+        HudLayoutConfig layout = new HudLayoutConfig();
+        layout.components.clear();
+        var first = new HudLayoutConfig.ComponentLayout();
+        first.anchor = "TOP_LEFT";
+        first.stack = true;
+        first.barWidth = 100;
+        first.barHeight = 10;
+        first.spacing = 10;
+        var second = new HudLayoutConfig.ComponentLayout();
+        second.anchor = "TOP_LEFT";
+        second.stack = true;
+        second.barWidth = 100;
+        second.barHeight = 10;
+        layout.components.put(HudLayoutConfig.HEALTH, first);
+        layout.components.put(HudLayoutConfig.FOOD, second);
+        layout.scaleMode = 1;
+        layout.referenceWidth = 960;
+        layout.referenceHeight = 540;
+        var boxes = HudLayoutSolver.solve(layout, sizes(layout), 480, 270);
+        var a = boxes.get(HudLayoutConfig.HEALTH);
+        var b = boxes.get(HudLayoutConfig.FOOD);
+        // h = (10+2)*0.5 = 6,spacing*k = 5 → 间距 11
+        assertEquals(a.y() + a.height() + 5, b.y(), "spacing scales with k");
+    }
+
+    @Test
+    void proportionalDetachedElementsScale() {
+        HudLayoutConfig layout = new HudLayoutConfig();
+        layout.scaleMode = 1;
+        layout.referenceWidth = 960;
+        layout.referenceHeight = 540;
+        var health = layout.get(HudLayoutConfig.HEALTH);
+        health.textAnchor = "TOP_RIGHT";
+        health.textOffsetX = -20;
+        health.textOffsetY = 4;
+        Map<String, int[]> sz = sizes(layout);
+        sz.put(HudLayoutConfig.HEALTH + ".text", new int[]{40, 9});
+        var text = HudLayoutSolver.solve(layout, sz, 480, 270).get(HudLayoutConfig.HEALTH + ".text");
+        assertNotNull(text);
+        // 盒宽 = 40*0.5 = 20,offsetX*k = -10:x = 480-5-20-10 = 445
+        assertEquals(20, text.width());
+        assertEquals(480 - HudLayoutSolver.MARGIN_X - 20 - 10, text.x());
+        assertEquals(HudLayoutSolver.MARGIN_Y + 2, text.y());
+    }
+
     @Test
     void scaleAffectsBoxSize() {
         HudLayoutConfig layout = new HudLayoutConfig();

@@ -193,7 +193,7 @@ public final class HudLayoutScreen extends Screen {
             Map<String, HudLayoutSolver.Box> boxes = HudLayoutSolver.solve(layout(), sizes, width, height);
             var box = boxes.get(baseKey(selected));
             if (box == null) return null;
-            float k = (float) c.scale;
+            float k = hotbarK(c);
             int px = 1;
             for (int i = 0; i < idx; i++) px += Math.max(8, Math.min(64, c.hotbarSlot(i).slotW));
             var s = c.hotbarSlot(idx);
@@ -201,6 +201,22 @@ public final class HudLayoutScreen extends Screen {
         } catch (Exception ex) {
             return null;
         }
+    }
+
+    /** 比例缩放因子（与渲染/求解同源;编辑器所有"屏幕像素 ↔ offset"换算共用） */
+    private double solveK() {
+        return HudLayoutSolver.scaleK(layout(), width, height);
+    }
+
+    /** hotbar 槽格的有效缩放 = 组件缩放 × 比例因子（渲染/指示框/命中/槽拖拽四处同式） */
+    private float hotbarK(ComponentLayout c) {
+        return (float) (c.scale * solveK());
+    }
+
+    /** 屏幕位移 → offset 增量（比例模式下 offset 存参考空间值,屏幕上 1px = offset 1/k px） */
+    private int toOffsetDelta(double screenDelta) {
+        double k = solveK();
+        return (int) Math.round(k <= 0.0001 ? screenDelta : screenDelta / k);
     }
 
     // ================= 面板模型 =================
@@ -772,6 +788,25 @@ public final class HudLayoutScreen extends Screen {
             markDirty();
             rebuildWidgets();
         }));
+        // 比例缩放（参考分辨率模式）:同布局在不同逻辑分辨率下构图一致。
+        // 开关恒可见;"以当前屏幕为基准"一键把参考值设为当前屏幕——切换前先校准,布局观感不变
+        panelEntries.add(toggle("z80zhealthbar.editor.scale_mode",
+                () -> layout().scaleMode == 1,
+                v -> {
+                    layout().scaleMode = v ? 1 : 0;
+                    markDirty();
+                }));
+        if (layout().scaleMode == 1) {
+            panelEntries.add(cycler("z80zhealthbar.editor.set_reference",
+                    () -> layout().referenceWidth + "x" + layout().referenceHeight
+                            + " → " + width + "x" + height,
+                    () -> {
+                        layout().referenceWidth = width;
+                        layout().referenceHeight = height;
+                        markDirty();
+                        rebuildWidgets();
+                    }));
+        }
         // 显式保存/放弃（改动后可见;放弃回滚到进入编辑器时）
         if (dirty) {
             panelEntries.add(cycler("z80zhealthbar.editor.save",
@@ -1978,8 +2013,8 @@ public final class HudLayoutScreen extends Screen {
                 v -> {
                     int[] p = hotbarSlotResolved(c, hotbarEditSlot);
                     hsLive.get().offsetX = p != null
-                            ? hsLive.get().offsetX + (int) Math.round(v) - p[0]
-                            : (int) Math.round(v);
+                            ? hsLive.get().offsetX + toOffsetDelta((int) Math.round(v) - p[0])
+                            : toOffsetDelta(Math.round(v));
                 }, -4096, 4096, 1));
         panelEntries.add(stepper("z80zhealthbar.editor.pos_y",
                 () -> {
@@ -1989,8 +2024,8 @@ public final class HudLayoutScreen extends Screen {
                 v -> {
                     int[] p = hotbarSlotResolved(c, hotbarEditSlot);
                     hsLive.get().offsetY = p != null
-                            ? hsLive.get().offsetY + (int) Math.round(v) - p[1]
-                            : (int) Math.round(v);
+                            ? hsLive.get().offsetY + toOffsetDelta((int) Math.round(v) - p[1])
+                            : toOffsetDelta(Math.round(v));
                 }, -4096, 4096, 1));
         panelEntries.add(stepper("z80zhealthbar.editor.hotbar.slot_w",
                 () -> hsLive.get().slotW, v -> hsLive.get().slotW = (int) Math.round(v), 8, 64, 1));
@@ -2389,7 +2424,8 @@ public final class HudLayoutScreen extends Screen {
                     rebuildWidgets();
                 }));
         // 位置 = 解析后屏幕坐标（与拖拽同域;不同锚点/堆叠下不再是"全是 0 却位置不同"的相对偏移）。
-        // 换算:新偏移 = 旧偏移 + (目标绝对值 − 当前解析值);求解不可用回退直接写偏移
+        // 换算:新偏移 = 旧偏移 + (目标绝对值 − 当前解析值)÷k（比例模式下 offset 存参考空间）;
+        // 求解不可用回退直接写偏移（同样过 ÷k,屏幕值当 offset 会错位）
         panelEntries.add(stepper("z80zhealthbar.editor.pos_x",
                 () -> {
                     int[] p = resolvedPos(selected);
@@ -2398,7 +2434,8 @@ public final class HudLayoutScreen extends Screen {
                 v -> {
                     int[] p = resolvedPos(selected);
                     applyDrag(selected,
-                            p != null ? dragStartX(selected) + (int) Math.round(v) - p[0] : (int) Math.round(v),
+                            p != null ? dragStartX(selected) + toOffsetDelta((int) Math.round(v) - p[0])
+                                    : toOffsetDelta(Math.round(v)),
                             dragStartY(selected));
                 }, -4096, 4096, 1));
         panelEntries.add(stepper("z80zhealthbar.editor.pos_y",
@@ -2409,7 +2446,8 @@ public final class HudLayoutScreen extends Screen {
                 v -> {
                     int[] p = resolvedPos(selected);
                     applyDrag(selected, dragStartX(selected),
-                            p != null ? dragStartY(selected) + (int) Math.round(v) - p[1] : (int) Math.round(v));
+                            p != null ? dragStartY(selected) + toOffsetDelta((int) Math.round(v) - p[1])
+                                    : toOffsetDelta(Math.round(v)));
                 }, -4096, 4096, 1));
         panelEntries.add(stepper1("z80zhealthbar.editor.component_scale",
                 () -> c.scale, v -> c.scale = v, 0.5, 2.0, 0.1));
@@ -2952,12 +2990,12 @@ public final class HudLayoutScreen extends Screen {
                 int color = isSel ? 0x8040FF40 : 0x50FFFFFF;
                 graphics.renderOutline(box.x() - 1, box.y() - 1, box.width() + 2, box.height() + 2, color);
                 // hotbar:槽格指示（仅选中该组件时画）——中性暗框,当前编辑槽青色高亮;
-                // 坐标乘组件 scale 保证与放大/缩小后的渲染对齐（旧版绿色 + 未乘 scale = "显示错误"观感）
+                // 坐标乘组件 scale（×比例 k）保证与放大/缩小后的渲染对齐（旧版绿色 + 未乘 scale = "显示错误"观感）
                 String boxKey = e.getKey();
                 if (isSel && !boxKey.contains(".") && HudLayoutConfig.HOTBAR.equals(
                         HudLayoutConfig.typeOf(boxKey, layout().peek(boxKey)))) {
                     var hbC = layout().peek(boxKey);
-                    float k = hbC == null ? 1f : (float) hbC.scale;
+                    float k = hbC == null ? 1f : hotbarK(hbC);
                     int pitch = 1;
                     for (int si = 0; si < 9; si++) {
                         var sl = hbC == null ? null : hbC.hotbarSlot(si);
@@ -3409,7 +3447,7 @@ public final class HudLayoutScreen extends Screen {
             if (hbComp.modeParsed() == HudLayoutConfig.ComponentMode.OFF) continue;
             var hbBox = boxes.get(ce.getKey());
             if (hbBox == null) continue;
-            float k = (float) hbComp.scale;
+            float k = hotbarK(hbComp);
             int pitch = 1;
             for (int si = 0; si < 9; si++) {
                 var sl = hbComp.hotbarSlot(si);
@@ -3568,16 +3606,18 @@ public final class HudLayoutScreen extends Screen {
             int dx = (int) mouseX - draggingX;
             int dy = (int) mouseY - draggingY;
             if (dragBoxValid) {
-                // 目标左上角先钳制在屏幕内,再换算成 offset 增量——求解器会把盒体钳制到屏幕,
-                // 若继续按鼠标累积偏移,拖出边缘后回拖会出现"鼠标动了组件不动"的死区
+                // 目标左上角先钳制在屏幕内,再换算成 offset 增量（÷k:比例模式下 offset 存参考空间）
+                // ——求解器会把盒体钳制到屏幕,若继续按鼠标累积偏移,拖出边缘后回拖会出现
+                // "鼠标动了组件不动"的死区
                 int maxX = Math.max(0, width - dragBoxW);
                 int maxY = Math.max(0, height - dragBoxH);
                 int targetX = Math.max(0, Math.min(dragBoxX + dx, maxX));
                 int targetY = Math.max(0, Math.min(dragBoxY + dy, maxY));
-                applyDrag(selected, dragStartOffX + targetX - dragBoxX,
-                        dragStartOffY + targetY - dragBoxY);
+                applyDrag(selected, dragStartOffX + toOffsetDelta(targetX - dragBoxX),
+                        dragStartOffY + toOffsetDelta(targetY - dragBoxY));
             } else {
-                applyDrag(selected, dragStartOffX + dx, dragStartOffY + dy);
+                applyDrag(selected, dragStartOffX + toOffsetDelta(dx),
+                        dragStartOffY + toOffsetDelta(dy));
             }
             return true;
         }
@@ -3651,7 +3691,8 @@ public final class HudLayoutScreen extends Screen {
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
         if (!editingCustom()) return super.keyPressed(keyCode, scanCode, modifiers);
-        int step = Screen.hasShiftDown() ? 10 : 1;
+        // 步长按屏幕像素定义（÷k 换算回 offset 空间:k<1 时 offset+1 会被取整吞掉,按键"没反应"）
+        int step = toOffsetDelta(Screen.hasShiftDown() ? 10 : 1);
         // 标脏只在真正微调时——此前置于 switch 之前,任何按键（含 Esc/Tab/字母）都标脏,
         // 导致"没改任何东西按 Esc 也弹未保存确认页"
         switch (keyCode) {

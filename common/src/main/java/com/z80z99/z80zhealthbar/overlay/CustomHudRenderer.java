@@ -58,6 +58,8 @@ public final class CustomHudRenderer {
         Map<String, HudLayoutSolver.Box> boxes = HudLayoutSolver.solve(layout, sizes, screenW, screenH);
         // 每帧一致（配置/模式不变时结果不变）,循环外算一次
         boolean hideStatusBars = HudVisibility.shouldHideStatusBars();
+        // 比例缩放因子：与 solve() 同源（盒体尺寸已含 k,绘制内容须同乘才不与盒体错位）
+        double K = HudLayoutSolver.scaleK(layout, screenW, screenH);
 
         for (Map.Entry<String, HudLayoutSolver.Box> entry : boxes.entrySet()) {
             String key = entry.getKey();
@@ -88,19 +90,19 @@ public final class CustomHudRenderer {
             }
             try {
                 if (isText) {
-                    // 分离文本元素：独立定位（缩放 = 组件缩放 × 文本缩放;模板优先于默认文本）
-                    float s = (float) (c.scale * c.textScale);
+                    // 分离文本元素：独立定位（缩放 = 组件缩放 × 文本缩放 × 比例;模板优先于默认文本）
+                    float s = (float) (c.scale * c.textScale * K);
                     graphics.pose().scale(s, s, 1f);
                     String t = componentText(base, player);
                     if (t != null) graphics.drawString(mc.font, t, 0, 0, 0xFFFFFFFF, true);
                 } else if (isIcon) {
-                    // 分离图标元素：独立定位（缩放 = 组件缩放 × 图标缩放）
-                    float s = (float) (c.scale * c.iconScale);
+                    // 分离图标元素：独立定位（缩放 = 组件缩放 × 图标缩放 × 比例）
+                    float s = (float) (c.scale * c.iconScale * K);
                     graphics.pose().scale(s, s, 1f);
                     int[] uv = iconUV(base, player);
                     if (uv != null) drawComponentIcon(graphics, c, 0, 0, 9, uv[0], uv[1]);
                 } else {
-                    float scale = (float) c.scale;
+                    float scale = (float) (c.scale * K);
                     graphics.pose().scale(scale, scale, 1f);
                     // 类型分发（typeOf：显式 type > 键名 '#' 前段）——同一类型可有多实例（health#2）,
                     // 并支持原子组件（纯文本/纯图标/自由文本）,全部可自由增删组合

@@ -931,5 +931,9 @@
   "z80zhealthbar.editor.datasource.probe_other": "另一个探测会话仍在后台运行（%s）",
   "z80zhealthbar.hud.hideCreative": "创造/旁观隐藏状态条",
   "z80zhealthbar.hud.hideCreative.tooltip": "与原版一致:创造和旁观模式下不显示生命/饥饿/氧气/护甲/经验与兼容状态条（口渴等）。坐骑生命、快捷栏、坐标等信息组件保留。",
-  "z80zhealthbar.editor.creative_hidden_note": "提示：已开启「创造/旁观隐藏状态条」，这些状态条在游戏内创造模式下不会显示（编辑器预览始终显示，便于编辑）。"
+  "z80zhealthbar.editor.creative_hidden_note": "提示：已开启「创造/旁观隐藏状态条」，这些状态条在游戏内创造模式下不会显示（编辑器预览始终显示，便于编辑）。",
+  "z80zhealthbar.editor.scale_mode": "比例缩放（分辨率适配）",
+  "z80zhealthbar.editor.scale_mode.tooltip": "以基准分辨率设计布局,其它分辨率按比例缩放位置与大小——改 GUI 缩放/换屏幕/拉伸窗口时构图保持一致。固定像素模式（默认）下偏移与尺寸按绝对像素解释。",
+  "z80zhealthbar.editor.set_reference": "以当前屏幕为基准",
+  "z80zhealthbar.editor.set_reference.tooltip": "把参考分辨率设为当前屏幕尺寸。建议在开启比例缩放前先点此行校准——当前布局观感不变,之后其它分辨率按此基准等比缩放。"
 }
