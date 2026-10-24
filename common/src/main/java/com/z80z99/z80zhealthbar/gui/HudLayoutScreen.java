@@ -69,6 +69,11 @@ public final class HudLayoutScreen extends Screen {
     private int dragBoxX, dragBoxY, dragBoxW, dragBoxH;
     private boolean dragBoxValid;
     private boolean dragging;
+    /** 整组拖拽快照:成员键 → {起始 offsetX, offsetY}。拖主组件且其有分组时填充,松手清空;
+     *  拖子元素(.text/.icon)不启用——避免"拽个标签整组飞" */
+    private java.util.Map<String, int[]> groupDragStart;
+    /** 组选择页目标组件（按 baseKey 存,防 rebuild 引用失效;沿用 modPickSourceId 模式） */
+    private String groupPickKey = "";
 
     /** 长条样式：预览中选中的条 + 拖拽状态（BarLayouts.KEYS 之一） */
     private String selectedAsteorBar;
@@ -225,7 +230,7 @@ public final class HudLayoutScreen extends Screen {
     private record PW(AbstractWidget widget, int relX) {}
 
     /** 面板页：LIST = 清单+全局操作;EDIT = 对象参数页;ADD = 类型选择;GROUP = 分组成员;SUB_TEXT/SUB_ICON = 子组件页 */
-    private enum PanelPage { LIST, EDIT, ADD, GROUP, SUB_TEXT, SUB_ICON, HOTBAR_SLOT, DATASOURCE_LIST, DATASOURCE_TYPE, DATASOURCE_MODPICK, SCAN_CLASS, SCAN_MEMBERS }
+    private enum PanelPage { LIST, EDIT, ADD, GROUP, GROUP_PICK, SUB_TEXT, SUB_ICON, HOTBAR_SLOT, DATASOURCE_LIST, DATASOURCE_TYPE, DATASOURCE_MODPICK, SCAN_CLASS, SCAN_MEMBERS }
 
     private PanelPage panelPage = PanelPage.LIST;
     /** 上次构建面板时的页面（用于检测换页并重置滚动） */
@@ -563,6 +568,7 @@ public final class HudLayoutScreen extends Screen {
         switch (panelPage) {
             case ADD -> buildAddPage();
             case GROUP -> buildGroupPage();
+            case GROUP_PICK -> buildGroupPickPage();
             case SUB_TEXT -> buildSubText();
             case SUB_ICON -> buildSubIcon();
             case HOTBAR_SLOT -> buildHotbarSlotPage();
@@ -2425,7 +2431,8 @@ public final class HudLayoutScreen extends Screen {
                 }));
         // 位置 = 解析后屏幕坐标（与拖拽同域;不同锚点/堆叠下不再是"全是 0 却位置不同"的相对偏移）。
         // 换算:新偏移 = 旧偏移 + (目标绝对值 − 当前解析值)÷k（比例模式下 offset 存参考空间）;
-        // 求解不可用回退直接写偏移（同样过 ÷k,屏幕值当 offset 会错位）
+        // 求解不可用回退直接写偏移（同样过 ÷k,屏幕值当 offset 会错位）。
+        // 选中主组件有分组时增量施加给全组（步进器显示的是选中件的解析坐标,组员同 delta 跟随）
         panelEntries.add(stepper("z80zhealthbar.editor.pos_x",
                 () -> {
                     int[] p = resolvedPos(selected);
@@ -2433,10 +2440,8 @@ public final class HudLayoutScreen extends Screen {
                 },
                 v -> {
                     int[] p = resolvedPos(selected);
-                    applyDrag(selected,
-                            p != null ? dragStartX(selected) + toOffsetDelta((int) Math.round(v) - p[0])
-                                    : toOffsetDelta(Math.round(v)),
-                            dragStartY(selected));
+                    int dXo = p != null ? toOffsetDelta((int) Math.round(v) - p[0]) : toOffsetDelta(Math.round(v));
+                    applyMoveX(selected, dXo);
                 }, -4096, 4096, 1));
         panelEntries.add(stepper("z80zhealthbar.editor.pos_y",
                 () -> {
@@ -2445,9 +2450,8 @@ public final class HudLayoutScreen extends Screen {
                 },
                 v -> {
                     int[] p = resolvedPos(selected);
-                    applyDrag(selected, dragStartX(selected),
-                            p != null ? dragStartY(selected) + toOffsetDelta((int) Math.round(v) - p[1])
-                                    : toOffsetDelta(Math.round(v)));
+                    int dYo = p != null ? toOffsetDelta((int) Math.round(v) - p[1]) : toOffsetDelta(Math.round(v));
+                    applyMoveY(selected, dYo);
                 }, -4096, 4096, 1));
         panelEntries.add(stepper1("z80zhealthbar.editor.component_scale",
                 () -> c.scale, v -> c.scale = v, 0.5, 2.0, 0.1));
@@ -2707,25 +2711,132 @@ public final class HudLayoutScreen extends Screen {
                 () -> layout().resetComponent(key)));
     }
 
-    /** 分组开关行：未分组 → 并入既有组/新建Component.translatable("z80zhealthbar.editor.group.default_name").getString();已分组 → 移出 */
+    /** 分组行：打开组选择页（既有组列表 + 新建组 + 移出）——旧版"并入第一个既有组/建默认组"
+     *  无法手工建出第二组（用户实测"不能分多组"）。值文本 = 选择分组…/当前组名 */
     private PEntry groupToggleRow(ComponentLayout c) {
         return cycler("z80zhealthbar.editor.toggle_group",
                 () -> (c.group == null || c.group.isBlank())
-                        ? Component.translatable("z80zhealthbar.editor.join_group").getString()
-                        : Component.translatable("z80zhealthbar.editor.leave_group").getString(),
+                        ? Component.translatable("z80zhealthbar.editor.group.pick").getString()
+                        : c.group,
                 () -> {
-                    if (c.group == null || c.group.isBlank()) {
-                        // 新成员并入含多个组件的既有组需先在组页操作;此处直接建组/加入唯一组
-                        String existing = ConfigManager.getConfig().hudLayout.components.values().stream()
-                                .map(cc -> cc == null ? "" : cc.group)
-                                .filter(g -> g != null && !g.isBlank()).findFirst().orElse("");
-                        c.group = existing.isBlank() ? Component.translatable("z80zhealthbar.editor.group.default_name").getString() : existing;
-                    } else {
-                        c.group = "";
-                    }
-                    panelPage = PanelPage.LIST;
+                    groupPickKey = baseKey(selected);
+                    panelPage = PanelPage.GROUP_PICK;
                     rebuildWidgets();
                 });
+    }
+
+    /** 组选择页：移出（已分组时）/ 新建组（唯一名）/ 既有组列表点击并入 → 跳组页（可改名） */
+    private void buildGroupPickPage() {
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.group_pick_back").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    panelPage = PanelPage.EDIT;
+                    rebuildWidgets();
+                }));
+        var target = layout().peek(groupPickKey);
+        if (target == null) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.datasource.missing"));
+            return;
+        }
+        panelEntries.add(new PEntry(null, "z80zhealthbar.editor.selected_component",
+                () -> displayNameOf(groupPickKey)));
+        if (target.group != null && !target.group.isBlank()) {
+            panelEntries.add(listRow(
+                    () -> Component.translatable("z80zhealthbar.editor.leave_group").getString(),
+                    "z80zhealthbar.editor.adjust", () -> {
+                        target.group = "";
+                        markDirty();
+                        panelPage = PanelPage.EDIT;
+                        rebuildWidgets();
+                    }));
+        }
+        // 既有组（组名 + 成员数;目标已在的组也列出——点它等于留在原组,无害）
+        Map<String, Integer> groups = new LinkedHashMap<>();
+        for (Map.Entry<String, ComponentLayout> e : layout().components.entrySet()) {
+            if (e.getKey().endsWith(".text") || e.getKey().endsWith(".icon")) continue;
+            String g = e.getValue() == null || e.getValue().group == null ? "" : e.getValue().group;
+            if (!g.isBlank()) groups.merge(g, 1, Integer::sum);
+        }
+        if (!groups.isEmpty()) {
+            panelEntries.add(new PEntry("z80zhealthbar.editor.group_pick_existing", null, null));
+            for (Map.Entry<String, Integer> g : groups.entrySet()) {
+                String gn = g.getKey();
+                panelEntries.add(listRow(() -> gn + " (" + groups.get(gn) + ")",
+                        "z80zhealthbar.editor.adjust", () -> {
+                            target.group = gn;
+                            currentGroup = gn;
+                            markDirty();
+                            panelPage = PanelPage.GROUP;
+                            rebuildWidgets();
+                        }));
+            }
+        }
+        // 新建组：唯一名（组 1/组 2…;进组页可直接改名）
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.group_new").getString(),
+                "z80zhealthbar.editor.add", () -> {
+                    java.util.Set<String> taken = new java.util.HashSet<>(groups.keySet());
+                    String name = HudLayoutConfig.nextFreeName(taken,
+                            n -> Component.translatable("z80zhealthbar.editor.group.auto_name", n).getString());
+                    target.group = name;
+                    currentGroup = name;
+                    markDirty();
+                    panelPage = PanelPage.GROUP;
+                    rebuildWidgets();
+                }));
+    }
+
+    /** 整组拖拽快照：拖主组件且其有分组时,记录同组全部成员的起始 offset（松手清空） */
+    private void snapshotGroupDrag(String key) {
+        groupDragStart = null;
+        if (key == null || key.endsWith(".text") || key.endsWith(".icon")) return;
+        var c = layout().peek(key);
+        String g = c == null || c.group == null ? "" : c.group;
+        if (g.isBlank()) return;
+        var members = HudLayoutConfig.groupMemberKeys(layout(), g);
+        if (members.isEmpty()) return;
+        groupDragStart = new LinkedHashMap<>();
+        for (String m : members) {
+            groupDragStart.put(m, new int[]{dragStartX(m), dragStartY(m)});
+        }
+    }
+
+    /** 对整组成员施加 offset 增量（拖拽路径;起点取快照值） */
+    private void applyGroupDrag(int dXo, int dYo) {
+        if (groupDragStart == null) return;
+        for (var e : groupDragStart.entrySet()) {
+            applyDrag(e.getKey(), e.getValue()[0] + dXo, e.getValue()[1] + dYo);
+        }
+    }
+
+    /** X 轴位移（步进器用）：主组件有分组时扩散到全组,否则单组件（相对当前 offset 加增量） */
+    private void applyMoveX(String key, int dXo) {
+        String g = groupNameOf(key);
+        for (String k : moveTargets(key, g)) applyDrag(k, dragStartX(k) + dXo, dragStartY(k));
+    }
+
+    /** Y 轴位移（步进器用）：同 applyMoveX */
+    private void applyMoveY(String key, int dYo) {
+        String g = groupNameOf(key);
+        for (String k : moveTargets(key, g)) applyDrag(k, dragStartX(k), dragStartY(k) + dYo);
+    }
+
+    /** 键的分组名（子元素/未分组返回空串） */
+    private String groupNameOf(String key) {
+        if (key == null || key.endsWith(".text") || key.endsWith(".icon")) return "";
+        var c = layout().peek(key);
+        return c == null || c.group == null ? "" : c.group;
+    }
+
+    /** 位移目标键集合：有分组 = 全组成员,否则仅自身 */
+    private java.util.List<String> moveTargets(String key, String group) {
+        return group.isBlank() ? java.util.List.of(key)
+                : HudLayoutConfig.groupMemberKeys(layout(), group);
+    }
+
+    /** 选中主组件的分组名（无/子元素返回空串）——方向键/成员高亮共用 */
+    private String selectedGroupName() {
+        return groupNameOf(selected);
     }
 
     /** HudAnchor 循环下一项（面板 cycler 用；底栏 CycleButton 移除后的替代） */
@@ -2987,7 +3098,11 @@ public final class HudLayoutScreen extends Screen {
             for (Map.Entry<String, HudLayoutSolver.Box> e : boxes.entrySet()) {
                 HudLayoutSolver.Box box = e.getValue();
                 boolean isSel = e.getKey().equals(selected);
-                int color = isSel ? 0x8040FF40 : 0x50FFFFFF;
+                // 同组其它成员用暗绿框——整组拖拽/微移时能看见谁会跟着动
+                String selGroup = selectedGroupName();
+                boolean sameGroup = isSel || (!selGroup.isBlank()
+                        && selGroup.equals(groupNameOf(e.getKey())));
+                int color = isSel ? 0x8040FF40 : sameGroup ? 0x5040FF40 : 0x50FFFFFF;
                 graphics.renderOutline(box.x() - 1, box.y() - 1, box.width() + 2, box.height() + 2, color);
                 // hotbar:槽格指示（仅选中该组件时画）——中性暗框,当前编辑槽青色高亮;
                 // 坐标乘组件 scale（×比例 k）保证与放大/缩小后的渲染对齐（旧版绿色 + 未乘 scale = "显示错误"观感）
@@ -3103,6 +3218,7 @@ public final class HudLayoutScreen extends Screen {
             case EDIT -> selected == null ? "" : displayNameOf(selected);
             case ADD -> Component.translatable("z80zhealthbar.editor.pick_component").getString();
             case GROUP -> currentGroup;
+            case GROUP_PICK -> Component.translatable("z80zhealthbar.editor.group_pick_title").getString();
             case SUB_TEXT -> Component.translatable("z80zhealthbar.editor.sub_text").getString();
             case SUB_ICON -> Component.translatable("z80zhealthbar.editor.sub_icon").getString();
             case HOTBAR_SLOT -> Component.translatable("z80zhealthbar.editor.hotbar.slot.fmt",
@@ -3495,6 +3611,7 @@ public final class HudLayoutScreen extends Screen {
                     dragBoxW = sb.width();
                     dragBoxH = sb.height();
                     dragBoxValid = true;
+                    snapshotGroupDrag(selected);
                     panelPage = selected.endsWith(".text") ? PanelPage.SUB_TEXT
                             : selected.endsWith(".icon") ? PanelPage.SUB_ICON : PanelPage.EDIT;
                     rebuildWidgets();
@@ -3518,6 +3635,7 @@ public final class HudLayoutScreen extends Screen {
                 dragBoxW = box.width();
                 dragBoxH = box.height();
                 dragBoxValid = true;
+                snapshotGroupDrag(selected);
                 // 点击组件直达其编辑页;拆分子元素直达对应子组件页
                 panelPage = selected.endsWith(".text") ? PanelPage.SUB_TEXT
                         : selected.endsWith(".icon") ? PanelPage.SUB_ICON
@@ -3605,6 +3723,8 @@ public final class HudLayoutScreen extends Screen {
             markDirty();
             int dx = (int) mouseX - draggingX;
             int dy = (int) mouseY - draggingY;
+            // 整组拖拽:增量算一次,同组成员一起位移（各自 clampPos 钳屏;子元素不启用）
+            boolean groupMove = groupDragStart != null && !selected.contains(".");
             if (dragBoxValid) {
                 // 目标左上角先钳制在屏幕内,再换算成 offset 增量（÷k:比例模式下 offset 存参考空间）
                 // ——求解器会把盒体钳制到屏幕,若继续按鼠标累积偏移,拖出边缘后回拖会出现
@@ -3613,11 +3733,21 @@ public final class HudLayoutScreen extends Screen {
                 int maxY = Math.max(0, height - dragBoxH);
                 int targetX = Math.max(0, Math.min(dragBoxX + dx, maxX));
                 int targetY = Math.max(0, Math.min(dragBoxY + dy, maxY));
-                applyDrag(selected, dragStartOffX + toOffsetDelta(targetX - dragBoxX),
-                        dragStartOffY + toOffsetDelta(targetY - dragBoxY));
+                int dXo = toOffsetDelta(targetX - dragBoxX);
+                int dYo = toOffsetDelta(targetY - dragBoxY);
+                if (groupMove) {
+                    applyGroupDrag(dXo, dYo);
+                } else {
+                    applyDrag(selected, dragStartOffX + dXo, dragStartOffY + dYo);
+                }
             } else {
-                applyDrag(selected, dragStartOffX + toOffsetDelta(dx),
-                        dragStartOffY + toOffsetDelta(dy));
+                int dXo = toOffsetDelta(dx);
+                int dYo = toOffsetDelta(dy);
+                if (groupMove) {
+                    applyGroupDrag(dXo, dYo);
+                } else {
+                    applyDrag(selected, dragStartOffX + dXo, dragStartOffY + dYo);
+                }
             }
             return true;
         }
@@ -3638,6 +3768,7 @@ public final class HudLayoutScreen extends Screen {
         }
         dragging = false;
         dragBoxValid = false;
+        groupDragStart = null;
         hotbarDragSlot = -1;
         hbDragMoved = false;
         draggingAsteorBar = null;
@@ -3695,25 +3826,30 @@ public final class HudLayoutScreen extends Screen {
         int step = toOffsetDelta(Screen.hasShiftDown() ? 10 : 1);
         // 标脏只在真正微调时——此前置于 switch 之前,任何按键（含 Esc/Tab/字母）都标脏,
         // 导致"没改任何东西按 Esc 也弹未保存确认页"
+        // 整组微移:选中主组件有分组时,同组成员一起走（每次按键实时取各成员当前 offset）
+        String groupOf = selectedGroupName();
+        java.util.List<String> moveKeys = groupOf.isBlank()
+                ? java.util.List.of(selected)
+                : HudLayoutConfig.groupMemberKeys(layout(), groupOf);
         switch (keyCode) {
             case org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT -> {
                 markDirty();
-                applyDrag(selected, dragStartX(selected) - step, dragStartY(selected));
+                for (String k : moveKeys) applyDrag(k, dragStartX(k) - step, dragStartY(k));
                 return true;
             }
             case org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT -> {
                 markDirty();
-                applyDrag(selected, dragStartX(selected) + step, dragStartY(selected));
+                for (String k : moveKeys) applyDrag(k, dragStartX(k) + step, dragStartY(k));
                 return true;
             }
             case org.lwjgl.glfw.GLFW.GLFW_KEY_UP -> {
                 markDirty();
-                applyDrag(selected, dragStartX(selected), dragStartY(selected) - step);
+                for (String k : moveKeys) applyDrag(k, dragStartX(k), dragStartY(k) - step);
                 return true;
             }
             case org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN -> {
                 markDirty();
-                applyDrag(selected, dragStartX(selected), dragStartY(selected) + step);
+                for (String k : moveKeys) applyDrag(k, dragStartX(k), dragStartY(k) + step);
                 return true;
             }
         }

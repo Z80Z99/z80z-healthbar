@@ -276,6 +276,31 @@ public class HudLayoutConfig {
     /** 快捷栏槽位组件（hotbar#1..#9,取消原版 hotbar 由本模组重绘;仅 CUSTOM 模式） */
     public static final String HOTBAR = "hotbar";
 
+    /**
+     * 组内主组件键列表（跳过 .text/.icon 子键——它们不是独立 components 键;组名精确匹配）。
+     * 编辑器的整组拖拽快照/位移扩散/成员高亮共用。
+     */
+    public static List<String> groupMemberKeys(HudLayoutConfig layout, String groupName) {
+        List<String> out = new ArrayList<>();
+        if (layout == null || groupName == null || groupName.isBlank()) return out;
+        for (Map.Entry<String, ComponentLayout> e : layout.components.entrySet()) {
+            if (e.getKey().endsWith(".text") || e.getKey().endsWith(".icon")) continue;
+            ComponentLayout c = e.getValue();
+            if (c != null && groupName.equals(c.group)) out.add(e.getKey());
+        }
+        return out;
+    }
+
+    /** 生成不与 taken 冲突的名字：n=1..999 依次取 candidate.apply(n),全冲突时返回 n=999 的候选 */
+    public static String nextFreeName(java.util.Set<String> taken,
+                                      java.util.function.IntFunction<String> candidate) {
+        for (int n = 1; n <= 999; n++) {
+            String c = candidate.apply(n);
+            if (c != null && (taken == null || !taken.contains(c))) return c;
+        }
+        return candidate.apply(999);
+    }
+
     public Map<String, ComponentLayout> components = defaultComponents();
 
     /** 编辑器悬浮属性面板位置（GUI 坐标；-1 = 默认右上） */
