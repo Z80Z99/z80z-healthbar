@@ -74,6 +74,8 @@ public final class HudLayoutScreen extends Screen {
     private java.util.Map<String, int[]> groupDragStart;
     /** 组选择页目标组件（按 baseKey 存,防 rebuild 引用失效;沿用 modPickSourceId 模式） */
     private String groupPickKey = "";
+    /** 样式详情页当前样式名（同 currentGroup 模式） */
+    private String styleDetailName = "";
 
     /** 长条样式：预览中选中的条 + 拖拽状态（BarLayouts.KEYS 之一） */
     private String selectedAsteorBar;
@@ -230,7 +232,7 @@ public final class HudLayoutScreen extends Screen {
     private record PW(AbstractWidget widget, int relX) {}
 
     /** 面板页：LIST = 清单+全局操作;EDIT = 对象参数页;ADD = 类型选择;GROUP = 分组成员;SUB_TEXT/SUB_ICON = 子组件页 */
-    private enum PanelPage { LIST, EDIT, ADD, GROUP, GROUP_PICK, SUB_TEXT, SUB_ICON, HOTBAR_SLOT, DATASOURCE_LIST, DATASOURCE_TYPE, DATASOURCE_MODPICK, SCAN_CLASS, SCAN_MEMBERS }
+    private enum PanelPage { LIST, EDIT, ADD, GROUP, GROUP_PICK, STYLE_LIB, STYLE_DETAIL, SUB_TEXT, SUB_ICON, HOTBAR_SLOT, DATASOURCE_LIST, DATASOURCE_TYPE, DATASOURCE_MODPICK, SCAN_CLASS, SCAN_MEMBERS }
 
     private PanelPage panelPage = PanelPage.LIST;
     /** 上次构建面板时的页面（用于检测换页并重置滚动） */
@@ -569,6 +571,8 @@ public final class HudLayoutScreen extends Screen {
             case ADD -> buildAddPage();
             case GROUP -> buildGroupPage();
             case GROUP_PICK -> buildGroupPickPage();
+            case STYLE_LIB -> buildStyleLibPage();
+            case STYLE_DETAIL -> buildStyleDetailPage();
             case SUB_TEXT -> buildSubText();
             case SUB_ICON -> buildSubIcon();
             case HOTBAR_SLOT -> buildHotbarSlotPage();
@@ -813,6 +817,13 @@ public final class HudLayoutScreen extends Screen {
                         rebuildWidgets();
                     }));
         }
+        // 样式库：保存多套布局快照 + 按窗口状态（全屏/最大化/窗口化）自动切换
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.style_lib_entry").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    panelPage = PanelPage.STYLE_LIB;
+                    rebuildWidgets();
+                }));
         // 显式保存/放弃（改动后可见;放弃回滚到进入编辑器时）
         if (dirty) {
             panelEntries.add(cycler("z80zhealthbar.editor.save",
@@ -2795,6 +2806,147 @@ public final class HudLayoutScreen extends Screen {
                 }));
     }
 
+    // ================= 样式库（用户自定义样式 + 窗口状态自动切换,1.0.147） =================
+
+    /** 样式库页：自动切换开关 + 当前状态提示 + 保存当前为新样式 + 样式清单（→ 详情页） */
+    private void buildStyleLibPage() {
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.style_lib_back").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    panelPage = PanelPage.LIST;
+                    rebuildWidgets();
+                }));
+        var ly = layout();
+        panelEntries.add(toggle("z80zhealthbar.editor.style_auto",
+                () -> ly.autoStyleSwitch, v -> ly.autoStyleSwitch = v));
+        // 当前窗口状态 + 生效样式（动态;自动切换开时显示）
+        panelEntries.add(PEntry.dynNote(() -> {
+            var st = com.z80z99.z80zhealthbar.overlay.StyleAutoSwitcher.currentState();
+            String stateText = Component.translatable("z80zhealthbar.editor.style_state."
+                    + st.name().toLowerCase(Locale.ROOT)).getString();
+            String s = Component.translatable("z80zhealthbar.editor.style_current_state",
+                    stateText).getString();
+            if (ly.autoStyleSwitch) {
+                String bound = com.z80z99.z80zhealthbar.overlay.StyleAutoSwitcher.boundStyleName(ly, st);
+                s += " §7" + Component.translatable("z80zhealthbar.editor.style_effective",
+                        bound.isBlank() ? Component.translatable("z80zhealthbar.editor.style_none").getString()
+                                : bound).getString();
+            }
+            return s;
+        }));
+        // 保存当前布局为新样式（唯一名;进详情页可改名/绑定）
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.style_save_new").getString(),
+                "z80zhealthbar.editor.add", () -> {
+                    if (ly.userStyles == null) ly.userStyles = new java.util.ArrayList<>();
+                    if (ly.userStyles.size() >= 20) return; // 上限保护(validator 同步)
+                    java.util.Set<String> taken = new java.util.HashSet<>();
+                    for (var st : ly.userStyles) if (st != null) taken.add(st.name);
+                    var style = new HudLayoutConfig.UserStyle();
+                    style.name = HudLayoutConfig.nextFreeName(taken,
+                            n -> Component.translatable("z80zhealthbar.editor.style.auto_name", n).getString());
+                    com.z80z99.z80zhealthbar.overlay.StyleAutoSwitcher.saveLiveToStyle(ly, style);
+                    ly.userStyles.add(style);
+                    styleDetailName = style.name;
+                    markDirty();
+                    panelPage = PanelPage.STYLE_DETAIL;
+                    rebuildWidgets();
+                }));
+        if (ly.userStyles == null || ly.userStyles.isEmpty()) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.style_empty"));
+            return;
+        }
+        for (var st : ly.userStyles) {
+            if (st == null) continue;
+            final String name = st.name;
+            panelEntries.add(listRow(() -> name + " (" + st.components.size() + ")"
+                            + boundBadges(ly, name),
+                    "z80zhealthbar.editor.adjust", () -> {
+                        styleDetailName = name;
+                        panelPage = PanelPage.STYLE_DETAIL;
+                        rebuildWidgets();
+                    }));
+        }
+    }
+
+    /** 样式被绑定到的窗口状态徽标（如 " · 全屏"） */
+    private String boundBadges(HudLayoutConfig ly, String name) {
+        StringBuilder sb = new StringBuilder();
+        if (name.equals(ly.styleFullscreen)) sb.append(" §b· ").append(Component.translatable(
+                "z80zhealthbar.editor.style_state.fullscreen").getString());
+        if (name.equals(ly.styleMaximized)) sb.append(" §b· ").append(Component.translatable(
+                "z80zhealthbar.editor.style_state.maximized").getString());
+        if (name.equals(ly.styleWindowed)) sb.append(" §b· ").append(Component.translatable(
+                "z80zhealthbar.editor.style_state.windowed").getString());
+        return sb.toString();
+    }
+
+    /** 样式详情页：重命名 + 应用到当前布局 + 三档绑定 + 删除 */
+    private void buildStyleDetailPage() {
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.style_detail_back").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    panelPage = PanelPage.STYLE_LIB;
+                    rebuildWidgets();
+                }));
+        var ly = layout();
+        var style = com.z80z99.z80zhealthbar.overlay.StyleAutoSwitcher.findStyle(ly, styleDetailName);
+        if (style == null) {
+            panelEntries.add(PEntry.note("z80zhealthbar.editor.style_missing"));
+            return;
+        }
+        // 重命名（同步更新三档引用）
+        panelEntries.add(textInput("z80zhealthbar.editor.style_rename",
+                () -> style.name, v -> {
+                    String nv = v.trim();
+                    if (nv.isEmpty() || nv.equals(style.name)) return;
+                    // 引用跟随:三档 slot 引用旧名的改指新名
+                    if (style.name.equals(ly.styleFullscreen)) ly.styleFullscreen = nv;
+                    if (style.name.equals(ly.styleMaximized)) ly.styleMaximized = nv;
+                    if (style.name.equals(ly.styleWindowed)) ly.styleWindowed = nv;
+                    // 撞其它样式名 → 追加序号（validator 同款语义）
+                    for (var st : ly.userStyles) {
+                        if (st != null && st != style && st.name.equals(nv)) { nv = nv + " 2"; break; }
+                    }
+                    style.name = nv;
+                    styleDetailName = nv;
+                    markDirty();
+                }));
+        // 应用到当前布局（深拷载入;Ctrl+Z 可撤——编辑器 undo 监听配置 JSON）
+        panelEntries.add(listRow(
+                () -> Component.translatable("z80zhealthbar.editor.style_apply").getString(),
+                "z80zhealthbar.editor.adjust", () -> {
+                    com.z80z99.z80zhealthbar.overlay.StyleAutoSwitcher.loadStyleToLive(ly, style);
+                    markDirty();
+                    panelPage = PanelPage.LIST;
+                    rebuildWidgets();
+                }));
+        // 三档绑定（多状态可绑同一样式;关 = 仅当指向本样式时清空）
+        panelEntries.add(new PEntry("z80zhealthbar.editor.style_bind_section", null, null));
+        panelEntries.add(toggle("z80zhealthbar.editor.style_bind.fullscreen",
+                () -> style.name.equals(ly.styleFullscreen),
+                v -> ly.styleFullscreen = v ? style.name
+                        : (style.name.equals(ly.styleFullscreen) ? "" : ly.styleFullscreen)));
+        panelEntries.add(toggle("z80zhealthbar.editor.style_bind.maximized",
+                () -> style.name.equals(ly.styleMaximized),
+                v -> ly.styleMaximized = v ? style.name
+                        : (style.name.equals(ly.styleMaximized) ? "" : ly.styleMaximized)));
+        panelEntries.add(toggle("z80zhealthbar.editor.style_bind.windowed",
+                () -> style.name.equals(ly.styleWindowed),
+                v -> ly.styleWindowed = v ? style.name
+                        : (style.name.equals(ly.styleWindowed) ? "" : ly.styleWindowed)));
+        // 删除（二段确认;清三档引用）
+        panelEntries.add(confirmRow("z80zhealthbar.editor.style_delete", () -> {
+            ly.userStyles.remove(style);
+            if (style.name.equals(ly.styleFullscreen)) ly.styleFullscreen = "";
+            if (style.name.equals(ly.styleMaximized)) ly.styleMaximized = "";
+            if (style.name.equals(ly.styleWindowed)) ly.styleWindowed = "";
+            markDirty();
+            panelPage = PanelPage.STYLE_LIB;
+            rebuildWidgets();
+        }));
+    }
+
     /** 整组拖拽快照：拖主组件、有分组且未开"组内独立移动"时,记录会跟随移动的成员起始
      *  offset（组内独立移动者不进快照;松手清空） */
     private void snapshotGroupDrag(String key) {
@@ -3240,6 +3392,8 @@ public final class HudLayoutScreen extends Screen {
             case ADD -> Component.translatable("z80zhealthbar.editor.pick_component").getString();
             case GROUP -> currentGroup;
             case GROUP_PICK -> Component.translatable("z80zhealthbar.editor.group_pick_title").getString();
+            case STYLE_LIB -> Component.translatable("z80zhealthbar.editor.style_lib_title").getString();
+            case STYLE_DETAIL -> styleDetailName;
             case SUB_TEXT -> Component.translatable("z80zhealthbar.editor.sub_text").getString();
             case SUB_ICON -> Component.translatable("z80zhealthbar.editor.sub_icon").getString();
             case HOTBAR_SLOT -> Component.translatable("z80zhealthbar.editor.hotbar.slot.fmt",

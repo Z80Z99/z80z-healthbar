@@ -336,6 +336,39 @@ public class HudLayoutConfig {
     /** 参考逻辑分辨率高 */
     public int referenceHeight = 540;
 
+    // ===== 用户自定义样式（1.0.147）=====
+    /** 用户保存的样式快照（布局 + 比例缩放设置;上限 20,validator 修剪） */
+    public List<UserStyle> userStyles = new ArrayList<>();
+    /** 按窗口状态自动切换样式（全屏/最大化/窗口化三档;切换为各状态独立记忆——
+     *  切走时当前布局写回该状态绑定的样式,切回时恢复） */
+    public boolean autoStyleSwitch = false;
+    /** 各窗口状态绑定的样式名（空 = 不切换）;由 StyleAutoSwitcher 读写 */
+    public String styleFullscreen = "";
+    public String styleMaximized = "";
+    public String styleWindowed = "";
+
+    /** 一份用户样式 = 布局快照（components 深拷 + 比例缩放设置）。面板位置等编辑器状态不入样式 */
+    public static class UserStyle {
+        public String name = "";
+        public Map<String, ComponentLayout> components = new LinkedHashMap<>();
+        public int scaleMode = 0;
+        public int referenceWidth = 960;
+        public int referenceHeight = 540;
+
+        /** 深拷贝（components 逐项 copy） */
+        public UserStyle copy() {
+            UserStyle s = new UserStyle();
+            s.name = name;
+            s.scaleMode = scaleMode;
+            s.referenceWidth = referenceWidth;
+            s.referenceHeight = referenceHeight;
+            for (Map.Entry<String, ComponentLayout> e : components.entrySet()) {
+                s.components.put(e.getKey(), e.getValue() == null ? new ComponentLayout() : e.getValue().copy());
+            }
+            return s;
+        }
+    }
+
     /** 预设布局标识（编辑器内选择并一键应用） */
     public static final List<String> PRESETS = List.of("MODERN", "CLASSIC", "MINIMAL", "SIDE");
 
@@ -579,6 +612,15 @@ public class HudLayoutConfig {
         c.scaleMode = scaleMode;
         c.referenceWidth = referenceWidth;
         c.referenceHeight = referenceHeight;
+        c.autoStyleSwitch = autoStyleSwitch;
+        c.styleFullscreen = styleFullscreen;
+        c.styleMaximized = styleMaximized;
+        c.styleWindowed = styleWindowed;
+        if (userStyles != null) {
+            for (UserStyle us : userStyles) {
+                c.userStyles.add(us == null ? new UserStyle() : us.copy());
+            }
+        }
         for (Map.Entry<String, ComponentLayout> e : components.entrySet()) {
             c.components.put(e.getKey(), e.getValue() == null ? new ComponentLayout() : e.getValue().copy());
         }

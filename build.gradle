@@ -12,10 +12,10 @@ allprojects {
     apply plugin: 'architectury-plugin'
 
     group = maven_group
-    // 版本号按迭代次数计:patch 位 = 已完成迭代批次数(docs/architecture.md 变更记录条目数,当前 146),
+    // 版本号按迭代次数计:patch 位 = 已完成迭代批次数(docs/architecture.md 变更记录条目数,当前 147),
     // 每完成一次迭代发布 +1。格式 = 纯 X.Y.Z(与本仓库其它项目一致,如 3.3.0/1.4.0/1.1.0),
     // 不再带 MC 版本后缀——MC 版本已体现在 mods.toml 的 versionRange 与仓库定位中
-    version = '1.0.146'
+    version = '1.0.147'
 
     repositories {
         maven { url = 'https://maven.architectury.dev/' }

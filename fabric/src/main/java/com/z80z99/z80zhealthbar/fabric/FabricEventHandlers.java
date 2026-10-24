@@ -35,6 +35,8 @@ public final class FabricEventHandlers {
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // 会话未激活时仅一次布尔判断
             com.z80z99.z80zhealthbar.datasource.ProbeOverlay.tick();
+            // 按窗口状态自动切换用户样式
+            com.z80z99.z80zhealthbar.overlay.StyleAutoSwitcher.tick();
         });
 
         Z80ZHealthBar.LOGGER.info("Fabric event handlers registered");

@@ -264,61 +264,97 @@ public final class ConfigValidator {
         // 历史版本编辑器的读取路径经 get() 误插入过这类键 → 渲染成重复文本/图标,加载时清除
         c.components.keySet().removeIf(k -> k != null && (k.endsWith(".text") || k.endsWith(".icon")));
         for (HudLayoutConfig.ComponentLayout cl : c.components.values()) {
-            if (cl == null) continue;
-            cl.scale = clamp(cl.scale, 0.5, 2.0);
-            cl.spacing = clamp(cl.spacing, 0, 40);
-            cl.barWidth = clamp(cl.barWidth, 40, 400);
-            cl.offsetX = clamp(cl.offsetX, -1000, 1000);
-            cl.offsetY = clamp(cl.offsetY, -1000, 1000);
-            cl.barHeight = clamp(cl.barHeight, 5, 16);
-            // 与编辑器可达范围一致（拖拽 ±1000 / 步进 ±999 / 图标 ±500）——此前收紧到 ±50,
-            // 拆分子件放到 50px 外保存后,下次加载被静默拉回
-            cl.textOffsetX = clamp(cl.textOffsetX, -1000, 1000);
-            cl.textOffsetY = clamp(cl.textOffsetY, -1000, 1000);
-            // 旧配置缺少新字段时 Gson 留下 0（不跑字段初始化器）→ 归位默认 1.0
-            cl.textScale = cl.textScale <= 0 ? 1.0 : clamp(cl.textScale, 0.25, 3.0);
-            cl.iconScale = cl.iconScale <= 0 ? 1.0 : clamp(cl.iconScale, 0.25, 3.0);
-            cl.iconOffsetX = clamp(cl.iconOffsetX, -500, 500);
-            if (cl.hotbarSlots != null) {
-                while (cl.hotbarSlots.size() < 9) cl.hotbarSlots.add(null);
-                while (cl.hotbarSlots.size() > 9) cl.hotbarSlots.remove(cl.hotbarSlots.size() - 1);
-                for (int i = 0; i < 9; i++) {
-                    var hs = cl.hotbarSlots.get(i);
-                    if (hs == null) { hs = new HudLayoutConfig.ComponentLayout.HotbarSlot(); cl.hotbarSlots.set(i, hs); }
-                    hs.offsetX = clamp(hs.offsetX, -500, 500);
-                    hs.offsetY = clamp(hs.offsetY, -500, 500);
-                    hs.slotW = clamp(hs.slotW, 8, 64);
-                    hs.slotH = clamp(hs.slotH, 8, 64);
-                    hs.scale = hs.scale <= 0 ? 1.0 : clamp(hs.scale, 0.25, 4.0);
-                    hs.opacity = clamp(hs.opacity, 0, 100);
-                    // 渐变角一次性迁移:旧 0=垂直 1=水平 2=对角 → 90/0/45 度（-1 = 旧配置未迁移）
-                    hs.gradientAngle = hs.gradientAngle < 0
-                            ? (hs.gradientDir == 1 ? 0 : hs.gradientDir == 2 ? 45 : 90)
-                            : clamp(hs.gradientAngle, 0, 359);
-                    hs.borderStyle = clamp(hs.borderStyle, 0, 3);
-                    hs.idleFadeSecs = clamp(hs.idleFadeSecs, 0, 60);
-                }
-            }
-            cl.iconOffsetY = clamp(cl.iconOffsetY, -500, 500);
-            cl.opacity = clamp(cl.opacity, 0, 100);
-            cl.idleFadeSecs = clamp(cl.idleFadeSecs, 0, 600);
-            cl.rotation = clamp(cl.rotation, -180, 180);
-            // 饱和度显示方式（0=覆盖 1=右追加 2=顶部细条 3=底部细条 4=关闭）：不钳制时
-            // 编辑器的循环行从越界值起跳（存 7 显示"关闭",点一下跳到"底部细条"）
-            cl.saturationMode = clamp(cl.saturationMode, 0, 4);
-            cl.absorptionMode = clamp(cl.absorptionMode, 0, 4);
-            cl.quenchedMode = clamp(cl.quenchedMode, 0, 4);
-            cl.secondMode = clamp(cl.secondMode, 0, 4);
-            if (cl.secondStat == null) cl.secondStat = "";
-            cl.selStyle = clamp(cl.selStyle, 0, 4);
-            cl.selDir = clamp(cl.selDir, 0, 1);
-            cl.selBorder = clamp(cl.selBorder, 0, 3);
-            cl.selSpeedMs = clamp(cl.selSpeedMs, 100, 6000);
-            cl.selLiftPx = clamp(cl.selLiftPx, 0, 8);
-            cl.selFillPct = clamp(cl.selFillPct, 0, 100);
-            cl.selAnim = clamp(cl.selAnim, 0, 2);
-            cl.selAnimMs = clamp(cl.selAnimMs, 80, 600);
+            if (cl != null) validateComponent(cl);
         }
+        validateUserStyles(c);
+    }
+
+    /** 单组件钳制：主布局与用户样式库的 components 共用（手改 JSON 的样式同样被钳制），
+     *  字段范围与编辑器可达范围一致 */
+    static void validateComponent(HudLayoutConfig.ComponentLayout cl) {
+        cl.scale = clamp(cl.scale, 0.5, 2.0);
+        cl.spacing = clamp(cl.spacing, 0, 40);
+        cl.barWidth = clamp(cl.barWidth, 40, 400);
+        cl.offsetX = clamp(cl.offsetX, -1000, 1000);
+        cl.offsetY = clamp(cl.offsetY, -1000, 1000);
+        cl.barHeight = clamp(cl.barHeight, 5, 16);
+        // 与编辑器可达范围一致（拖拽 ±1000 / 步进 ±999 / 图标 ±500）——此前收紧到 ±50,
+        // 拆分子件放到 50px 外保存后,下次加载被静默拉回
+        cl.textOffsetX = clamp(cl.textOffsetX, -1000, 1000);
+        cl.textOffsetY = clamp(cl.textOffsetY, -1000, 1000);
+        // 旧配置缺少新字段时 Gson 留下 0（不跑字段初始化器）→ 归位默认 1.0
+        cl.textScale = cl.textScale <= 0 ? 1.0 : clamp(cl.textScale, 0.25, 3.0);
+        cl.iconScale = cl.iconScale <= 0 ? 1.0 : clamp(cl.iconScale, 0.25, 3.0);
+        cl.iconOffsetX = clamp(cl.iconOffsetX, -500, 500);
+        if (cl.hotbarSlots != null) {
+            while (cl.hotbarSlots.size() < 9) cl.hotbarSlots.add(null);
+            while (cl.hotbarSlots.size() > 9) cl.hotbarSlots.remove(cl.hotbarSlots.size() - 1);
+            for (int i = 0; i < 9; i++) {
+                var hs = cl.hotbarSlots.get(i);
+                if (hs == null) { hs = new HudLayoutConfig.ComponentLayout.HotbarSlot(); cl.hotbarSlots.set(i, hs); }
+                hs.offsetX = clamp(hs.offsetX, -500, 500);
+                hs.offsetY = clamp(hs.offsetY, -500, 500);
+                hs.slotW = clamp(hs.slotW, 8, 64);
+                hs.slotH = clamp(hs.slotH, 8, 64);
+                hs.scale = hs.scale <= 0 ? 1.0 : clamp(hs.scale, 0.25, 4.0);
+                hs.opacity = clamp(hs.opacity, 0, 100);
+                // 渐变角一次性迁移:旧 0=垂直 1=水平 2=对角 → 90/0/45 度（-1 = 旧配置未迁移）
+                hs.gradientAngle = hs.gradientAngle < 0
+                        ? (hs.gradientDir == 1 ? 0 : hs.gradientDir == 2 ? 45 : 90)
+                        : clamp(hs.gradientAngle, 0, 359);
+                hs.borderStyle = clamp(hs.borderStyle, 0, 3);
+                hs.idleFadeSecs = clamp(hs.idleFadeSecs, 0, 60);
+            }
+        }
+        cl.iconOffsetY = clamp(cl.iconOffsetY, -500, 500);
+        cl.opacity = clamp(cl.opacity, 0, 100);
+        cl.idleFadeSecs = clamp(cl.idleFadeSecs, 0, 600);
+        cl.rotation = clamp(cl.rotation, -180, 180);
+        // 饱和度显示方式（0=覆盖 1=右追加 2=顶部细条 3=底部细条 4=关闭）：不钳制时
+        // 编辑器的循环行从越界值起跳（存 7 显示"关闭",点一下跳到"底部细条"）
+        cl.saturationMode = clamp(cl.saturationMode, 0, 4);
+        cl.absorptionMode = clamp(cl.absorptionMode, 0, 4);
+        cl.quenchedMode = clamp(cl.quenchedMode, 0, 4);
+        cl.secondMode = clamp(cl.secondMode, 0, 4);
+        if (cl.secondStat == null) cl.secondStat = "";
+        cl.selStyle = clamp(cl.selStyle, 0, 4);
+        cl.selDir = clamp(cl.selDir, 0, 1);
+        cl.selBorder = clamp(cl.selBorder, 0, 3);
+        cl.selSpeedMs = clamp(cl.selSpeedMs, 100, 6000);
+        cl.selLiftPx = clamp(cl.selLiftPx, 0, 8);
+        cl.selFillPct = clamp(cl.selFillPct, 0, 100);
+        cl.selAnim = clamp(cl.selAnim, 0, 2);
+        cl.selAnimMs = clamp(cl.selAnimMs, 80, 600);
+    }
+
+    /** 用户样式库清理：空样式删除;上限 20 按索引修剪;名字 trim/补默认/唯一化;
+     *  样式内组件走与主布局同一套钳制;悬空 slot 引用置空 */
+    private static void validateUserStyles(HudLayoutConfig c) {
+        if (c.userStyles == null) { c.userStyles = new java.util.ArrayList<>(); return; }
+        java.util.Iterator<HudLayoutConfig.UserStyle> it = c.userStyles.iterator();
+        java.util.Set<String> names = new java.util.HashSet<>();
+        int idx = 0;
+        while (it.hasNext()) {
+            var st = it.next();
+            if (st == null || st.components == null || st.components.isEmpty()) { it.remove(); continue; }
+            if (idx++ >= 20) { it.remove(); continue; }
+            st.name = st.name == null ? "" : st.name.trim();
+            if (st.name.isEmpty()) st.name = HudLayoutConfig.nextFreeName(names, n -> "样式" + n);
+            while (!names.add(st.name)) st.name = st.name + " 2";
+            st.scaleMode = clamp(st.scaleMode, 0, 1);
+            st.referenceWidth = st.referenceWidth <= 0 ? 960 : clamp(st.referenceWidth, 320, 3840);
+            st.referenceHeight = st.referenceHeight <= 0 ? 540 : clamp(st.referenceHeight, 240, 2160);
+            st.components.keySet().removeIf(k -> k != null && (k.endsWith(".text") || k.endsWith(".icon")));
+            for (HudLayoutConfig.ComponentLayout cl : st.components.values()) {
+                if (cl != null) validateComponent(cl);
+            }
+        }
+        if (c.styleFullscreen == null) c.styleFullscreen = "";
+        if (c.styleMaximized == null) c.styleMaximized = "";
+        if (c.styleWindowed == null) c.styleWindowed = "";
+        if (!c.styleFullscreen.isBlank() && !names.contains(c.styleFullscreen)) c.styleFullscreen = "";
+        if (!c.styleMaximized.isBlank() && !names.contains(c.styleMaximized)) c.styleMaximized = "";
+        if (!c.styleWindowed.isBlank() && !names.contains(c.styleWindowed)) c.styleWindowed = "";
     }
 
     private static void validateVisibility(VisibilityConfig c) {

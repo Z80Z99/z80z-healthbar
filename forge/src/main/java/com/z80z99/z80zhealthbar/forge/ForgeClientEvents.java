@@ -85,6 +85,8 @@ public final class ForgeClientEvents {
         public static void onClientTick(net.minecraftforge.event.TickEvent.ClientTickEvent event) {
             if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
             com.z80z99.z80zhealthbar.datasource.ProbeOverlay.tick();
+            // 按窗口状态自动切换用户样式（会话未激活时仅几次布尔判断）
+            com.z80z99.z80zhealthbar.overlay.StyleAutoSwitcher.tick();
         }
     }
 }
