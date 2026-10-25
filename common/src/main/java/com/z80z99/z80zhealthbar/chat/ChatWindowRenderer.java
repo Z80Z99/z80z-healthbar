@@ -33,9 +33,13 @@ public final class ChatWindowRenderer {
     private static float scroll, scrollTarget;
     /** 本帧行布局（命中测试用;仅 screen 打开时填充） */
     private static final List<HitLine> HIT = new ArrayList<>();
-    private record HitLine(float x, float y, FormattedCharSequence fcs, int msgAdded) {}
-    /** 聊天界面打开时刻（弹出动画;ChatWindowScreen.init 设置） */
-    public static long openedAt;
+    private record HitLine(float x, float y, FormattedCharSequence fcs, int msgTick) {}
+    /** 聊天界面打开时刻（Gui tick 基准;ChatWindowScreen.init 设置） */
+    public static int openedAt;
+    /** 标题栏文案缓存（translatable 每帧分配 → 静态化,语言切换后不刷新可接受） */
+    private static String dragHintCache = "";
+    /** 本帧内容宽（wrap 缓存键,render 开头更新一次——wrap 内不再各自 resolveRect） */
+    private static int cachedInnerW = 274;
 
     /** 窗口矩形（含 scale 变换前的屏幕坐标） */
     public static int[] rect() {
@@ -58,11 +62,20 @@ public final class ChatWindowRenderer {
         return mx >= r[0] && my >= r[1] && mx <= r[0] + r[2] * s && my <= r[1] + r[3] * s;
     }
 
+    /** 滚动（行单位;0=底部最新）。滚轮向上 delta>0 → 向更早翻 → scroll 增大。
+     *  上限 = 总行数-每页行数（超过后底部留白;旧实现 total-1 会多滚一屏空白）。 */
     public static void onScroll(double delta) {
+        int max = maxScrollLines();
+        scrollTarget = Math.max(0, Math.min(max, scrollTarget + (float) delta));
+    }
+
+    private static int maxScrollLines() {
         var all = ChatWindowManager.allMessages();
         int total = 0;
         for (var m : all) total += wrap(m).size();
-        scrollTarget = Math.max(0, Math.min(Math.max(0, total - 1), scrollTarget - (float) delta));
+        int page = ChatWindowManager.linesPerPage(ChatWindowManager.cfg(),
+                rect()[3] - (net.minecraft.client.Minecraft.getInstance().screen instanceof com.z80z99.z80zhealthbar.gui.ChatWindowScreen ? 11 : 0));
+        return Math.max(0, total - page);
     }
 
     /** 新消息到达时目标滚动保持底部(0) */
@@ -74,8 +87,7 @@ public final class ChatWindowRenderer {
     private static List<FormattedCharSequence> wrap(GuiMessage msg) {
         var mc = Minecraft.getInstance();
         Font font = mc.font;
-        int innerW = rect()[2] - ChatWindowManager.PAD * 2;
-        innerW = Math.max(20, innerW);
+        int innerW = cachedInnerW;
         Wrap w = WRAP.get(msg);
         if (w == null || w.width() != innerW) {
             w = new Wrap(innerW, font.split(msg.content(), innerW));
@@ -91,15 +103,16 @@ public final class ChatWindowRenderer {
         var mc = Minecraft.getInstance();
         if (!ChatWindowManager.takeover()) return;
         var c = ChatWindowManager.cfg();
-        var all = ChatWindowManager.oldestFirst(ChatWindowManager.allMessages());
+        var all = ChatWindowManager.allMessages(); // 新→旧;渲染按倒序索引直接自底向上堆,不再每帧拷贝反转
         if (all.isEmpty() && !chatOpen) return;
-        long now = System.currentTimeMillis();
+        int now = mc.gui.getGuiTicks();
+        cachedInnerW = Math.max(20, rect()[2] - ChatWindowManager.PAD * 2);
 
         int[] r = rect();
         float s = (float) c.scale;
 
         // 整窗 alpha（静默淡出）× 弹出动画
-        long newest = all.isEmpty() ? 0 : all.get(all.size() - 1).addedTime();
+        int newest = all.isEmpty() ? 0 : all.get(0).addedTime(); // allMessages[0] = 最新
         float winA = ChatWindowManager.windowAlpha(c, newest, now);
         float[] pop = ChatWindowManager.popAnim(c, openedAt, now);
         if (chatOpen) winA *= pop[1];
@@ -125,8 +138,9 @@ public final class ChatWindowRenderer {
         if (chatOpen) {
             headerH = 11;
             g.fill(0, 0, r[2], headerH, ((int) (0x90 * winA) << 24) | 0x1B2836);
-            String drag = "≡ " + net.minecraft.network.chat.Component.translatable(
-                    "z80zhealthbar.chat.drag_hint").getString();
+            if (dragHintCache.isEmpty()) dragHintCache = "≡ " + net.minecraft.network.chat.Component
+                    .translatable("z80zhealthbar.chat.drag_hint").getString();
+            String drag = dragHintCache;
             mc.font.drawInBatch(drag, 4, 2, 0xCFE6FF, true,
                     pose.last().pose(), g.bufferSource(), Font.DisplayMode.NORMAL, 0, 0xF000F0);
             // 缩放角标（右下 7x7 三角示意）
@@ -152,11 +166,11 @@ public final class ChatWindowRenderer {
         float skip = scroll; // 顶部跳过的行数(滚动向上=显示更早)
         // 从最新往旧堆;skip>0 表示顶部(最旧可见端)再跳过 skip 行 → 等效整体下移
         yCursor += (int) (skip * ChatWindowManager.LINE_H);
-        int msgIdx = all.size() - 1;
+        int msgIdx = 0; // all 为新→旧:索引 0 = 最新,自底向上堆
         HIT.clear();
         var lm = chatOpen ? ChatWindowRenderer.toLocal(mouseX, mouseY) : null;
-        while (msgIdx >= 0 && yCursor > headerH) {
-            GuiMessage m = all.get(msgIdx--);
+        while (msgIdx < all.size() && yCursor > headerH) {
+            GuiMessage m = all.get(msgIdx++);
             var lines = wrap(m);
             for (int li = lines.size() - 1; li >= 0; li--) {
                 if (yCursor - ChatWindowManager.LINE_H < headerH) break;
@@ -190,9 +204,9 @@ public final class ChatWindowRenderer {
             float frac = pageLines / (float) totalLines;
             int trackTop = headerH + 1, trackBottom = r[3] - 2;
             int thumbH = Math.max(10, (int) ((trackBottom - trackTop) * frac));
-            float maxScroll = totalLines - pageLines;
+            float maxScroll = Math.max(1f, totalLines - pageLines);
             int thumbY = trackTop + (int) ((trackBottom - trackTop - thumbH)
-                    * Math.min(1f, scroll / Math.max(1f, maxScroll)));
+                    * Math.min(1f, scroll / maxScroll));
             g.fill(r[2] - 3, thumbY, r[2] - 1, thumbY + thumbH, ((int) (0xA0 * winA) << 24) | 0x7FD4FF);
         }
 

@@ -58,7 +58,7 @@ public class ChatWindowScreen extends ChatScreen {
     protected void init() {
         super.init(); // 原版:input + commandSuggestions + 历史/补全全部就位
         layoutInput();
-        ChatWindowRenderer.openedAt = System.currentTimeMillis();
+        ChatWindowRenderer.openedAt = Minecraft.getInstance().gui.getGuiTicks();
     }
 
     @Override
@@ -114,9 +114,8 @@ public class ChatWindowScreen extends ChatScreen {
             int[] r = ChatWindowRenderer.rect();
             c.x = ChatWindowManager.clamp((int) mx - grabDX, 0, Math.max(0, width - 10));
             c.y = ChatWindowManager.clamp((int) my - grabDY, 0, Math.max(0, height - 10));
-            ConfigManager.saveConfig();
             layoutInput();
-            return true;
+            return true; // 落盘推迟到 mouseReleased（拖动帧不写盘）
         }
         if (dragMode == 2) {
             float s = (float) c.scale;
@@ -125,23 +124,22 @@ public class ChatWindowScreen extends ChatScreen {
                     ChatWindowManager.MIN_W, ChatWindowManager.MAX_W);
             c.height = ChatWindowManager.clamp((int) ((my - grabDY - r[1]) / s),
                     ChatWindowManager.MIN_H, ChatWindowManager.MAX_H);
-            ConfigManager.saveConfig();
             layoutInput();
-            return true;
+            return true; // 落盘推迟到 mouseReleased（拖动帧不写盘）
         }
         if (dragMode == 3) {
             c.inputAttached = false;
             c.inputX = ChatWindowManager.clamp((int) mx - grabDX, 0, Math.max(0, width - 40));
             c.inputY = ChatWindowManager.clamp((int) my - grabDY, 0, Math.max(0, height - INPUT_H));
-            ConfigManager.saveConfig();
             layoutInput();
-            return true;
+            return true; // 落盘推迟到 mouseReleased（拖动帧不写盘）
         }
         return super.mouseDragged(mx, my, btn, dx, dy);
     }
 
     @Override
     public boolean mouseReleased(double mx, double my, int btn) {
+        if (dragMode != 0) ConfigManager.saveConfig(); // 拖动/缩放/分离结束统一落盘一次
         dragMode = 0;
         return super.mouseReleased(mx, my, btn);
     }

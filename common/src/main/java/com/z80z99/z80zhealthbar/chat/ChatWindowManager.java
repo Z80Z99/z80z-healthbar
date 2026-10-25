@@ -94,29 +94,34 @@ public final class ChatWindowManager {
         return Math.max(1, (h - PAD * 2) / LINE_H);
     }
 
-    /** 静默淡出系数：最新消息年龄 ≤ hold 内恒显,超过后 600ms 线性淡至 0.12（不完全消失便于找回） */
-    public static float windowAlpha(ChatWindowConfig c, long newestAddedAt, long now) {
+    /** 静默淡出系数：最新消息在 hold 内恒显,超过后 12 tick(600ms)线性淡至 0.12。
+     *  时间轴与 GuiMessage.addedTime 同源 = Gui.getGuiTicks()（20/s）——此前误用
+     *  System.currentTimeMillis(),与 tick 基准相差天文数字 → 动画静默失效（审计 L1）。
+     *  空消息列表保持全显（窗口位置可见）。 */
+    public static float windowAlpha(ChatWindowConfig c, int newestTick, int nowTick) {
         if (c.idleFadeSecs <= 0) return 1f;
-        long hold = c.idleFadeSecs * 1000L;
-        long age = now - newestAddedAt;
+        if (newestTick <= 0) return 1f;
+        int hold = c.idleFadeSecs * 20;
+        int age = nowTick - newestTick;
         if (age <= hold) return 1f;
-        float f = 1f - Math.min(1f, (age - hold) / 600f);
+        float f = 1f - Math.min(1f, (age - hold) / 12f);
         return 0.12f + 0.88f * f;
     }
 
-    /** 插入动画偏移：新消息行前 220ms 自 -6px 滑入（easeOutQuad）,返回 {yOff, alpha} */
-    public static float[] insertAnim(ChatWindowConfig c, long addedAt, long now) {
+    /** 插入动画偏移：新消息行前 4.4 tick(220ms) 自 -6px 滑入（easeOutQuad）,返回 {yOff, alpha} */
+    public static float[] insertAnim(ChatWindowConfig c, int addedTick, int nowTick) {
         if (!c.animEnabled) return new float[]{0f, 1f};
-        float t = Math.min(1f, (now - addedAt) / 220f);
+        float t = (nowTick - addedTick) / 4.4f;
         if (t >= 1f) return new float[]{0f, 1f};
+        if (t < 0f) return new float[]{0f, 1f}; // 时钟回绕/未来值保护
         float e = 1f - (1f - t) * (1f - t);
         return new float[]{-6f * (1f - e), t};
     }
 
-    /** 弹出动画（打开聊天窗口期）:150ms scale 0.95→1 + 淡入;返回 {scale, alpha} */
-    public static float[] popAnim(ChatWindowConfig c, long openedAt, long now) {
+    /** 弹出动画（打开聊天窗口期）:3 tick(150ms) scale 0.95→1 + 淡入;返回 {scale, alpha} */
+    public static float[] popAnim(ChatWindowConfig c, int openedTick, int nowTick) {
         if (!c.animEnabled) return new float[]{1f, 1f};
-        float t = Math.min(1f, (now - openedAt) / 150f);
+        float t = Math.min(1f, Math.max(0f, (nowTick - openedTick) / 3f));
         if (t >= 1f) return new float[]{1f, 1f};
         float e = 1f - (1f - t) * (1f - t);
         return new float[]{0.95f + 0.05f * e, t};
@@ -124,12 +129,5 @@ public final class ChatWindowManager {
 
     public static int clamp(int v, int min, int max) {
         return Math.max(min, Math.min(max, v));
-    }
-
-    /** 从 allMessages 视角把"新到旧"列表反转为渲染用"旧到新"（新在底部） */
-    public static List<GuiMessage> oldestFirst(List<GuiMessage> all) {
-        var out = new ArrayList<GuiMessage>(all.size());
-        for (int i = all.size() - 1; i >= 0; i--) out.add(all.get(i));
-        return out;
     }
 }

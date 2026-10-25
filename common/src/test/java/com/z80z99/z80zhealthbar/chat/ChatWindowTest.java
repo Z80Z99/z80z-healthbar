@@ -29,30 +29,31 @@ class ChatWindowTest {
     @Test
     void windowAlphaHoldThenFade() {
         var c = new ChatWindowConfig();
-        c.idleFadeSecs = 2;
-        assertEquals(1f, ChatWindowManager.windowAlpha(c, 1000, 2500), "within hold");
-        float mid = ChatWindowManager.windowAlpha(c, 1000, 3300); // 300ms into fade
+        c.idleFadeSecs = 2; // hold = 40 tick
+        assertEquals(1f, ChatWindowManager.windowAlpha(c, 100, 130), "within hold");
+        float mid = ChatWindowManager.windowAlpha(c, 100, 146); // 6 tick into 12-tick fade
         assertTrue(mid > 0.12f && mid < 1f);
-        assertEquals(0.12f, ChatWindowManager.windowAlpha(c, 1000, 10000), 1e-4, "floor");
+        assertEquals(0.12f, ChatWindowManager.windowAlpha(c, 100, 9999), 1e-4, "floor");
         c.idleFadeSecs = 0;
         assertEquals(1f, ChatWindowManager.windowAlpha(c, 0, 999999), "常驻");
+        assertEquals(1f, ChatWindowManager.windowAlpha(c, 0, 999999), "tick<=0 保护");
     }
 
     @Test
     void insertAndPopAnimations() {
         var c = new ChatWindowConfig();
-        float[] a = ChatWindowManager.insertAnim(c, 0, 0);
+        float[] a = ChatWindowManager.insertAnim(c, 100, 100);
         assertEquals(-6f, a[0], 0.01f);
         assertEquals(0f, a[1], 0.01f);
-        a = ChatWindowManager.insertAnim(c, 0, 220);
+        a = ChatWindowManager.insertAnim(c, 100, 105); // 5 tick > 4.4 完成
         assertEquals(0f, a[0], 0.01f);
         assertEquals(1f, a[1], 0.01f);
-        float[] p = ChatWindowManager.popAnim(c, 0, 0);
+        float[] p = ChatWindowManager.popAnim(c, 100, 100);
         assertEquals(0.95f, p[0], 0.01f);
-        p = ChatWindowManager.popAnim(c, 0, 150);
+        p = ChatWindowManager.popAnim(c, 100, 103);
         assertEquals(1f, p[0], 0.001f);
         c.animEnabled = false;
-        assertEquals(1f, ChatWindowManager.popAnim(c, 0, 0)[0], "anim off = instant");
+        assertEquals(1f, ChatWindowManager.popAnim(c, 100, 100)[0], "anim off = instant");
     }
 
     @Test
@@ -73,6 +74,12 @@ class ChatWindowTest {
         cfg.chatWindow = null;
         com.z80z99.z80zhealthbar.config.ConfigValidator.validate(cfg);
         assertNotNull(cfg.chatWindow, "null section → new");
+    }
+
+    @Test
+    void negativeDeltaProtection() {
+        var c = new ChatWindowConfig();
+        assertArrayEquals(new float[]{0f, 1f}, ChatWindowManager.insertAnim(c, 100, 50));
     }
 
     @Test
