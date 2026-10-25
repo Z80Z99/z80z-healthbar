@@ -29,6 +29,9 @@ public class Z80ZHealthBarConfig {
     public DynamicFxConfig dynamicFx = new DynamicFxConfig();
     /** 用户自定义外部数据源（通用兼容框架） */
     public CustomSourceConfig customSources = new CustomSourceConfig();
+    /** 自定义聊天窗口（独立窗口化聊天 + 可分离输入框;默认关） */
+    public com.z80z99.z80zhealthbar.config.configs.ChatWindowConfig chatWindow =
+            new com.z80z99.z80zhealthbar.config.configs.ChatWindowConfig();
 
     /** 解析实体样式（非法值回退 ASTEORBAR） */
     public EntityHealthStyle entityStyleParsed() {

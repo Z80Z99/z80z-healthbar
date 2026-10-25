@@ -30,6 +30,14 @@ public final class FabricEventHandlers {
             HudRenderer.render(graphics, tickDelta);
             // 数据源后台探测面板（无界面时绘制;渲染路径零反射）
             com.z80z99.z80zhealthbar.datasource.ProbeOverlay.render(graphics);
+            // 自定义聊天窗口（1.0.150;鼠标原始坐标换算 GUI 缩放系）
+            double mx = mc.mouseHandler.xpos() * (double) mc.getWindow().getGuiScaledWidth()
+                    / mc.getWindow().getWidth();
+            double my = mc.mouseHandler.ypos() * (double) mc.getWindow().getGuiScaledHeight()
+                    / mc.getWindow().getHeight();
+            com.z80z99.z80zhealthbar.chat.ChatWindowRenderer.render(graphics,
+                    (int) mx, (int) my,
+                    mc.screen instanceof com.z80z99.z80zhealthbar.gui.ChatWindowScreen);
         });
 
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> {

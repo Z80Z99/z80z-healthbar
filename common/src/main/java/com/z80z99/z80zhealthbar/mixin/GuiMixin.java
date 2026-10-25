@@ -39,5 +39,4 @@ public class GuiMixin {
     private void onRenderHotbar(float partialTick, GuiGraphics graphics, CallbackInfo ci) {
         if (HudRenderer.shouldCancelVanilla(HudRenderer.VanillaOverlayId.HOTBAR)) ci.cancel();
     }
-
 }

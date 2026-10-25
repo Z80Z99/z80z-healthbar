@@ -11,7 +11,9 @@
   "client": [
     "EntityRenderMixin",
     "LevelRendererMixin",
-    "GuiMixin"
+    "GuiMixin",
+    "ChatComponentMixin",
+    "MinecraftMixin"
   ],
   "server": [],
   "injectors": {

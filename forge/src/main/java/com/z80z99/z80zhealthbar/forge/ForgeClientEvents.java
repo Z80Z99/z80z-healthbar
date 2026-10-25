@@ -77,6 +77,15 @@ public final class ForgeClientEvents {
                 HudRenderer.render(event.getGuiGraphics(), event.getPartialTick());
                 // 数据源后台探测面板（无界面时绘制;渲染路径零反射）
                 com.z80z99.z80zhealthbar.datasource.ProbeOverlay.render(event.getGuiGraphics());
+                // 自定义聊天窗口（1.0.150;打开聊天时附加交互装饰;Post 事件无鼠标→实时读 MouseHandler）
+                var mcChat = net.minecraft.client.Minecraft.getInstance();
+                double cmx = mcChat.mouseHandler.xpos() * (double) mcChat.getWindow().getGuiScaledWidth()
+                        / mcChat.getWindow().getWidth();
+                double cmy = mcChat.mouseHandler.ypos() * (double) mcChat.getWindow().getGuiScaledHeight()
+                        / mcChat.getWindow().getHeight();
+                com.z80z99.z80zhealthbar.chat.ChatWindowRenderer.render(event.getGuiGraphics(),
+                        (int) cmx, (int) cmy,
+                        mcChat.screen instanceof com.z80z99.z80zhealthbar.gui.ChatWindowScreen);
             }
         }
 

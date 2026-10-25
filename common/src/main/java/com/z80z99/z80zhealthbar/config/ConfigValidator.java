@@ -26,6 +26,9 @@ public final class ConfigValidator {
         if (cfg.dynamicFx == null) cfg.dynamicFx = new DynamicFxConfig();
         if (cfg.customSources == null) cfg.customSources = new CustomSourceConfig();
         validateCustomSources(cfg.customSources);
+        if (cfg.chatWindow == null) cfg.chatWindow =
+                new com.z80z99.z80zhealthbar.config.configs.ChatWindowConfig();
+        validateChatWindow(cfg.chatWindow);
 
         validateOverlay(cfg.overlay);
         validateHudLayout(cfg.hudLayout);
@@ -361,6 +364,19 @@ public final class ConfigValidator {
         c.maxDistance = clamp(c.maxDistance, 4, 256);
         c.maxConcurrentDisplays = clamp(c.maxConcurrentDisplays, 0, 200);
         c.fadeInTicks = clamp(c.fadeInTicks, 0, 40);
+    }
+
+    /** 聊天窗口钳制（手改 JSON 防越界;位置 -1=默认直通） */
+    private static void validateChatWindow(com.z80z99.z80zhealthbar.config.configs.ChatWindowConfig c) {
+        c.width = clamp(c.width, 120, 800);
+        c.height = clamp(c.height, 60, 600);
+        c.scale = c.scale <= 0 ? 1.0 : clamp(c.scale, 0.5, 2.0);
+        c.bgOpacity = clamp(c.bgOpacity, 0, 100);
+        c.idleFadeSecs = clamp(c.idleFadeSecs, 0, 600);
+        if (c.x < -1) c.x = -1;
+        if (c.y < -1) c.y = -1;
+        if (c.inputX < -1) c.inputX = -1;
+        if (c.inputY < -1) c.inputY = -1;
     }
 
     private static void validateColors(ColorConfig c) {

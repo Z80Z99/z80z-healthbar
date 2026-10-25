@@ -48,11 +48,12 @@ public final class ModSettingsScreen extends Screen {
     private static final int PANEL_PAD = 6;
     private static final int WIDGET_W = 150;
 
-    private enum Page { MAIN, STYLE, POPUP, VISIBILITY, COMPAT, ADVANCED }
+    private enum Page { MAIN, STYLE, CHAT, POPUP, VISIBILITY, COMPAT, ADVANCED }
 
     private static final String[] PAGE_KEYS = {
             "z80zhealthbar.settings.page.main",
             "z80zhealthbar.settings.page.style",
+            "z80zhealthbar.settings.page.chat",
             "z80zhealthbar.settings.page.popup",
             "z80zhealthbar.settings.page.visibility",
             "z80zhealthbar.settings.page.compat",
@@ -63,6 +64,7 @@ public final class ModSettingsScreen extends Screen {
     private static final String[] PAGE_DESC_KEYS = {
             "z80zhealthbar.settings.pagedesc.main",
             "z80zhealthbar.settings.pagedesc.style",
+            "z80zhealthbar.settings.pagedesc.chat",
             "z80zhealthbar.settings.pagedesc.popup",
             "z80zhealthbar.settings.pagedesc.visibility",
             "z80zhealthbar.settings.pagedesc.compat",
@@ -370,6 +372,7 @@ public final class ModSettingsScreen extends Screen {
         switch (page) {
             case MAIN -> buildMain();
             case STYLE -> buildStyle();
+            case CHAT -> buildChat();
             case POPUP -> buildPopup();
             case VISIBILITY -> buildVisibility();
             case COMPAT -> buildCompat();
@@ -383,6 +386,7 @@ public final class ModSettingsScreen extends Screen {
                 switch (p) {
                     case MAIN -> buildMain();
                     case STYLE -> buildStyle();
+                    case CHAT -> buildChat();
                     case POPUP -> buildPopup();
                     case VISIBILITY -> buildVisibility();
                     case COMPAT -> buildCompat();
@@ -773,6 +777,43 @@ public final class ModSettingsScreen extends Screen {
     }
 
     /** 伤害跳字页 */
+    /** 聊天窗口页（1.0.150）：窗口开关/几何/换行/透明/淡出/输入框吸附/动画 */
+    private void buildChat() {
+        var c = cfg().chatWindow;
+        rows.add(new SectionRow("z80zhealthbar.settings.section.chat_window"));
+        rows.add(toggleRow("z80zhealthbar.chat.enable", c.enabled, v -> c.enabled = v));
+        rows.add(new TextRow("z80zhealthbar.chat.hint"));
+        rows.add(new SectionRow("z80zhealthbar.settings.section.chat_geometry"));
+        rows.add(sliderRow("z80zhealthbar.chat.width", 120, 800, c.width, v -> c.width = v, String::valueOf));
+        rows.add(sliderRow("z80zhealthbar.chat.height", 60, 600, c.height, v -> c.height = v, String::valueOf));
+        rows.add(sliderRow("z80zhealthbar.chat.scale", 50, 200, (int) (c.scale * 100),
+                v -> c.scale = v / 100.0, v -> v + "%"));
+        rows.add(sliderRow("z80zhealthbar.chat.bg_opacity", 0, 100, c.bgOpacity,
+                v -> c.bgOpacity = v, String::valueOf));
+        rows.add(toggleRow("z80zhealthbar.chat.wrap", c.wordWrap, v -> c.wordWrap = v));
+        rows.add(sliderRow("z80zhealthbar.chat.idle_fade", 0, 60, c.idleFadeSecs,
+                v -> c.idleFadeSecs = v,
+                v -> v == 0 ? Component.translatable("z80zhealthbar.msg.off").getString() : v + "s"));
+        rows.add(new SectionRow("z80zhealthbar.settings.section.chat_input"));
+        rows.add(toggleRow("z80zhealthbar.chat.input_attached", c.inputAttached, v -> {
+            c.inputAttached = v;
+            if (v) { c.inputX = -1; c.inputY = -1; } // 重新吸附即清除独立位置
+        }));
+        rows.add(new SectionRow("z80zhealthbar.settings.section.chat_anim"));
+        rows.add(toggleRow("z80zhealthbar.chat.anim", c.animEnabled, v -> c.animEnabled = v));
+        rows.add(toggleRow("z80zhealthbar.chat.smooth_scroll", c.smoothScroll, v -> c.smoothScroll = v));
+        rows.add(actionRow("z80zhealthbar.chat.reset", () -> {
+            int ex = c.x, ey = c.y;
+            boolean wasEnabled = c.enabled;
+            var fresh = new com.z80z99.z80zhealthbar.config.configs.ChatWindowConfig();
+            fresh.enabled = wasEnabled;
+            cfg().chatWindow = fresh;
+            ConfigManager.saveConfig();
+            rebuild();
+            toast("z80zhealthbar.advanced.reset_done");
+        }));
+    }
+
     private void buildPopup() {
         var c = cfg();
 
