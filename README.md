@@ -4,6 +4,92 @@ A Minecraft 1.20.1 health bar and player HUD mod for Forge and Fabric — entity
 
 Minecraft 1.20.1 · Forge 47.x or Fabric Loader 0.15.11+ · Java 17 · Client and server
 
+A clean-room reimplementation of the features and visual experience of mobhealthbar / Mob Plaques / AsteorBar (behaviour studied for reference; zero code or asset reuse — see [docs/third-party-licenses.md](docs/third-party-licenses.md)).
+
+[简体中文说明见下方 / Chinese README below](#中文说明-z80z-health-bar-z80zhealthbar-1)
+
+## Installation
+
+1. Install **Forge 47.x** or **Fabric Loader 0.15.11+** (Fabric also needs Fabric API).
+2. Download the jar for your loader from [Releases](https://github.com/Z80Z99/z80z-healthbar/releases) and drop it into your `mods` folder.
+3. Launch the game. The Forge build has zero extra dependencies — no Architectury API needed.
+
+Open the settings via the **Config** button in the Forge mod list, via ModMenu on Fabric, or bind a key to it in Controls. The settings screen has a **cross-page search** at the top.
+
+## Features
+
+**Entity health display (four mutually exclusive styles)**
+- `OFF` — disabled
+- Style A `MobHealthBar`: textured frame bar (4 custom palettes + heart-row variant) + entity name + "current/max (+absorption)" values; independently adjustable X/Y/scale
+- Style B `Mob Plaques`: vanilla icon plaques (hearts / armor / toughness / air bubbles with gradient value text), row wrapping, background boxes, distance-based scaling, sneak/occlusion falloff
+- Style C `AsteorBar`: dynamic-colour bar + absorption ring + centred value text; supports segment ticks (even-split or fixed-HP modes)
+- Add-on rows: armor / toughness / air plaques under styles A & C (off by default, never drawn twice)
+- Unified data layer `EntityStatusSnapshot` (collection decoupled from rendering; unknown data is never faked as 0)
+- Composable visibility rules: hurt / aggro / crosshair / full-health±absorption / friend-foe / boss / armor stands / distance / on-screen cap / fade-in / death fade / line-of-sight (optional)
+- **Death effects**: glass shatter (irregular quad shards with per-shard glint) or death shrink; three hit-shake modes, damage ghost trails, low-health pulse, sheen sweep (constant pixel speed + sub-pixel smoothing)
+- Damage popups: random pop angle, custom parameters, red/green hit/heal tinting
+
+**Player HUD (three modes)**
+- `VANILLA` — vanilla HUD untouched
+- `ASTEORBAR` — 9 bar layouts (hunger/poison/wither/freeze/recen colouring, blinking, low-health shake, stacked bars, hide-when-static, saturation/exhaustion synced via server)
+- `CUSTOM` — fully component-based: six core components (health / hunger / air / experience / armor / mount) + single-row compat components + hotbar (9 independent slot sub-components, per-slot add/remove/appearance/selection animation) + info widgets (coords / FPS / ping / game time). Every component supports bar / icon / text-only / off, 9 anchors, drag offsets, scale, spacing, rotation, and detachable text/icon sub-elements
+- **Second-layer values**: absorption / saturation / quenched shown as overlay, right-append, top strip, bottom strip, or off
+- Status bars auto-hidden in Creative/Spectator (vanilla-like, optional)
+
+**Generic data-source framework (read any mod's numbers, zero code)**
+- 5 read channels: Forge Capability / static method / factory instance (incl. method chains) / player instance method / held item (durability / NBT / item method)
+- **In-mod scan picker**: enumerate the target mod's classes and methods, live-read preview values, deterministic recommendation ranking, background change probe (close the screen, take a drink, come back and see which number moved)
+- AI label translation: export the candidate list → any AI chat → import (renames labels only, never touches selection)
+- Any bar component can stack a second data source; can take over the target mod's vanilla HUD
+
+**In-game UI**
+- Seven-page settings screen (home / entity styles / chat window / damage popups / visibility / compatibility / advanced) with **cross-page search**, live half-screen preview (enemy/friendly toggle, pause, fullscreen preview)
+- **HUD layout editor**: click-drag, scroll to scale, arrow-key nudge, multi-level menus, grouping (multiple groups + per-member independent movement + group-wide drag), undo/redo (snapshot-based Ctrl+Z/Y), explicit save/discard, Windows-style edge resizing, per-row (?) help, per-bar free placement for the long-bar style
+- **Proportional scaling (reference resolution)**: one layout keeps its composition across different logical resolutions
+- **User style library**: save multiple layout snapshots, one-click apply, auto-switch by window state (fullscreen / maximized / windowed) with per-state memory, share styles as JSON
+- **Custom chat window**: floating chat log (always-on / idle fade), detachable input box, drag header to move / corner to resize, word wrap, pop-in / slide-in / smooth-scroll animations (off by default; off = vanilla)
+- **Data-source management**: list, live read-out diagnostics, colour wheel; config file export/import with automatic backup
+- Full Simplified Chinese + English lang (1:1 parity); config validation (out-of-range clamping), legacy migrations, clipboard/file import-export
+
+**Third-party compatibility (priority: AppleSkin > Thirst Was Taken > ParCool!)**
+- Unified `CompatibilityAdapter` interface + registry; zero rendering and zero reflection hotspots when the target mod is absent; never crashes
+- Missing data is skipped, never faked as 0; saturation / exhaustion / entity absorption synced via server (install on the server to activate)
+- AppleSkin held-food nutrition preview; Thirst bar (incl. quenched second layer); ParCool stamina bar (text-only when the max is unknown)
+- Built-in equivalent data sources can be converted into editable custom sources
+
+## Requirements
+
+- Minecraft 1.20.1
+- Forge 47.x **or** Fabric Loader 0.15.11+ (Fabric also needs Fabric API)
+- **No Architectury API required** (networking is natively implemented per platform; the Forge build has zero extra dependencies)
+- Install on the server to sync saturation, exhaustion and entity absorption values
+
+## Configuration
+
+The config file is `config/z80zhealthbar.json`; everything is editable in-game. Export to file/clipboard is supported (imports back up automatically). External edits hot-reload in ~0.3 s (atomic writes, so a half-read file can never corrupt the config).
+
+## Building from source
+
+Requires JDK 17:
+
+```bash
+./gradlew build
+```
+
+Artifacts land in `forge/build/libs/` and `fabric/build/libs/`. See [docs/development.md](docs/development.md) for dev/debug workflows and [docs/architecture.md](docs/architecture.md) for architecture and the per-iteration changelog.
+
+## License
+
+MIT (see [LICENSE](LICENSE)). This project contains no code or assets from the three reference mods.
+
+---
+
+# 中文说明 Z80Z Health Bar (z80zhealthbar)
+
+Minecraft 1.20.1 的血量与玩家 HUD 模组（Forge/Fabric 双端）——实体血量显示、完全可定制的玩家 HUD 与拖拽布局编辑器、悬浮聊天窗口、伤害跳字，可选 AppleSkin / Thirst Was Taken / ParCool 集成，以及可零代码读取任意已安装 MOD 数值的通用数据源框架。
+
+Minecraft 1.20.1 · Forge 47.x 或 Fabric Loader 0.15.11+ · Java 17 · 客户端与服务端
+
 本项目是 mobhealthbar / Mob Plaques / AsteorBar 三者功能与视觉体验的净室重实现（行为参考，零代码/零素材复用，见 [docs/third-party-licenses.md](docs/third-party-licenses.md)）。
 
 ## 安装
