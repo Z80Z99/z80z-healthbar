@@ -94,6 +94,48 @@ public final class CompatHudTakeover {
         return rendersStat(adapterId);
     }
 
+    // ---- TWT 附加预览层抑制（1.0.152）----
+    // ThirstWasTaken 在 thirst_level 的 RenderGuiOverlayEvent.Post 里还挂了 AppleSkin 风格的
+    // "滴状轮廓预览/饱和度/消耗度"层（HUDOverlayHandler.onRenderGuiOverlayPost,守卫
+    // !ThirstBarRenderer.cancelRender）。取消 Pre 后这层 Post 仍可能绘制 → 屏幕上残留
+    // 一条"虚线空框"（用户截图实证）。TWT 自留的 cancelRender 静态开关同时掐断它的
+    // Pre（消耗度底层）与 Post（预览层）——反射置位即可,行为与 TWT 的吸血鬼兼容一致。
+    private static java.lang.reflect.Field twtCancelRenderField;
+    private static boolean twtCancelRenderSet;
+
+    /** 接管口渴条时调用：置 TWT cancelRender=true,抑制其附加预览层（反射缓存,失败静默） */
+    public static void suppressTwtPreviewLayers() {
+        try {
+            if (twtCancelRenderField == null) {
+                twtCancelRenderField = Class.forName(
+                        "dev.ghen.thirst.foundation.gui.ThirstBarRenderer").getField("cancelRender");
+                twtCancelRenderField.setAccessible(true);
+            }
+            if (!Boolean.TRUE.equals(twtCancelRenderField.get(null))) {
+                twtCancelRenderField.set(null, Boolean.TRUE);
+                twtCancelRenderSet = true;
+            }
+        } catch (Throwable ignored) {
+            // TWT 未安装/版本变动:静默（此时它的 overlay 也不存在）
+        }
+    }
+
+    /** 停止接管口渴条时调用：归还开关（TWT 自身渲染会重算,此处防御性复位） */
+    public static void releaseTwtPreviewLayers() {
+        if (!twtCancelRenderSet) return;
+        try {
+            if (twtCancelRenderField == null) {
+                twtCancelRenderField = Class.forName(
+                        "dev.ghen.thirst.foundation.gui.ThirstBarRenderer").getField("cancelRender");
+                twtCancelRenderField.setAccessible(true);
+            }
+            twtCancelRenderField.set(null, Boolean.FALSE);
+        } catch (Throwable ignored) {
+        }
+        twtCancelRenderSet = false;
+    }
+
+
     /** 我方当前 HUD 配置是否会绘制该适配器的数据 */
     public static boolean rendersStat(String adapterId) {
         var cfg = ConfigManager.getConfig();

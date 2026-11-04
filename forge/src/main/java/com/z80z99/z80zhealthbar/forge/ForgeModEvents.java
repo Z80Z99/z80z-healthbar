@@ -45,6 +45,15 @@ public final class ForgeModEvents {
             if (adapter != null) {
                 com.z80z99.z80zhealthbar.compat.CompatHudTakeover.logCancelOnce(adapter);
             }
+            // TWT 在同 id 的 Post 里还挂了预览层（滴状轮廓,不受 Pre 取消影响）——
+            // 置其 cancelRender 开关一并抑制,否则残留一条虚线空框（1.0.152 修复）
+            if ("thirst".equals(com.z80z99.z80zhealthbar.compat.CompatHudTakeover
+                    .adapterForOverlay(id.getNamespace(), id.getPath()))) {
+                com.z80z99.z80zhealthbar.compat.CompatHudTakeover.suppressTwtPreviewLayers();
+            }
+        } else if ("thirst".equals(id.getNamespace()) && "thirst_level".equals(id.getPath())) {
+            // 接管停止（开关关/我方不渲染）时归还开关——TWT 自身渲染每帧会重算,此处防御性复位
+            com.z80z99.z80zhealthbar.compat.CompatHudTakeover.releaseTwtPreviewLayers();
         }
     }
 
