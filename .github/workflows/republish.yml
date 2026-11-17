@@ -74,7 +74,7 @@ jobs:
           fail-mode: fail
           files: out/z80z-healthbar-forge-${{ inputs.version }}.jar
           version: ${{ inputs.version }}
-          name: ${{ inputs.version }}
+          name: ${{ inputs.displayName || inputs.version }}
           changelog: Republish of ${{ inputs.version }} (recovery after automated file scan rejected the original upload)
 
       - name: Publish Fabric jar to CurseForge
@@ -89,5 +89,5 @@ jobs:
           fail-mode: fail
           files: out/z80z-healthbar-fabric-${{ inputs.version }}.jar
           version: ${{ inputs.version }}
-          name: ${{ inputs.version }}
+          name: ${{ inputs.displayName || inputs.version }}
           changelog: Republish of ${{ inputs.version }} (recovery after automated file scan rejected the original upload)
