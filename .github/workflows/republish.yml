@@ -1,0 +1,58 @@
+name: republish
+
+# 手动重发指定版本的 jar 到 CurseForge / Modrinth。
+# 用途：CI 自动发布后平台侧缺文件（如 CurseForge 自动扫描误杀）时补发。
+# 从对应的 GitHub Release 下载双端 jar 再走 mc-publish——与正式发布完全同参数。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（如 1.0.152，不带 v 前缀）'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  republish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download jars from GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ inputs.version }}
+        run: |
+          set -e
+          mkdir -p out
+          gh release download "v$VER" --repo "$GITHUB_REPOSITORY" \
+            --pattern "z80z-healthbar-forge-$VER.jar" \
+            --pattern "z80z-healthbar-fabric-$VER.jar" \
+            --dir out
+          ls -la out/
+          test -f "out/z80z-healthbar-forge-$VER.jar"
+          test -f "out/z80z-healthbar-fabric-$VER.jar"
+
+      - name: Publish to CurseForge and Modrinth
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: ${{ vars.MODRINTH_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          curseforge-id: ${{ vars.CURSEFORGE_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          loaders: forge | fabric
+          game-versions: 1.20.1
+          java: 17
+          fail-mode: strict
+          files: out/*.jar
+          version: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          changelog: Republish of ${{ inputs.version }} (platform file recovery)

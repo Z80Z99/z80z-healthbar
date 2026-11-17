@@ -90,9 +90,9 @@ jobs:
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           curseforge-id: ${{ vars.CURSEFORGE_ID }}
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
-          minecraft: 1.20.1
           loaders: forge | fabric
           game-versions: 1.20.1
           java: 17
+          fail-mode: strict
           files: out/*.jar
           changelog: ${{ github.event.head_commit.message }}
