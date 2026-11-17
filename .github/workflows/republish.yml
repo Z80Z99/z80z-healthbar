@@ -1,8 +1,10 @@
 name: republish
 
-# 手动重发指定版本的 jar 到 CurseForge / Modrinth。
-# 用途：CI 自动发布后平台侧缺文件（如 CurseForge 自动扫描误杀）时补发。
-# 从对应的 GitHub Release 下载双端 jar 再走 mc-publish——与正式发布完全同参数。
+# 手动补发指定版本的 jar 到 CurseForge（仅 CurseForge——Modrinth 未见过文件丢失,
+# 平台重复上传会建重复版本;真需要时再加）。用途：CI 自动发布后 CF 自动扫描误杀
+# 文件（如 1.0.152 的 Forge jar）时补传。jar 从对应的 GitHub Release 原样下载,
+# 与正式发布同参数。注意：CF 每次上传都是新文件条目——页面上会出现同名的新文件,
+# 旧的可视需要在 CF 网站手动处理。
 
 on:
   workflow_dispatch:
@@ -11,6 +13,15 @@ on:
         description: '版本号（如 1.0.152，不带 v 前缀）'
         required: true
         type: string
+      loader:
+        description: '补发哪个加载器的 jar'
+        required: false
+        default: 'forge'
+        type: choice
+        options:
+          - forge
+          - fabric
+          - both
 
 permissions:
   contents: read
@@ -38,21 +49,41 @@ jobs:
             --pattern "z80z-healthbar-fabric-$VER.jar" \
             --dir out
           ls -la out/
-          test -f "out/z80z-healthbar-forge-$VER.jar"
-          test -f "out/z80z-healthbar-fabric-$VER.jar"
+          if [ "${{ inputs.loader }}" = "fabric" ]; then
+            test -f "out/z80z-healthbar-fabric-$VER.jar"
+          elif [ "${{ inputs.loader }}" = "forge" ]; then
+            test -f "out/z80z-healthbar-forge-$VER.jar"
+          else
+            test -f "out/z80z-healthbar-forge-$VER.jar"
+            test -f "out/z80z-healthbar-fabric-$VER.jar"
+          fi
 
-      - name: Publish to CurseForge and Modrinth
+      - name: Publish Forge jar to CurseForge
+        if: inputs.loader == 'forge' || inputs.loader == 'both'
         uses: Kir-Antipov/mc-publish@v3.3
         with:
-          modrinth-id: ${{ vars.MODRINTH_ID }}
-          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           curseforge-id: ${{ vars.CURSEFORGE_ID }}
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
-          loaders: forge | fabric
+          loaders: forge
           game-versions: 1.20.1
           java: 17
-          fail-mode: strict
-          files: out/*.jar
+          fail-mode: fail
+          files: out/z80z-healthbar-forge-${{ inputs.version }}.jar
           version: ${{ inputs.version }}
           name: ${{ inputs.version }}
-          changelog: Republish of ${{ inputs.version }} (platform file recovery)
+          changelog: Republish of ${{ inputs.version }} (recovery after automated file scan rejected the original upload)
+
+      - name: Publish Fabric jar to CurseForge
+        if: inputs.loader == 'fabric' || inputs.loader == 'both'
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          curseforge-id: ${{ vars.CURSEFORGE_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          loaders: fabric
+          game-versions: 1.20.1
+          java: 17
+          fail-mode: fail
+          files: out/z80z-healthbar-fabric-${{ inputs.version }}.jar
+          version: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          changelog: Republish of ${{ inputs.version }} (recovery after automated file scan rejected the original upload)
