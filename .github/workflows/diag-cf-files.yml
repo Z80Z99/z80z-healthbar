@@ -1,0 +1,29 @@
+name: diag-cf-files
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List CurseForge files for project
+        env:
+          CF_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          CF_ID: ${{ vars.CURSEFORGE_ID }}
+        run: |
+          set -e
+          curl -s -H "x-api-key: $CF_TOKEN" \
+            "https://api.curseforge.com/v1/mods/$CF_ID/files?pageSize=40" \
+            -o cf-files.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open('cf-files.json'))
+          for f in data.get('data', []):
+              print(f["displayName"], "|", f["name"], "|", f["releaseType"], "|",
+                    [l["name"] for l in f.get("loaders", [])],
+                    [g["name"] for g in f.get("gameVersions", [])][:3])
+          PY
