@@ -13,6 +13,10 @@ on:
         description: '版本号（如 1.0.152，不带 v 前缀）'
         required: true
         type: string
+      displayName:
+        description: 'CF 显示名（留空 = 与版本号一致；撞名被拒时可改如 1.0.152-r2）'
+        required: false
+        type: string
       loader:
         description: '补发哪个加载器的 jar'
         required: false
